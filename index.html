@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AQC SmartFlow - Suite de Ingeniería</title>
+    <style>
+        :root {
+            --dark: #0d1117;
+            --panel: #161b22;
+            --accent: #58a6ff;
+            --success: #238636;
+            --text: #c9d1d9;
+        }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0;
+            background: var(--dark);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        /* Pantallas */
+        .screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+            z-index: 1000;
+            background: var(--dark);
+        }
+        .hidden { display: none !important; }
+
+        /* Elementos de Interfaz */
+        input {
+            width: 100%; max-width: 300px;
+            padding: 15px; margin: 20px 0;
+            background: #161b22; border: 2px solid #30363d;
+            color: white; border-radius: 8px; font-size: 1.1rem;
+        }
+        .btn {
+            width: 100%; max-width: 300px;
+            padding: 15px; margin: 10px 0;
+            border: none; border-radius: 8px;
+            font-weight: bold; font-size: 1.1rem;
+            cursor: pointer;
+        }
+        .btn-primary { background: var(--success); color: white; }
+        .btn-secondary { background: var(--accent); color: black; }
+        
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0;
+            margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen" class="screen" role="form" aria-label="Acceso de seguridad">
+        <h1>AQC SmartFlow</h1>
+        <p>Introduce la clave de ingeniería</p>
+        <input type="password" id="pass-input" placeholder="Contraseña" aria-label="Escribe la contraseña aquí">
+        <button class="btn btn-primary" id="login-btn">Acceder</button>
+        <div id="login-announcer" class="sr-only" aria-live="assertive"></div>
+    </div>
+
+    <div id="splash-screen" class="screen hidden" role="main" aria-label="Inicio de proyecto">
+        <h1>Bienvenido, Ing. Romero</h1>
+        <p>¿Qué desea hacer hoy?</p>
+        <button class="btn btn-primary" id="btn-nuevo">Crear Nuevo Proyecto</button>
+        <button class="btn btn-secondary" id="btn-cargar">Abrir Proyecto (.json)</button>
+        <div id="splash-announcer" class="sr-only" aria-live="polite"></div>
+    </div>
+
+    <div id="app-main" class="hidden" style="height: 100vh; display: flex; flex-direction: column;">
+        <header style="padding: 10px; background: var(--panel); border-bottom: 1px solid #30363d;">
+            <h2 id="project-title" aria-live="polite">Nuevo Proyecto de Ingeniería</h2>
+        </header>
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+            <p>El lienzo ISO 10628 está activo. Pulse para añadir equipos.</p>
+        </div>
+    </div>
+
+    <script>
+        const PASS_SECRET = "AQC2026";
+        
+        // Elementos
+        const loginScreen = document.getElementById('login-screen');
+        const splashScreen = document.getElementById('splash-screen');
+        const appMain = document.getElementById('app-main');
+        const passInput = document.getElementById('pass-input');
+        const loginAnnouncer = document.getElementById('login-announcer');
+
+        // Lógica de Acceso
+        document.getElementById('login-btn').addEventListener('click', () => {
+            if (passInput.value === PASS_SECRET) {
+                loginAnnouncer.textContent = "Acceso correcto.";
+                loginScreen.classList.add('hidden');
+                splashScreen.classList.remove('hidden');
+            } else {
+                loginAnnouncer.textContent = "Error: Contraseña incorrecta.";
+                passInput.value = "";
+                passInput.focus();
+            }
+        });
+
+        // Lógica de Inicio de Proyecto
+        document.getElementById('btn-nuevo').addEventListener('click', () => {
+            splashScreen.classList.add('hidden');
+            appMain.classList.remove('hidden');
+            document.getElementById('project-title').textContent = "Proyecto: Nuevo Diagrama";
+        });
+
+        document.getElementById('btn-cargar').addEventListener('click', () => {
+            // Aquí iría el disparador para elegir el archivo .json
+            alert("Función de carga activada. Seleccione su archivo .json");
+            splashScreen.classList.add('hidden');
+            appMain.classList.remove('hidden');
+            document.getElementById('project-title').textContent = "Proyecto Cargado";
+        });
+
+        // Soporte para tecla Enter
+        passInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('login-btn').click();
+        });
+    </script>
+</body>
+</html>
