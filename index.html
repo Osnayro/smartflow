@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AQC SmartFlow - Acceso Seguro</title>
+    <style>
+        :root { --dark: #0d1117; --accent: #58a6ff; --text: #c9d1d9; }
+        body { background: var(--dark); color: var(--text); font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        #login-container { text-align: center; width: 90%; max-width: 400px; }
+        input { width: 100%; padding: 18px; margin: 20px 0; background: #161b22; border: 2px solid #30363d; color: white; border-radius: 12px; font-size: 1.2rem; text-align: center; }
+        button { background: var(--accent); color: #000; border: none; padding: 18px; border-radius: 12px; font-weight: bold; width: 100%; font-size: 1.1rem; cursor: pointer; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+    </style>
+</head>
+<body>
+    <div id="login-screen" role="main">
+        <div id="login-container">
+            <h1 id="title">AQC SmartFlow</h1>
+            <p>Introduce la clave de acceso de ingeniería</p>
+            <input type="password" id="pass-input" aria-labelledby="title" placeholder="Contraseña" autofocus>
+            <button id="login-btn">Entrar a la Suite</button>
+            <div id="announcer" class="sr-only" aria-live="assertive"></div>
+        </div>
+    </div>
+    <script>
+        const PASS_SECRET = "AQC2026";
+        const btn = document.getElementById('login-btn');
+        const input = document.getElementById('pass-input');
+        const announcer = document.getElementById('announcer');
+        function checkAccess() {
+            if (input.value === PASS_SECRET) {
+                announcer.textContent = "Acceso concedido. Cargando aplicación.";
+                alert("¡Bienvenido Ingeniero! Acceso correcto.");
+                // Aquí se cargará el resto de la suite de fluidos
+            } else {
+                announcer.textContent = "Contraseña incorrecta. Intente de nuevo.";
+                input.value = "";
+                input.focus();
+            }
+        }
+        btn.onclick = checkAccess;
+        input.onkeypress = (e) => { if(e.key === 'Enter') checkAccess(); };
+    </script>
+</body>
+</html>
