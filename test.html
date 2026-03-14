@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de Voz Osnay</title>
+</head>
+<body style="background: #000; color: white; text-align: center; padding-top: 50px;">
+    <h1>ACQ SmartFlow Test</h1>
+    <p>Si escuchas la voz, el iPhone está listo.</p>
+    <canvas id="mainCanvas" style="background: white; margin-top: 20px;"></canvas>
+
+    <script>
+        window.addEventListener('load', function() {
+            try {
+                console.log("Iniciando prueba...");
+                var canvas = document.getElementById('mainCanvas');
+                var ctx = canvas.getContext('2d');
+                canvas.width = 300;
+                canvas.height = 200;
+                
+                // Dibujamos un cuadro para confirmar que el canvas funciona
+                ctx.fillStyle = "blue";
+                ctx.fillRect(10, 10, 100, 100);
+
+                var anuncio = new SpeechSynthesisUtterance("Prueba de sistema exitosa. El navegador está respondiendo.");
+                anuncio.lang = 'es-ES';
+                window.speechSynthesis.speak(anuncio);
+                
+            } catch (e) {
+                alert("Error detectado: " + e.message);
+            }
+        });
+    </script>
+</body>
+</html>
