@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>ACQ SmartFlow Pro | Ing. Osnay Romero</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: #161b22;
+            padding: 10px;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            border-bottom: 1px solid #30363d;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 18px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: 0.2s;
+            font-size: 14px;
+            min-height: 44px;
+            min-width: 44px;
+        }
+        button:hover { transform: translateY(-2px); opacity: 0.9; }
+        button:focus { 
+            outline: 4px solid #58a6ff !important; 
+            outline-offset: 3px !important;
+            box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.5);
+        }
+        .btn-primary { background: #58a6ff; color: black; }
+        .btn-success { background: #238636; color: white; }
+        .btn-warning { background: #d4af37; color: black; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-sim { background: #e67e22; color: white; }
+        .btn-nlp { background: #9b59b6; color: white; }
+        .btn-excel { background: #1d6f42; color: white; }
+        .btn-dti { background: #8e44ad; color: white; }
+        .btn-iso { background: #e67e22; color: white; }
+        .btn-hmb { background: #2ea043; color: white; }
+        .btn-accessibility { background: #8957e5; color: white; }
+        .btn-material { background: #21262d; color: white; border: 1px solid #58a6ff; }
+        
+        .canvas-container {
+            flex: 1;
+            background: #010409;
+            overflow: auto;
+            position: relative;
+        }
+        canvas {
+            background: white;
+            display: block;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        #inspector {
+            position: fixed;
+            right: 20px;
+            top: 80px;
+            width: 340px;
+            background: white;
+            color: black;
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        #inspector h2 {
+            color: #58a6ff;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+        .ins-row {
+            margin-bottom: 15px;
+        }
+        .ins-row label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #444;
+        }
+        .ins-row input, .ins-row select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .ins-row input:focus {
+            border-color: #58a6ff;
+            outline: none;
+        }
+        #notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #161b22;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 40px;
+            display: none;
+            z-index: 2000;
+            border: 2px solid #58a6ff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            min-width: 300px;
+            text-align: center;
+        }
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            color: black;
+            padding: 30px;
+            border-radius: 12px;
+            z-index: 10000;
+            width: 600px;
+            max-width: 90vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .modal textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #58a6ff;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 15px 0;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 9999;
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        @media (prefers-contrast: high) {
+            button { border: 3px solid white !important; }
+            canvas { border: 4px solid yellow; }
+        }
+        #accessibility-panel {
+            position: fixed;
+            left: 20px;
+            top: 80px;
+            width: 300px;
+            background: white;
+            color: black;
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .accessibility-option {
+            margin-bottom: 15px;
+        }
+        .accessibility-option label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .mto-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        .mto-table th {
+            background: #58a6ff;
+            color: white;
+            padding: 8px;
+            text-align: center;
+        }
+        .mto-table td {
+            border: 1px solid #ddd;
+            padding: 6px;
+            text-align: center;
+        }
+        .mto-table tr:nth-child(even) {
+            background: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <header role="banner" aria-label="Barra de herramientas principal">
+        <button class="btn-primary" onclick="addEquipment('PUMP')">➕ BOMBA</button>
+        <button class="btn-primary" onclick="addEquipment('TANK')">➕ TANQUE</button>
+        <button class="btn-warning" onclick="showValveMenu()">➕ VÁLVULA</button>
+        <button class="btn-nlp" onclick="showTextInputDialog('PFD')">📝 TEXTO → PFD</button>
+        <button class="btn-dti" onclick="showTextInputDialog('DTI')">📝 TEXTO → DTI</button>
+        <button class="btn-excel" onclick="loadProntuario()">📊 EXCEL → PFD</button>
+        <button class="btn-excel" onclick="generateExampleProntuario()">📋 EJEMPLO EXCEL</button>
+        <button class="btn-hmb" onclick="calculateHMB()">⚖️ H&MB</button>
+        <button class="btn-success" onclick="exportHMBToExcel()">📊 EXPORTAR H&MB</button>
+        <button class="btn-sim" onclick="exportToAspen()">🌍 ASPEN</button>
+        <button class="btn-sim" onclick="runSimulation()">🔄 SIMULAR</button>
+        <button class="btn-danger" onclick="exportToPDF()">📄 PDF</button>
+        <button class="btn-success" onclick="exportToDXF()">📐 DXF</button>
+        <button class="btn-iso" onclick="generateIsometric()">📐 ISOMÉTRICO + MTO</button>
+        <button class="btn-material" onclick="setMaterial('ACERO')">ACERO</button>
+        <button class="btn-material" onclick="setMaterial('PPR')">PPR</button>
+        <button class="btn-material" onclick="setMaterial('COBRE')">COBRE</button>
+        <button class="btn-accessibility" id="accessibilityToggle" onclick="toggleAccessibility()">🔊 ACCESIBILIDAD: ON</button>
+        <button class="btn-warning" onclick="showAccessibilityPanel()">⚙️ AJUSTES VOZ</button>
+        <button class="btn-accessibility" onclick="liveEngine.toggle()">📊 OVERLAY</button>
+        <button class="btn-nlp" onclick="aiAdvisor.getOptimizationSuggestions()">🤖 IA</button>
+        <button class="btn-nlp" onclick="if(db.selected && db.selectedType==='line') advisor.fullReport(db.selected); else showNotification('Selecciona una línea primero', true);">🔧 RECOMENDAR</button>
+        <button class="btn-warning" onclick="showExampleInstructions()">💡 EJEMPLOS</button>
+    </header>
+    
+    <!-- Campo de comandos rápidos -->
+    <div style="padding: 5px; background: #161b22; border-top: 1px solid #30363d;">
+        <input type="text" id="quickCmd" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #58a6ff; background: #010409; color: white;" placeholder="Comando rápido (ej: bomba, tanque, conectar T-1 P-1, hmb, iso, material PPR)">
+    </div>
+    
+    <main class="canvas-container" id="canvasContainer">
+        <canvas id="mainCanvas" width="2000" height="1500" tabindex="0"></canvas>
+    </main>
+    
+    <div id="inspector" role="dialog" aria-hidden="true">
+        <h2 id="inspectorTitle">Propiedades</h2>
+        <div id="inspectorFields"></div>
+        <div style="display:flex; gap:10px; margin-top:15px;">
+            <button class="btn-primary" onclick="saveInspector()" style="flex:1;">Guardar</button>
+            <button class="btn-warning" onclick="closeInspector()" style="flex:1;">Cerrar</button>
+        </div>
+    </div>
+    
+    <div id="accessibility-panel">
+        <h3 style="color:#58a6ff;">Configuración de Accesibilidad</h3>
+        <div class="accessibility-option">
+            <label>Velocidad de voz</label>
+            <input type="range" id="voiceRate" min="0.5" max="2" step="0.1" value="1">
+        </div>
+        <div class="accessibility-option">
+            <label>Tono de voz</label>
+            <input type="range" id="voicePitch" min="0.5" max="2" step="0.1" value="1">
+        </div>
+        <div class="accessibility-option">
+            <label>Volumen</label>
+            <input type="range" id="voiceVolume" min="0" max="1" step="0.1" value="1">
+        </div>
+        <div class="accessibility-option">
+            <label>Idioma</label>
+            <select id="voiceLanguage">
+                <option value="es-ES">Español</option>
+                <option value="en-US">English</option>
+            </select>
+        </div>
+        <div class="accessibility-option">
+            <label><input type="checkbox" id="autoAnnounce" checked> Anunciar automáticamente</label>
+        </div>
+        <div class="accessibility-option">
+            <label><input type="checkbox" id="announcePositions" checked> Anunciar posición</label>
+        </div>
+        <div class="accessibility-option">
+            <label><input type="checkbox" id="highContrast"> Alto contraste</label>
+        </div>
+        <button class="btn-warning" onclick="closeAccessibilityPanel()">Cerrar</button>
+    </div>
+    
+    <div id="notification"></div>
+    
+    <!-- Módulos JavaScript con defer para carga ordenada -->
+    <script src="config.js" defer></script>
+    <script src="core.js" defer></script>
+    <script src="symbols.js" defer></script>
+    <script src="accessibility.js" defer></script>
+    <script src="pfdGenerator.js" defer></script>
+    <script src="dtiGenerator.js" defer></script>
+    <script src="hmb.js" defer></script>
+    <script src="isometric.js" defer></script>
+    <script src="advisor.js" defer></script>
+    <script src="interactiveLayout.js" defer></script>
+    <script src="liveEngineering.js" defer></script>
+    <script src="aiAdvisor.js" defer></script>
+    <script src="learningEngine.js" defer></script>
+    <script src="interaction.js" defer></script>
+    <script src="export.js" defer></script>
+    <script src="history.js" defer></script>
+    <script src="main.js" defer></script>
+</body>
+</html>
