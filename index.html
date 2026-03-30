@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ACQ SmartFlow Pro - Industrial ISOGEN</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Roboto,sans-serif;background:#0a0f1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{background:#161b22;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #30363d;align-items:center}
+button{padding:8px 14px;border:none;border-radius:6px;font-weight:bold;cursor:pointer;background:#21262d;color:#e0e0e0;transition:0.2s;font-size:13px}
+button:hover{background:#2c313a}
+.btn-primary{background:#238636;color:white}
+.btn-danger{background:#da3633;color:white}
+.btn-warning{background:#d29922;color:#1f1f1f}
+.btn-ai{background:linear-gradient(45deg,#7c3aed,#c084fc);color:white}
+.canvas-container{flex:1;position:relative;background:#0a0f1a;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab}
+canvas:active{cursor:grabbing}
+.inspector,.command-panel,.ai-panel,.manual-tools,.layers-panel{position:fixed;background:#1e1e2e;border-radius:12px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.5);border:1px solid #3a3a4a;z-index:1000;max-width:520px;max-height:80vh;overflow-y:auto;color:#eee}
+.inspector{right:20px;top:80px;width:420px;display:none}
+.command-panel{left:20px;bottom:20px;width:480px;display:none}
+.ai-panel{left:20px;top:80px;width:500px;display:none}
+.manual-tools{right:20px;top:80px;width:320px;display:none}
+.layers-panel{left:20px;top:80px;width:220px;display:none;background:rgba(30,30,46,0.95)}
+textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:8px;font-family:monospace;font-size:12px}
+.ins-row{margin-bottom:12px}
+.ins-row label{display:block;margin-bottom:4px;font-weight:bold;font-size:12px}
+.ins-row input,.ins-row select,.ins-row textarea{width:100%;padding:8px;border-radius:6px;border:1px solid #3a3a4a;background:#0f0f17;color:#eee}
+.notification{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #238636;padding:10px 20px;border-radius:40px;color:white;z-index:2000;display:none}
+.status-bar{background:#0f0f17;padding:4px 12px;font-size:12px;border-top:1px solid #30363d;display:flex;justify-content:space-between}
+hr{border-color:#30363d;margin:10px 0}
+h3{margin-bottom:8px;color:#58a6ff}
+.component-list{max-height:200px;overflow-y:auto;margin-top:8px}
+.component-item{background:#0f0f17;padding:4px 8px;margin:4px 0;border-radius:4px;font-size:11px;cursor:pointer}
+.api-key-field{background:#0f0f17;border:1px solid #3a3a4a;border-radius:6px;padding:4px 8px;font-size:12px;color:#eee;width:180px}
+.delete-btn{background:#da3633;margin-top:10px}
+.layer-item{display:flex;align-items:center;gap:8px;margin:8px 0}
+.layer-item input{width:auto}
+.multi-select-badge{position:fixed;bottom:50px;right:20px;background:#f0883e;color:#000;padding:4px 8px;border-radius:20px;font-size:12px;font-weight:bold;display:none;z-index:1100}
+#manualModal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2e;border-radius:12px;padding:20px;max-width:80vw;max-height:80vh;overflow:auto;z-index:2000;border:1px solid #3a3a4a;color:#eee}
+#manualModal h2{color:#58a6ff;margin-bottom:15px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+<div class="toolbar">
+<button id="btnNew" class="btn-primary">Nuevo</button>
+<button id="btnUndo" class="btn-warning">Undo</button>
+<button id="btnRedo" class="btn-warning">Redo</button>
+<button id="btnImportPCF">Importar PCF</button>
+<button id="btnExportPCF">Exportar PCF</button>
+<button id="btnCommandPanel">Comandos</button>
+<button id="btnAI" class="btn-ai">IA Natural</button>
+<button id="btnMTO">MTO</button>
+<button id="btnValidate">Validar</button>
+<button id="btnSupports">Soportes</button>
+<button id="btnPDF">PDF</button>
+<button id="btnPNG">PNG</button>
+<button id="btnDXF">DXF</button>
+<button id="btnOBJ">OBJ</button>
+<button id="btnResetView">Reset</button>
+<button id="btnManual" class="btn-warning">Manual</button>
+<button id="btnManualMode">Modo Manual OFF</button>
+<button id="btnLayers">Capas</button>
+<button id="btnSnapToggle">Snap OFF</button>
+<input type="password" id="geminiApiKey" class="api-key-field" placeholder="Gemini API Key">
+<button id="btnSetApiKey">API Key</button>
+<button id="btnInspectorClose" style="margin-left:auto;">Cerrar</button>
+<button id="voiceToggle">Voz ON</button>
+<button id="normToggle">Normas ON</button>
+<button id="routingToggle">Routing ON</button>
+</div>
+<div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
+<div class="status-bar"><span id="statusMsg">Listo - ISOGEN Industrial</span><span>Arrastrar=mover | Rueda=zoom | Shift+clic=selección</span></div>
+<div id="inspector" class="inspector"><h3>Propiedades</h3><div id="inspectorContent"></div><div style="display:flex;gap:8px;margin-top:12px;"><button id="inspectorSave" class="btn-primary">Guardar</button><button id="inspectorCancel">Cancelar</button><button id="inspectorDelete" class="delete-btn">Eliminar</button></div></div>
+<div id="commandPanel" class="command-panel"><h3>Comandos</h3><textarea id="commandText" rows="6" placeholder="line L-101 diameter 6 points (0,0,0) (5000,0,0)"></textarea><button id="runCommands">Ejecutar</button><button id="closeCommandPanel">Cerrar</button></div>
+<div id="aiPanel" class="ai-panel"><h3>IA</h3><textarea id="aiText" rows="6" placeholder="Escribe en español..."></textarea><button id="runAI">Ejecutar</button><button id="aiExamples">Ejemplos</button><button id="closeAI">Cerrar</button><div id="aiPreview"></div></div>
+<div id="manualTools" class="manual-tools"><h3>Manual</h3><div class="ins-row"><label>Equipo</label><select id="manualEquipType"><option>tanque</option><option>bomba</option></select><input id="manualEquipTag" placeholder="Tag"><button id="placeEquip">Colocar</button></div><hr><div class="ins-row"><label>Tubería</label><input id="pipeDiameter" value="4"><select id="pipeMaterial"><option>PPR</option><option>CS</option></select><button id="startPipe">Iniciar</button><button id="cancelPipe">Cancelar</button><div id="pipeStatus">Inactivo</div></div><hr><div class="ins-row"><label>Componente</label><select id="compType"><option>VALVE</option><option>ELBOW</option><option>TEE</option><option>REDUCER</option><option>FLANGE</option></select><input id="compSkey" placeholder="SKEY"><input id="compTag" placeholder="Tag"><input id="compParam" value="0.5"><button id="placeComp">Colocar</button></div></div>
+<div id="layersPanel" class="layers-panel"><h3>Capas</h3><div class="layer-item"><input type="checkbox" id="layerPipes" checked><label>Tuberías</label></div><div class="layer-item"><input type="checkbox" id="layerEquipment" checked><label>Equipos</label></div><div class="layer-item"><input type="checkbox" id="layerSupports" checked><label>Soportes</label></div><div class="layer-item"><input type="checkbox" id="layerComponents" checked><label>Componentes</label></div><div class="layer-item"><input type="checkbox" id="layerGrid" checked><label>Grilla</label></div><button id="closeLayers">Cerrar</button></div>
+<div id="manualModal"><h2>Manual ISOGEN</h2><div id="manualContent"></div><button id="closeManual">Cerrar</button></div>
+<div id="notification"></div>
+<div id="multiSelectBadge"></div>
+<script>
+let db={lines:[],equipos:[],supports:[],selected:null,selectedType:null,selectedLine:null,selectionSet:new Set(),settings:{engineerName:"Ingeniero",projectName:"Isometrico"}};
+let history=[],hidx=-1;
+function saveState(){let s={lines:JSON.parse(JSON.stringify(db.lines)),equipos:JSON.parse(JSON.stringify(db.equipos)),supports:JSON.parse(JSON.stringify(db.supports)),settings:JSON.parse(JSON.stringify(db.settings))};if(hidx<history.length-1)history=history.slice(0,hidx+1);history.push(s);if(history.length>50)history.shift();hidx=history.length-1;}
+function restoreState(s){db.lines=JSON.parse(JSON.stringify(s.lines));db.equipos=JSON.parse(JSON.stringify(s.equipos));db.supports=JSON.parse(JSON.stringify(s.supports));db.settings=JSON.parse(JSON.stringify(s.settings));db.selected=null;db.selectionSet.clear();rebuildGrid();render();updBadge();}
+function undo(){if(hidx>0){hidx--;restoreState(history[hidx]);notify("Deshecho");}else notify("No hay",true);}
+function redo(){if(hidx<history.length-1){hidx++;restoreState(history[hidx]);notify("Rehecho");}else notify("No hay",true);}
+const SKEY_MAP={'VGBW':{type:'VALVE',shape:'gate'},'VBAL':{type:'VALVE',shape:'ball'},'EL90':{type:'ELBOW',shape:'elbow90',angle:90},'EL45':{type:'ELBOW',shape:'elbow45',angle:45},'TEE':{type:'TEE',shape:'tee'},'RCC':{type:'REDUCER',shape:'reducer'},'RECE':{type:'REDUCER',shape:'reducer_ecc'},'FLWN':{type:'FLANGE',shape:'flange'}};
+function getComp(skey){if(!skey)return null;let u=skey.toUpperCase();for(let[c,i]of Object.entries(SKEY_MAP))if(u.includes(c))return{...i,skey:c};return null;}
+const CELL=500;let grid=new Map(),gridRev=new Map();
+function gkey(x,y,z){return Math.floor(x/CELL)+","+Math.floor(y/CELL)+","+Math.floor(z/CELL);}
+function markOcc(x,y,z,id){let k=gkey(x,y,z);grid.set(k,true);if(!gridRev.has(id))gridRev.set(id,new Set());gridRev.get(id).add(k);}
+function unmark(id){if(gridRev.has(id)){for(let k of gridRev.get(id)){let s=false;for(let[oid,ks]of gridRev.entries())if(oid!==id&&ks.has(k)){s=true;break;}if(!s)grid.delete(k);}gridRev.delete(id);}}
+function markLine(l){if(!l.points3D||l.points3D.length<2)return;for(let i=0;i<l.points3D.length-1;i++){let p1=l.points3D[i],p2=l.points3D[i+1];let steps=Math.ceil(Math.hypot(p2.x-p1.x,p2.y-p1.y,p2.z-p1.z)/CELL);for(let s=0;s<=steps;s++){let t=s/steps;markOcc(p1.x+t*(p2.x-p1.x),p1.y+t*(p2.y-p1.y),p1.z+t*(p2.z-p1.z),l.tag);}}}
+function markEq(e){let hs=e.tipo==='bomba'?400:500;for(let x=e.x-hs;x<=e.x+hs;x+=CELL/2)for(let y=e.y-hs;y<=e.y+hs;y+=CELL/2)for(let z=e.z-hs;z<=e.z+hs;z+=CELL/2)markOcc(x,y,z,e.tag);}
+function rebuildGrid(){grid.clear();gridRev.clear();db.equipos.forEach(e=>markEq(e));db.lines.forEach(l=>markLine(l));}
+function isOcc(x,y,z){return grid.has(gkey(x,y,z));}
+function proj(p){let c=Math.cos(30*Math.PI/180),s=Math.sin(30*Math.PI/180);return{x:(p.x-p.z)*c*cam.s+cam.pX,y:(p.x+p.z)*s*cam.s-p.y*cam.s+cam.pY};}
+let cam={s:1,pX:0,pY:0},drag=false,last={x:0,y:0},snap=false,rules=true,routing=true;
+let layers={pipes:true,eq:true,supports:true,comps:true,grid:false};
+function snapG(p,gs=500){return snap?{x:Math.round(p.x/gs)*gs,y:Math.round(p.y/gs)*gs,z:Math.round(p.z/gs)*gs}:p;}
+function routeDirect(s,e){
+let sc={x:Math.floor(s.x/CELL),y:Math.floor(s.y/CELL),z:Math.floor(s.z/CELL)};
+let ec={x:Math.floor(e.x/CELL),y:Math.floor(e.y/CELL),z:Math.floor(e.z/CELL)};
+function occ(c){return grid.has(gkey(c.x*CELL,c.y*CELL,c.z*CELL));}
+function h(a,b){return Math.abs(a.x-b.x)+Math.abs(a.y-b.y)+Math.abs(a.z-b.z);}
+function neigh(n){
+let nb=[],dirs=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1],[1,1,0],[1,-1,0],[-1,1,0],[-1,-1,0],[1,0,1],[1,0,-1],[-1,0,1],[-1,0,-1],[0,1,1],[0,1,-1],[0,-1,1],[0,-1,-1],[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1]];
+for(let d of dirs){let nx=n.x+d[0],ny=n.y+d[1],nz=n.z+d[2];if(Math.abs(nx)>100||Math.abs(ny)>100||Math.abs(nz)>100)continue;if(!occ({x:nx,y:ny,z:nz})){let cst=(d[0]!==0&&d[1]!==0&&d[2]!==0)?1.7:((d[0]!==0&&d[1]!==0)||(d[0]!==0&&d[2]!==0)||(d[1]!==0&&d[2]!==0))?1.4:1;nb.push({x:nx,y:ny,z:nz,cost:cst});}}
+return nb;}
+if(occ(ec)){for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(let dz=-1;dz<=1;dz++){let nx=ec.x+dx,ny=ec.y+dy,nz=ec.z+dz;if(!occ({x:nx,y:ny,z:nz}))return routeDirect(s,{x:nx*CELL,y:ny*CELL,z:nz*CELL});}return null;}
+let open=new Map(),closed=new Set(),from=new Map(),g=new Map(),f=new Map(),sk=sc.x+","+sc.y+","+sc.z;
+g.set(sk,0);f.set(sk,h(sc,ec));open.set(sk,sc);
+while(open.size>0){
+let cur=null,curK=null,best=Infinity;
+for(let[k,node]of open.entries()){let fv=f.get(k)||Infinity;if(fv<best){best=fv;cur=node;curK=k;}}
+if(curK===ec.x+","+ec.y+","+ec.z){let path=[];let c=cur;while(c){path.unshift({x:c.x*CELL,y:c.y*CELL,z:c.z*CELL});c=from.get(c.x+","+c.y+","+c.z);}return simpPath(path);}
+open.delete(curK);closed.add(curK);
+for(let nb of neigh(cur)){let nk=nb.x+","+nb.y+","+nb.z;if(closed.has(nk))continue;let tent=g.get(curK)+nb.cost;if(!g.has(nk)||tent<g.get(nk)){from.set(nk,cur);g.set(nk,tent);f.set(nk,tent+h(nb,ec));if(!open.has(nk))open.set(nk,nb);}}
+}
+return null;}
+function simpPath(p){if(p.length<3)return p;let s=[p[0]];for(let i=1;i<p.length-1;i++){let a=p[i-1],b=p[i],c=p[i+1];let d1={x:b.x-a.x,y:b.y-a.y,z:b.z-a.z},d2={x:c.x-b.x,y:c.y-b.y,z:c.z-b.z};let l1=Math.hypot(d1.x,d1.y,d1.z),l2=Math.hypot(d2.x,d2.y,d2.z);if(l1>0&&l2>0){let dot=(d1.x/l1)*(d2.x/l2)+(d1.y/l1)*(d2.y/l2)+(d1.z/l1)*(d2.z/l2);if(Math.abs(dot-1)>0.01)s.push(b);}}s.push(p[p.length-1]);return s;}
+function routeSync(s,e){return(!routing)?[s,e]:(routeDirect(s,e)||[s,e]);}
+let canvas,ctx;
+function getBounds(){return{left:0,right:canvas.width,top:0,bottom:canvas.height};}
+function isVisible(p,b){let pr=proj(p);return pr.x>=b.left&&pr.x<=b.right&&pr.y>=b.top&&pr.y<=b.bottom;}
+function drawG(b){let step=500*cam.s;let sx=Math.floor(b.left/step)*step,sy=Math.floor(b.top/step)*step;ctx.beginPath();ctx.strokeStyle='#3a3a4a';ctx.lineWidth=0.5;for(let x=sx;x<b.right;x+=step){ctx.moveTo(x,b.top);ctx.lineTo(x,b.bottom);}for(let y=sy;y<b.bottom;y+=step){ctx.moveTo(b.left,y);ctx.lineTo(b.right,y);}ctx.stroke();}
+function getPos(line,t){let pts=line.points3D;if(!pts||pts.length<2)return null;if(t<=0)return pts[0];if(t>=1)return pts[pts.length-1];let idx=Math.floor(t*(pts.length-1));let seg=t*(pts.length-1)-idx;let p1=pts[idx],p2=pts[idx+1];return{x:p1.x+seg*(p2.x-p1.x),y:p1.y+seg*(p2.y-p1.y),z:p1.z+seg*(p2.z-p1.z)};}
+function getDir(line,t){let pts=line.points3D;if(!pts||pts.length<2)return null;let idx=Math.min(Math.floor(t*(pts.length-1)),pts.length-2);let p1=pts[idx],p2=pts[idx+1];let dx=p2.x-p1.x,dy=p2.y-p1.y;let len=Math.hypot(dx,dy);return len===0?null:{x:dx/len,y:dy/len};}
+function drawComp(c,l){
+let p=getPos(l,c.param);if(!p)return;
+let pr=proj(p);ctx.save();ctx.translate(pr.x,pr.y);
+let d=getDir(l,c.param);if(d)ctx.rotate(Math.atan2(d.y,d.x));
+let sz=(l.diameter||4)/4,w=12*sz,h=8*sz;
+ctx.beginPath();
+if(c.type==='VALVE'){ctx.moveTo(-w/2,-h/2);ctx.lineTo(0,0);ctx.lineTo(w/2,-h/2);ctx.lineTo(0,h);ctx.closePath();ctx.fillStyle='#ffaa33';ctx.fill();ctx.stroke();}
+else if(c.type==='FLANGE'){ctx.rect(-w/2,-h/2,w,h);ctx.fillStyle='#cccc99';ctx.fill();ctx.stroke();}
+else if(c.type==='ELBOW'){ctx.arc(0,0,w/1.2,0,Math.PI/2);ctx.lineTo(w/1.2,0);ctx.fillStyle='#88aaff';ctx.fill();ctx.stroke();}
+else if(c.type==='TEE'){ctx.moveTo(-w/2,-h/2);ctx.lineTo(w/2,-h/2);ctx.lineTo(0,h/2);ctx.closePath();ctx.fillStyle='#88aaff';ctx.fill();ctx.stroke();}
+else if(c.type==='REDUCER'){ctx.moveTo(-w/2,-h/2);ctx.lineTo(0,-h/4);ctx.lineTo(0,h/4);ctx.lineTo(-w/2,h/2);ctx.closePath();ctx.fillStyle='#bb9966';ctx.fill();ctx.stroke();}
+if(c.skey){ctx.font='8px monospace';ctx.fillStyle='white';ctx.fillText(c.skey.substring(0,4),-8,-h/2-2);}
+ctx.restore();}
+function render(){
+if(!ctx||!canvas)return;
+ctx.clearRect(0,0,canvas.width,canvas.height);
+ctx.save();let b=getBounds();
+if(layers.grid)drawG(b);
+if(layers.pipes){for(let l of db.lines){if(!l.points3D||l.points3D.length<2)continue;ctx.beginPath();let pr=l.points3D.map(p=>proj(p));ctx.moveTo(pr[0].x,pr[0].y);for(let i=1;i<pr.length;i++)ctx.lineTo(pr[i].x,pr[i].y);ctx.strokeStyle=l.color||'#58a6ff';ctx.lineWidth=Math.max(2,(l.diameter||6)*cam.s/6);ctx.stroke();if(layers.comps&&l.components){for(let c of l.components){let p3=getPos(l,c.param);if(p3&&isVisible(p3,b))drawComp(c,l);}}}}
+if(layers.eq){for(let e of db.equipos){if(!isVisible(e,b))continue;let p=proj(e);ctx.beginPath();ctx.arc(p.x,p.y,10*cam.s,0,2*Math.PI);ctx.fillStyle=e.tipo==='bomba'?'#e67e22':'#3498db';ctx.fill();ctx.fillStyle='white';ctx.font=Math.max(9,11*cam.s)+'px Arial';ctx.fillText(e.tag,p.x+12,p.y+4);}}
+if(layers.supports){for(let s of db.supports){if(!isVisible(s,b))continue;let p=proj(s);ctx.beginPath();ctx.rect(p.x-4,p.y-4,8,8);ctx.fillStyle='#ffaa33';ctx.fill();ctx.stroke();}}
+for(let i of db.selectionSet){if(i.type==='line'){let l=i.obj;if(!l.points3D)continue;ctx.beginPath();let pr=l.points3D.map(p=>proj(p));ctx.moveTo(pr[0].x,pr[0].y);for(let i2=1;i2<pr.length;i2++)ctx.lineTo(pr[i2].x,pr[i2].y);ctx.strokeStyle='#f0883e';ctx.lineWidth=Math.max(3,(l.diameter||6)*cam.s/5);ctx.stroke();}else if(i.type==='equipment'){let p=proj(i.obj);ctx.beginPath();ctx.arc(p.x,p.y,12*cam.s,0,2*Math.PI);ctx.strokeStyle='#f0883e';ctx.lineWidth=2.5;ctx.stroke();}else if(i.type==='component'){let p3=getPos(i.line,i.obj.param);if(p3){let p=proj(p3);ctx.beginPath();ctx.arc(p.x,p.y,14*cam.s,0,2*Math.PI);ctx.strokeStyle='#f0883e';ctx.lineWidth=2.5;ctx.stroke();}}}
+ctx.restore();}
+function distSeg(p,a,b){let ax=p.x-a.x,ay=p.y-a.y,bx=b.x-a.x,by=b.y-a.y;let dot=ax*bx+ay*by;let l2=bx*bx+by*by;if(l2===0)return Math.hypot(ax,ay);let t=dot/l2;t=Math.max(0,Math.min(1,t));let px=a.x+t*bx,py=a.y+t*by;return Math.hypot(p.x-px,p.y-py);}
+function pick(m){
+for(let e of db.equipos){let p=proj(e);if(Math.hypot(m.x-p.x,m.y-p.y)<15*cam.s)return{type:'equipment',obj:e};}
+for(let l of db.lines){if(l.components){for(let c of l.components){let p3=getPos(l,c.param);if(p3){let p=proj(p3);if(Math.hypot(m.x-p.x,m.y-p.y)<12*cam.s)return{type:'component',obj:c,line:l};}}}}
+for(let l of db.lines){if(!l.points3D||l.points3D.length<2)continue;let pr=l.points3D.map(p=>proj(p));for(let i=0;i<pr.length-1;i++){if(distSeg(m,pr[i],pr[i+1])<10*cam.s)return{type:'line',obj:l};}}
+return null;}
+function updBadge(){let b=document.getElementById('multiSelectBadge');if(db.selectionSet.size>0){b.textContent=db.selectionSet.size+" selec.";b.style.display='block';}else b.style.display='none';}
+function clearSel(){db.selectionSet.clear();db.selected=null;db.selectedType=null;db.selectedLine=null;updBadge();document.getElementById('inspector').style.display='none';render();}
+function addSel(i){db.selectionSet.add(i);updBadge();render();}
+function delSelItems(){if(db.selectionSet.size===0)return;saveState();for(let i of db.selectionSet){if(i.type==='line'){let idx=db.lines.findIndex(l=>l===i.obj);if(idx!==-1){unmark(i.obj.tag);db.lines.splice(idx,1);}}else if(i.type==='equipment'){let idx=db.equipos.findIndex(e=>e===i.obj);if(idx!==-1){unmark(i.obj.tag);db.equipos.splice(idx,1);}}else if(i.type==='component'&&i.line&&i.line.components){let idx=i.line.components.findIndex(c=>c===i.obj);if(idx!==-1)i.line.components.splice(idx,1);}}clearSel();rebuildGrid();render();notify('Eliminados');}
+function esc(s){if(!s)return'';return s.replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}
+function showInsp(o,t,l=null){
+db.selected=o;db.selectedType=t;db.selectedLine=l;
+let div=document.getElementById('inspectorContent');
+if(t==='line'){div.innerHTML='<div class="ins-row"><label>Tag</label><input id="editTag" value="'+esc(o.tag)+'"></div><div class="ins-row"><label>Diametro</label><input id="editDiam" type="number" value="'+o.diameter+'"></div><div class="ins-row"><label>Material</label><select id="editMat"><option>CS</option><option>PPR</option></select></div><div class="ins-row"><label>Caudal</label><input id="editFlow" type="number" value="'+(o.caudal||0)+'"></div><h4>Componentes</h4><div id="compList"></div>';}
+else if(t==='component'){div.innerHTML='<div class="ins-row"><label>Tag</label><input id="editCompTag" value="'+esc(o.tag)+'"></div><div class="ins-row"><label>Tipo</label><select id="editCompType"><option>VALVE</option><option>ELBOW</option><option>TEE</option><option>REDUCER</option></select></div><div class="ins-row"><label>SKEY</label><input id="editSkey" value="'+esc(o.skey||'')+'"></div><div class="ins-row"><label>Posicion</label><input id="editParam" type="number" step="0.01" value="'+o.param+'"></div><div class="ins-row"><label>Material</label><input id="editCompMat" value="'+esc(o.material||'')+'"></div>';}
+else if(t==='equipment'){div.innerHTML='<div class="ins-row"><label>Tag</label><input id="editEqTag" value="'+esc(o.tag)+'"></div><div class="ins-row"><label>X</label><input id="editEqX" type="number" value="'+o.x+'"></div><div class="ins-row"><label>Y</label><input id="editEqY" type="number" value="'+o.y+'"></div><div class="ins-row"><label>Z</label><input id="editEqZ" type="number" value="'+o.z+'"></div>';}
+document.getElementById('inspector').style.display='block';}
+function saveInsp(){
+if(!db.selected)return;
+saveState();
+if(db.selectedType==='line'){db.selected.tag=document.getElementById('editTag').value;db.selected.diameter=parseFloat(document.getElementById('editDiam').value);db.selected.material=document.getElementById('editMat').value;db.selected.caudal=parseFloat(document.getElementById('editFlow').value)||0;}
+else if(db.selectedType==='component'){db.selected.tag=document.getElementById('editCompTag').value;db.selected.type=document.getElementById('editCompType').value;db.selected.skey=document.getElementById('editSkey').value;db.selected.param=parseFloat(document.getElementById('editParam').value);db.selected.material=document.getElementById('editCompMat').value;}
+else if(db.selectedType==='equipment'){db.selected.tag=document.getElementById('editEqTag').value;db.selected.x=parseFloat(document.getElementById('editEqX').value);db.selected.y=parseFloat(document.getElementById('editEqY').value);db.selected.z=parseFloat(document.getElementById('editEqZ').value);}
+render();saveLocal();rebuildGrid();document.getElementById('inspector').style.display='none';notify('Guardado');}
+function delSelected(){if(!db.selected)return;saveState();if(db.selectedType==='line'){let idx=db.lines.findIndex(l=>l===db.selected);if(idx!==-1){unmark(db.selected.tag);db.lines.splice(idx,1);notify("Linea eliminada");}}else if(db.selectedType==='component'&&db.selectedLine&&db.selectedLine.components){let idx=db.selectedLine.components.findIndex(c=>c===db.selected);
+
+if(idx!==-1){db.selectedLine.components.splice(idx,1);notify("Componente eliminado");}}else if(db.selectedType==='equipment'){let idx=db.equipos.findIndex(e=>e===db.selected);if(idx!==-1){unmark(db.selected.tag);db.equipos.splice(idx,1);notify("Equipo eliminado");}}db.selected=null;db.selectedType=null;db.selectedLine=null;document.getElementById('inspector').style.display='none';render();saveLocal();rebuildGrid();}
+function validateLine(line){let errors=[];if(!line.tag?.trim())errors.push('Tag requerido');if(!line.diameter||line.diameter<0.5)errors.push('Diametro invalido');if(!line.points3D||line.points3D.length<2)errors.push('Minimo 2 puntos');return errors;}
+function applyCommand(cmd){
+if(cmd.type==='line'){if(validateLine(cmd).length){notify('Error en linea',true);return;}if(rules){if(!cmd.material)cmd.material=cmd.fluido?.toLowerCase()!=='agua'?'CS':'PPR';if(!cmd.schedule)cmd.schedule='40';}db.lines.push(cmd);markLine(cmd);speakSafe("Linea "+cmd.tag);render();}
+else if(cmd.type==='component'){let line=db.lines.find(l=>l.tag===cmd.lineTag);if(line){if(!line.components)line.components=[];if(!cmd.comp.material&&line.material)cmd.comp.material=line.material;line.components.push(cmd.comp);speakSafe("Componente "+cmd.comp.tag);render();}}
+else if(cmd.type==='equipment'){db.equipos.push(cmd);markEq(cmd);speakSafe("Equipo "+cmd.tag);render();}
+else if(cmd.type==='modify_line'){let line=db.lines.find(l=>l.tag===cmd.lineTag);if(line){line.diameter=cmd.diameter;speakSafe("Linea "+cmd.lineTag+" a "+cmd.diameter+" pulgadas");render();}}
+else if(cmd.type==='delete_line'){let idx=db.lines.findIndex(l=>l.tag===cmd.tag);if(idx!==-1){unmark(cmd.tag);db.lines.splice(idx,1);speakSafe("Linea "+cmd.tag+" eliminada");render();}else notify("Linea no encontrada",true);}
+else if(cmd.type==='delete_equipment'){let idx=db.equipos.findIndex(e=>e.tag===cmd.tag);if(idx!==-1){unmark(cmd.tag);db.equipos.splice(idx,1);speakSafe("Equipo "+cmd.tag+" eliminado");render();}else notify("Equipo no encontrado",true);}
+else if(cmd.type==='delete_component'){let line=db.lines.find(l=>l.tag===cmd.lineTag);if(line&&line.components){let idx=line.components.findIndex(c=>c.tag===cmd.tag);if(idx!==-1){line.components.splice(idx,1);speakSafe("Componente "+cmd.tag+" eliminado");render();}else notify("Componente no encontrado",true);}}
+else if(cmd.type==='delete_all_supports'){db.supports=[];speakSafe("Soportes eliminados");render();}
+saveLocal();rebuildGrid();}
+function parseCommands(txt){
+let lines=txt.split('\n');
+for(let raw of lines){
+raw=raw.trim();
+if(!raw)continue;
+let m=raw.match(/line\s+(\S+)\s+diameter\s+(\d+(?:\.\d+)?)\s+material\s+(\S+)\s+schedule\s+(\S+)\s+points\s+(.+)/i);
+if(m){
+let ptsStr=m[5];
+let ptMatches=[...ptsStr.matchAll(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/g)];
+let pts3D=[];
+for(let mt of ptMatches)pts3D.push({x:parseFloat(mt[1]),y:parseFloat(mt[2]),z:parseFloat(mt[3])});
+if(pts3D.length>=2){
+let routed=routeSync(pts3D[0],pts3D[pts3D.length-1]);
+applyCommand({type:'line',tag:m[1],diameter:parseFloat(m[2]),material:m[3].toUpperCase(),schedule:m[4],points3D:routed.length>2?routed:pts3D,components:[],caudal:null,fluido:'agua',temp:25,color:'#58a6ff'});
+}
+continue;}
+m=raw.match(/equipment\s+(\S+)\s+at\s+\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/i);
+if(m){applyCommand({type:'equipment',tag:m[1],x:parseFloat(m[2]),y:parseFloat(m[3]),z:parseFloat(m[4]),tipo:'tanque'});continue;}
+m=raw.match(/eliminar\s+linea\s+(\S+)/i);
+if(m){applyCommand({type:'delete_line',tag:m[1]});continue;}
+m=raw.match(/borrar\s+equipo\s+(\S+)/i);
+if(m){applyCommand({type:'delete_equipment',tag:m[1]});continue;}
+notify("No se pudo: "+raw,true);
+}
+render();saveLocal();rebuildGrid();}
+function parsePCF(text){
+let lines=[],equipos=[],supports=[];
+let arr=text.split(/\r?\n/);
+let curPipe=null,curComp=null,curPoints=[];
+let endPoints=[],endSizes=[],compSkey=null,branchPt=null,compTag=null,compMat=null,compRating=null,compSize=null;
+function isComp(l){let c=l.trim().toUpperCase();return['VALVE','FLANGE','ELBOW','TEE','REDUCER','INSTRUMENT'].includes(c);}
+function isEndComp(l){let c=l.trim().toUpperCase();return['VALVE','FLANGE','ELBOW','TEE','REDUCER','INSTRUMENT'].some(t=>c===('END'+t)||c===('END '+t));}
+function extrCoords(l){let m=l.match(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);return m?{x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])}:null;}
+for(let i=0;i<arr.length;i++){
+let raw=arr[i].trim();
+if(!raw||raw.startsWith('!')||raw.startsWith('#'))continue;
+let up=raw.toUpperCase();
+if(up==='PIPE'||up==='NEWPIPE'){
+if(curPipe){curPipe.points3D=curPoints;lines.push(curPipe);}
+curPipe={components:[],points3D:[]};curPoints=[];curComp=null;continue;}
+if(up==='ENDPIPE'||up==='END PIPE'){
+if(curPipe){curPipe.points3D=curPoints;lines.push(curPipe);}
+curPipe=null;curPoints=[];continue;}
+if(!curPipe)continue;
+if(raw.startsWith('COMPONENT-IDENTIFIER'))curPipe.tag=raw.split(/\s+/)[1];
+else if(raw.startsWith('DIAMETER'))curPipe.diameter=Math.round(parseFloat(raw.split(/\s+/)[1])/25.4*10)/10;
+else if(raw.startsWith('MATERIAL'))curPipe.material=raw.split(/\s+/)[1];
+else if(raw.startsWith('SCHEDULE'))curPipe.schedule=raw.split(/\s+/)[1];
+else if(raw.startsWith('FLOW-RATE'))curPipe.caudal=parseFloat(raw.split(/\s+/)[1]);
+else if(raw.startsWith('POINT')){let c=extrCoords(raw.substring(5));if(c)curPoints.push(c);}
+else if(raw.startsWith('CO-ORDS')){let c=extrCoords(raw.substring(7));if(c)curPoints.push(c);}
+else if(isComp(raw)){
+curComp={type:raw.toUpperCase()};
+endPoints=[];endSizes=[];compSkey=null;branchPt=null;compTag=null;compMat=null;compRating=null;compSize=null;}
+else if(isEndComp(raw)&&curComp){
+let pos=null;
+if(endPoints.length>=2)pos={x:(endPoints[0].x+endPoints[1].x)/2,y:(endPoints[0].y+endPoints[1].y)/2,z:(endPoints[0].z+endPoints[1].z)/2};
+else if(endPoints.length===1)pos=endPoints[0];
+let tVal=0.5;
+if(pos&&curPoints.length>=2){
+let bestDist=Infinity,bestT=0;
+for(let j=0;j<curPoints.length-1;j++){
+let p1=curPoints[j],p2=curPoints[j+1];
+let dx=p2.x-p1.x,dy=p2.y-p1.y,dz=p2.z-p1.z;
+let len2=dx*dx+dy*dy+dz*dz;
+if(len2===0)continue;
+let t=((pos.x-p1.x)*dx+(pos.y-p1.y)*dy+(pos.z-p1.z)*dz)/len2;
+t=Math.max(0,Math.min(1,t));
+let px=p1.x+t*dx,py=p1.y+t*dy,pz=p1.z+t*dz;
+let d=Math.hypot(pos.x-px,pos.y-py,pos.z-pz);
+if(d<bestDist){bestDist=d;bestT=(j+t)/(curPoints.length-1);}
+}
+tVal=Math.max(0,Math.min(1,bestT));
+}
+if(compSkey){let si=getComp(compSkey);if(si){curComp.type=si.type;curComp.subtype=si.subtype;curComp.shape=si.shape;curComp.skey=compSkey;if(si.angle)curComp.angle=si.angle;}}
+curComp.param=tVal;
+if(compTag)curComp.tag=compTag;
+if(compMat)curComp.material=compMat;
+if(compRating)curComp.rating=compRating;
+if(compSize)curComp.size=compSize;
+if(branchPt)curComp.branchPoint=branchPt;
+if(endSizes.length>=2){curComp.end1Size=endSizes[0];curComp.end2Size=endSizes[1];}
+if(curComp.type==='REDUCER'){
+let d1=curComp.size||curPipe.diameter;
+let d2=curComp.end2Size||d1;
+if(endSizes.length>=2){
+let inMM=Math.max(endSizes[0],endSizes[1]);
+let outMM=Math.min(endSizes[0],endSizes[1]);
+curComp.sizeIn=Math.round(inMM/25.4*10)/10;
+curComp.sizeOut=Math.round(outMM/25.4*10)/10;
+d2=curComp.sizeOut;}
+curComp.isEccentric=curComp.skey==='RECE';
+curComp.sizeIn=curComp.sizeIn||Math.max(d1,d2);
+curComp.sizeOut=curComp.sizeOut||Math.min(d1,d2);
+if(curComp.isEccentric)curComp.eccentricOffset=(curComp.sizeIn-curComp.sizeOut)*25.4/2;
+curPipe.diameter=curComp.sizeOut;}
+if(curComp.type==='ELBOW'){
+let prevPt=curPoints[curPoints.length-2];
+let nextPt=endPoints[1]||(curPoints.length>0?curPoints[curPoints.length-1]:null);
+if(prevPt&&pos&&nextPt){
+let v1={x:pos.x-prevPt.x,y:pos.y-prevPt.y,z:pos.z-prevPt.z};
+let v2={x:nextPt.x-pos.x,y:nextPt.y-pos.y,z:nextPt.z-pos.z};
+let dot=v1.x*v2.x+v1.y*v2.y+v1.z*v2.z;
+let m1=Math.hypot(v1.x,v1.y,v1.z);
+let m2=Math.hypot(v2.x,v2.y,v2.z);
+if(m1>0&&m2>0){
+let angRad=Math.acos(Math.min(1,Math.max(-1,dot/(m1*m2))));
+curComp.angle=(angRad*180)/Math.PI;
+let rad=curComp.radius||(curPipe.diameter*1.5*25.4);
+curComp.takeoff=rad;}}
+if(!curComp.skey)curComp.skey=(curComp.angle>80)?'EL90':'EL45';
+if(curComp.material==='PPR')curComp.socketDepth=15;}
+if(curComp.type==='TEE'&&curComp.branchPoint){
+let branch={tag:curPipe.tag+"-BRANCH-"+Date.now(),diameter:curComp.branchSize||curPipe.diameter,material:curComp.material||curPipe.material,schedule:curPipe.schedule,points3D:[pos,curComp.branchPoint],components:[],isBranch:true,parentTag:curPipe.tag,color:'#7c3aed'};
+if(routing&&branch.points3D.length===2){let r=routeSync(branch.points3D[0],branch.points3D[1]);if(r&&r.length>2)branch.points3D=r;}
+lines.push(branch);
+if(!curPipe.branches)curPipe.branches=[];
+curPipe.branches.push(branch);
+speakSafe("Ramal desde Tee");}
+if(!curPipe.components)curPipe.components=[];
+curPipe.components.push(curComp);
+curComp=null;}
+else if(curComp){
+if(raw.startsWith('COMPONENT-IDENTIFIER'))compTag=raw.split(/\s+/)[1];
+else if(raw.startsWith('SKEY'))compSkey=raw.split(/\s+/)[1];
+else if(raw.startsWith('END-POINT')){let m=raw.match(/END-POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i);if(m)endPoints.push({x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])});let dm=raw.match(/END-POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i);if(dm)endSizes.push(parseFloat(dm[4]));}
+else if(raw.startsWith('CENTER-POINT')){let c=extrCoords(raw.substring(12));if(c)endPoints.push(c);}
+else if(raw.startsWith('BRANCH-POINT')){let c=extrCoords(raw.substring(12));if(c)branchPt=c;}
+else if(raw.startsWith('MATERIAL'))compMat=raw.split(/\s+/)[1];
+else if(raw.startsWith('RATING'))compRating=raw.split(/\s+/)[1];
+else if(raw.startsWith('SIZE'))compSize=parseFloat(raw.split(/\s+/)[1]);
+else if(raw.startsWith('BRANCH-SIZE'))curComp.branchSize=parseFloat(raw.split(/\s+/)[1]);
+else if(raw.startsWith('ANGLE'))curComp.angle=parseFloat(raw.split(/\s+/)[1]);
+else if(raw.startsWith('RADIUS'))curComp.radius=parseFloat(raw.split(/\s+/)[1]);
+else if(raw.startsWith('END1-SIZE'))curComp.end1Size=parseFloat(raw.split(/\s+/)[1]);
+else if(raw.startsWith('END2-SIZE'))curComp.end2Size=parseFloat(raw.split(/\s+/)[1]);}}
+return{lines,equipos,supports};}
+function importPCFFile(file){
+let r=new FileReader();
+r.onload=e=>{try{let p=parsePCF(e.target.result);db.lines=p.lines;db.equipos=p.equipos;db.supports=p.supports;rebuildGrid();render();saveLocal();let sc=0,rc=0,tc=0;for(let l of db.lines){if(l.components)for(let c of l.components){if(c.skey)sc++;if(c.type==='REDUCER')rc++;if(c.type==='TEE'&&c.branchPoint)tc++;}}notify("PCF: "+db.lines.length+" lineas, "+sc+" SKEYs, "+rc+" reduc, "+tc+" ramales");}catch(err){notify("Error PCF: "+err.message,true);}};
+r.readAsText(file);}
+function exportToPCF(){
+if(!db.lines.length){notify("No hay lineas",true);return;}
+let pcf="!PCF v7.0 - ACQ SmartFlow Pro Industrial\n!UNITS MM\n!PROJECT-NAME \""+db.settings.projectName+"\"\n!ENGINEER \""+db.settings.engineerName+"\"\n!DATE "+new Date().toISOString().slice(0,10)+"\n\n";
+for(let l of db.lines){
+if(l.isBranch)continue;
+if(!l.points3D||l.points3D.length<2)continue;
+pcf+="PIPE\n    COMPONENT-IDENTIFIER "+l.tag+"\n    DIAMETER "+(l.diameter*25.4).toFixed(3)+" MM\n    MATERIAL "+(l.material||'CS')+"\n    SCHEDULE "+(l.schedule||'STD')+"\n";
+if(l.caudal)pcf+="    FLOW-RATE "+l.caudal+" M3/HR\n";
+for(let p of l.points3D)pcf+="    POINT "+p.x.toFixed(3)+" "+p.y.toFixed(3)+" "+p.z.toFixed(3)+"\n";
+if(l.components){
+for(let c of l.components){
+let pos=getPos(l,c.param);
+if(!pos)continue;
+if(c.type==='REDUCER'){
+pcf+="    REDUCER-"+(c.isEccentric?'ECCENTRIC':'CONCENTRIC')+"\n";
+pcf+="        COMPONENT-IDENTIFIER "+(c.tag||"RED-"+Date.now())+"\n";
+pcf+="        SKEY "+(c.skey||(c.isEccentric?'RECE':'RCC'))+"\n";
+pcf+="        DIAMETER "+(c.sizeIn*25.4).toFixed(3)+" MM\n";
+pcf+="        REDUCING-DIAMETER "+(c.sizeOut*25.4).toFixed(3)+" MM\n";
+pcf+="        END-POINT "+pos.x.toFixed(3)+" "+pos.y.toFixed(3)+" "+pos.z.toFixed(3)+"\n";
+pcf+="    ENDREDUCER-"+(c.isEccentric?'ECCENTRIC':'CONCENTRIC')+"\n";}
+else if(c.type==='ELBOW'){
+pcf+="    ELBOW\n";
+pcf+="        COMPONENT-IDENTIFIER "+(c.tag||"EL-"+Date.now())+"\n";
+pcf+="        SKEY "+(c.skey||(c.angle>80?'EL90':'EL45'))+"\n";
+pcf+="        ANGLE "+(c.angle||90).toFixed(1)+"\n";
+pcf+="        RADIUS "+(c.radius||(l.diameter*1.5*25.4))+"\n";
+pcf+="        END-POINT "+pos.x.toFixed(3)+" "+pos.y.toFixed(3)+" "+pos.z.toFixed(3)+"\n";
+if(c.material==='PPR')pcf+="        SOCKET-DEPTH "+(c.socketDepth||15)+"\n";
+pcf+="    ENDELBOW\n";}
+else if(c.type==='TEE'){
+pcf+="    TEE\n";
+pcf+="        COMPONENT-IDENTIFIER "+(c.tag||"TEE-"+Date.now())+"\n";
+pcf+="        SKEY "+(c.skey||'TEE')+"\n";
+pcf+="        CENTER-POINT "+pos.x.toFixed(3)+" "+pos.y.toFixed(3)+" "+pos.z.toFixed(3)+"\n";
+if(c.branchPoint)pcf+="        BRANCH-POINT "+c.branchPoint.x.toFixed(3)+" "+c.branchPoint.y.toFixed(3)+" "+c.branchPoint.z.toFixed(3)+"\n";
+if(c.branchSize)pcf+="        BRANCH-SIZE "+c.branchSize+"\n";
+pcf+="    ENDTEE\n";}
+else if(c.type==='FLANGE'){
+pcf+="    FLANGE\n";
+pcf+="        COMPONENT-IDENTIFIER "+(c.tag||"FL-"+Date.now())+"\n";
+pcf+="        SKEY "+(c.skey||'FLWN')+"\n";
+pcf+="        RATING "+(c.rating||'150#')+"\n";
+pcf+="        END-POINT "+pos.x.toFixed(3)+" "+pos.y.toFixed(3)+" "+pos.z.toFixed(3)+"\n";
+pcf+="    ENDFLANGE\n";}
+else if(c.type==='VALVE'){
+pcf+="    VALVE\n";
+pcf+="        COMPONENT-IDENTIFIER "+(c.tag||"VLV-"+Date.now())+"\n";
+pcf+="        SKEY "+(c.skey||'VGAT')+"\n";
+pcf+="        END-POINT "+pos.x.toFixed(3)+" "+pos.y.toFixed(3)+" "+pos.z.toFixed(3)+"\n";
+pcf+="    ENDVALVE\n";}
+else{
+pcf+="    "+c.type+"\n";
+pcf+="        COMPONENT-IDENTIFIER "+(c.tag||"CMP-"+Date.now())+"\n";
+if(c.skey)pcf+="        SKEY "+c.skey+"\n";
+pcf+="        END-POINT "+pos.x.toFixed(3)+" "+pos.y.toFixed(3)+" "+pos.z.toFixed(3)+"\n";
+pcf+="    END"+c.type+"\n";}}}
+pcf+="ENDPIPE\n\n";
+if(l.branches){for(let b of l.branches){pcf+="PIPE\n    COMPONENT-IDENTIFIER "+b.tag+"\n    DIAMETER "+(b.diameter*25.4).toFixed(3)+" MM\n    MATERIAL "+b.material+"\n    IS-BRANCH TRUE\n";for(let p of b.points3D)pcf+="    POINT "+p.x.toFixed(3)+" "+p.y.toFixed(3)+" "+p.z.toFixed(3)+"\n";pcf+="ENDPIPE\n\n";}}}
+for(let e of db.equipos)pcf+="NOZZLE\n    COMPONENT-IDENTIFIER "+e.tag+"\n    END-POINT "+e.x.toFixed(3)+" "+e.y.toFixed(3)+" "+e.z.toFixed(3)+"\nENDNOZZLE\n\n";
+let blob=new Blob([pcf],{type:'text/plain'});
+let url=URL.createObjectURL(blob);
+let a=document.createElement('a');
+a.href=url;
+a.download="isometrico_"+db.settings.projectName.replace(/\s/g,'_')+".pcf";
+a.click();
+URL.revokeObjectURL(url);
+notify("PCF exportado");}
+function notify(msg,isErr=false){let n=document.getElementById('notification');n.textContent=msg;n.style.backgroundColor=isErr?'#da3633':'#238636';n.style.display='block';setTimeout(()=>n.style.display='none',4000);document.getElementById('statusMsg').textContent=msg;}
+function speakSafe(txt){if(window.speechSynthesis){let u=new SpeechSynthesisUtterance(txt);u.lang='es-ES';u.rate=0.9;window.speechSynthesis.cancel();setTimeout(()=>window.speechSynthesis.speak(u),50);}}
+function saveLocal(){try{localStorage.setItem('acq_iso',JSON.stringify({lines:db.lines,equipos:db.equipos,supports:db.supports,settings:db.settings}));}catch(e){}}
+function loadLocal(){let s=localStorage.getItem('acq_iso');if(s)try{let d=JSON.parse(s);db.lines=d.lines||[];db.equipos=d.equipos||[];db.supports=d.supports||[];db.settings=d.settings||db.settings;rebuildGrid();notify("Proyecto restaurado");}catch(e){localStorage.removeItem('acq_iso');}}
+function nuevoProyecto(){if(confirm('Borrar todo?')){db.lines=[];db.equipos=[];db.supports=[];clearSel();render();saveLocal();rebuildGrid();notify('Nuevo proyecto');}}
+function resetView(){cam.s=1;cam.pX=canvas.width/2;cam.pY=canvas.height/2;render();}
+function resizeCanvas(){let r=canvas.parentElement.getBoundingClientRect();canvas.width=r.width;canvas.height=r.height;resetView();}
+function generarSoportes(){db.supports=[];let dMax=3.0;for(let l of db.lines){let ac=0;for(let i=0;i<l.points3D.length-1;i++){let p1=l.points3D[i],p2=l.points3D[i+1];let s=Math.hypot(p2.x-p1.x,p2.y-p1.y,p2.z-p1.z);if(i===0&&!db.supports.some(sup=>Math.hypot(sup.x-p1.x,sup.y-p1.y,sup.z-p1.z)<10))db.supports.push({x:p1.x,y:p1.y,z:p1.z});ac+=s;while(ac>=dMax*1000){let t=1-(ac-dMax*1000)/s;let x=p1.x+t*(p2.x-p1.x),y=p1.y+t*(p2.y-p1.y),z=p1.z+t*(p2.z-p1.z);if(!db.supports.some(sup=>Math.hypot(sup.x-x,sup.y-y,sup.z-z)<10))db.supports.push({x,y,z});ac-=dMax*1000;}}let last=l.points3D[l.points3D.length-1];if(!db.supports.some(sup=>Math.hypot(sup.x-last.x,sup.y-last.y,sup.z-last.z)<10))db.supports.push({x:last.x,y:last.y,z:last.z});}render();notify("Soportes: "+db.supports.length);}
+function validarHidraulica(){let alertas=[];for(let l of db.lines){if(!l.caudal)continue;let Q=l.caudal/3600,D=l.diameter*0.0254,area=Math.PI*D*D/4,v=Q/area;l.velocidad=v;let long=l.points3D.reduce((s,p,i,a)=>i===0?0:s+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y,p.z-a[i-1].z),0)/1000;let f=0.02;if(v>0){let Re=v*D/1e-6;let eps=0.000045;let f0=0.0055*(1+Math.pow(2e4*eps/D+1e6/Re,1/3));f=Math.max(0.008,f0);}let hf=f*(long/D)*v*v/(2*9.81);l.perdida=hf;if(v>3.0){alertas.push(l.tag+": vel "+v.toFixed(2)+" m/s >3");l.color='#f85149';}else if(hf>10){alertas.push(l.tag+": perdida "+hf.toFixed(2)+" mca >10");l.color='#ffaa33';}else l.color='#58a6ff';}if(alertas.length)notify(alertas.join(', '),true);else notify('Todo OK');render();}
+function exportarMTO(){if(!db.lines.length){notify("No hay lineas",true);return;}let tub=[],comp=[];for(let l of db.lines){if(l.isBranch)continue;let long=l.points3D.reduce((s,p,i,a)=>i===0?0:s+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y,p.z-a[i-1].z),0)/1000;tub.push({Tag:l.tag,Diametro:l.diameter,Material:l.material,Schedule:l.schedule,Longitud_m:long.toFixed(2),Velocidad:(l.velocidad||0).toFixed(2),Perdida:(l.perdida||0).toFixed(2)});if(l.components)l.components.forEach(c=>{comp.push({Tag:c.tag,Tipo:c.type,SKEY:c.skey||'-',Material:c.material||l.material,Linea:l.tag});});}let wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tub),'Tuberias');if(comp.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(comp),'Componentes');XLSX.writeFile(wb,"MTO_"+Date.now()+".xlsx");notify("MTO: "+tub.length+" tub, "+comp.length+" comp");}
+function generarPDF(){let{jsPDF}=window.jspdf;let doc=new jsPDF('landscape');doc.setFontSize(16);doc.text('Reporte Isometrico',10,10);doc.setFontSize(10);doc.text("Ingeniero: "+db.settings.engineerName,10,20);doc.text("Fecha: "+new Date().toLocaleString(),10,25);let data=db.lines.filter(l=>!l.isBranch).map(l=>[l.tag,l.diameter,l.material,l.schedule,(l.velocidad||0).toFixed(2),(l.perdida||0).toFixed(2)]);doc.autoTable({head:[['Tag','Diam','Mat','Sch','Vel','Perdida']],body:data,startY:35});try{let img=canvas.toDataURL('image/png');doc.addPage();doc.text('Vista Isometrica',10,10);doc.addImage(img,'PNG',10,15,280,150);}catch(e){}doc.save("isometrico_"+Date.now()+".pdf");notify("PDF generado");}
+function exportarPNG(){let a=document.createElement('a');a.download='isometrico.png';a.href=canvas.toDataURL();a.click();notify("PNG guardado");}
+function exportarDXF(){let dxf="0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n";for(let l of db.lines){if(!l.points3D||l.points3D.length<2)continue;let pr=l.points3D.map(p=>proj(p));for(let i=0;i<pr.length-1;i++){dxf+="0\nLINE\n8\nTUBERIA\n10\n"+pr[i].x+"\n20\n"+pr[i].y+"\n30\n0\n11\n"+pr[i+1].x+"\n21\n"+pr[i+1].y+"\n31\n0\n";}}for(let e of db.equipos){let p=proj(e);dxf+="0\nCIRCLE\n8\nEQUIPOS\n10\n"+p.x+"\n20\n"+p.y+"\n30\n0\n40\n"+8*cam.s+"\n";dxf+="0\nTEXT\n8\nEQUIPOS\n10\n"+(p.x+12)+"\n20\n"+(p.y+4)+"\n30\n0\n40\n"+10*cam.s+"\n1\n"+e.tag+"\n";}for(let s of db.supports){let p=proj(s);dxf+="0\nCIRCLE\n8\nSOPORTES\n10\n"+p.x+"\n20\n"+p.y+"\n30\n0\n40\n"+4*cam.s+"\n";}dxf+="0\nENDSEC\n0\nEOF";let blob=new Blob([dxf],{type:'application/dxf'});let url=URL.createObjectURL(blob);let a=document.createElement('a');a.href=url;a.download='isometrico.dxf';a.click();URL.revokeObjectURL(url);notify("DXF exportado");}
+function exportarOBJ(){let obj="# Isometrico ACQ\n";for(let l of db.lines){if(!l.points3D)continue;for(let i=0;i<l.points3D.length-1;i++){let p1=l.points3D[i],p2=l.points3D[i+1];obj+="v "+p1.x/1000+" "+p1.y/1000+" "+p1.z/1000+"\n";obj+="v "+p2.x/1000+" "+p2.y/1000+" "+p2.z/1000+"\n";obj+="l "+(2*i+1)+" "+(2*i+2)+"\n";}}for(let e of db.equipos)obj+="v "+e.x/1000+" "+e.y/1000+" "+e.z/1000+"\n";let blob=new Blob([obj],{type:'text/plain'});let url=URL.createObjectURL(blob);let a=document.createElement('a');a.href=url;a.download='isometrico.obj';a.click();URL.revokeObjectURL(url);notify("OBJ exportado");}
+let manualMode=false,drawingPipe=false,pipePts=[];
+function askCoords(dx,dy,dz){let x=prompt("X (mm):",dx),y=prompt("Y (mm):",dy),z=prompt("Z (mm):",dz);return(x!==null&&y!==null&&z!==null)?{x:parseFloat(x),y:parseFloat(y),z:parseFloat(z)}:null;}
+function init(){
+canvas=document.getElementById('isoCanvas');ctx=canvas.getContext('2d');
+let savedKey=localStorage.getItem('geminiApiKey');if(savedKey)document.getElementById('geminiApiKey').value=savedKey;
+loadLocal();resizeCanvas();resetView();render();
+
+// ============================================================
+// INICIALIZACIÓN DE BOTONES Y EVENTOS
+// ============================================================
+
+if(db.lines.length===0){
+    db.lines.push({tag:'L-001',diameter:6,material:'PPR',schedule:'40',points3D:[{x:0,y:0,z:0},{x:5000,y:0,z:0},{x:5000,y:3000,z:0}],components:[],caudal:100,fluido:'agua',temp:25,color:'#58a6ff'});
+    markLine(db.lines[0]);
+    render();
+}
+rebuildGrid();
+
+window.addEventListener('keydown',(e)=>{
+    if(e.key==='Delete'&&(db.selected||db.selectionSet.size>0)){e.preventDefault();if(db.selectionSet.size>0)delSelItems();else if(db.selected)delSelected();}
+    if(e.ctrlKey&&e.key==='z'){e.preventDefault();undo();}
+    if(e.ctrlKey&&e.key==='y'){e.preventDefault();redo();}
+});
+
+canvas.addEventListener('mousedown',(e)=>{if(!manualMode){drag=true;last={x:e.clientX,y:e.clientY};canvas.style.cursor='grabbing';}});
+window.addEventListener('mousemove',(e)=>{if(drag){cam.pX+=e.clientX-last.x;cam.pY+=e.clientY-last.y;last={x:e.clientX,y:e.clientY};render();}});
+window.addEventListener('mouseup',()=>{drag=false;canvas.style.cursor=manualMode?'crosshair':'grab';});
+canvas.addEventListener('wheel',(e)=>{e.preventDefault();cam.s*=e.deltaY>0?0.9:1.1;cam.s=Math.min(Math.max(0.1,cam.s),10);render();});
+
+canvas.addEventListener('click',(e)=>{
+    if(manualMode)return;
+    let rect=canvas.getBoundingClientRect();
+    let mouseCanvas={x:(e.clientX-rect.left)*canvas.width/rect.width,y:(e.clientY-rect.top)*canvas.height/rect.height};
+    let picked=pick(mouseCanvas);
+    if(picked){
+        if(e.shiftKey){addSel(picked);notify("Seleccionado "+picked.type);}
+        else{clearSel();if(picked.type==='line')showInsp(picked.obj,'line');else if(picked.type==='component')showInsp(picked.obj,'component',picked.line);else if(picked.type==='equipment')showInsp(picked.obj,'equipment');addSel(picked);}
+    }else if(!e.shiftKey){clearSel();document.getElementById('inspector').style.display='none';}
+});
+
+document.getElementById('btnNew').onclick=nuevoProyecto;
+document.getElementById('btnUndo').onclick=undo;
+document.getElementById('btnRedo').onclick=redo;
+document.getElementById('btnImportPCF').onclick=()=>{let inp=document.createElement('input');inp.type='file';inp.accept='.pcf';inp.onchange=e=>importPCFFile(e.target.files[0]);inp.click();};
+document.getElementById('btnExportPCF').onclick=exportToPCF;
+document.getElementById('btnCommandPanel').onclick=()=>document.getElementById('commandPanel').style.display='block';
+document.getElementById('closeCommandPanel').onclick=()=>document.getElementById('commandPanel').style.display='none';
+document.getElementById('runCommands').onclick=()=>{parseCommands(document.getElementById('commandText').value);document.getElementById('commandPanel').style.display='none';};
+document.getElementById('btnAI').onclick=()=>document.getElementById('aiPanel').style.display='block';
+document.getElementById('closeAI').onclick=()=>document.getElementById('aiPanel').style.display='none';
+document.getElementById('runAI').onclick=async()=>{parseCommands(document.getElementById('aiText').value);document.getElementById('aiPanel').style.display='none';};
+document.getElementById('aiExamples').onclick=()=>{document.getElementById('aiText').value='coloca un tanque T-001 en (2000,0,0)\ncrea una tubería de 6 pulgadas desde (0,0,0) hasta (5000,3000,0)\ncoloca una válvula V-101 en la línea L-001 en posición 0.5';};
+document.getElementById('btnMTO').onclick=exportarMTO;
+document.getElementById('btnValidate').onclick=validarHidraulica;
+document.getElementById('btnSupports').onclick=generarSoportes;
+document.getElementById('btnPDF').onclick=generarPDF;
+document.getElementById('btnPNG').onclick=exportarPNG;
+document.getElementById('btnDXF').onclick=exportarDXF;
+document.getElementById('btnOBJ').onclick=exportarOBJ;
+document.getElementById('btnResetView').onclick=resetView;
+document.getElementById('btnInspectorClose').onclick=()=>document.getElementById('inspector').style.display='none';
+document.getElementById('inspectorSave').onclick=saveInsp;
+document.getElementById('inspectorCancel').onclick=()=>document.getElementById('inspector').style.display='none';
+document.getElementById('inspectorDelete').onclick=delSelected;
+document.getElementById('btnSnapToggle').onclick=()=>{snap=!snap;document.getElementById('btnSnapToggle').textContent=snap?'Snap ON':'Snap OFF';notify(snap?'Snap activado':'Snap desactivado');};
+document.getElementById('normToggle').onclick=()=>{rules=!rules;document.getElementById('normToggle').textContent=rules?'Normas ON':'Normas OFF';notify(rules?'Normas activadas':'Normas desactivadas');};
+document.getElementById('routingToggle').onclick=()=>{routing=!routing;document.getElementById('routingToggle').textContent=routing?'Routing ON':'Routing OFF';notify(routing?'Routing activado':'Routing desactivado');};
+document.getElementById('voiceToggle').onclick=()=>{voiceEnabled=!voiceEnabled;document.getElementById('voiceToggle').textContent=voiceEnabled?'Voz ON':'Voz OFF';};
+document.getElementById('btnSetApiKey').onclick=()=>{let newKey=prompt('API Key Gemini:',document.getElementById('geminiApiKey').value);if(newKey!==null){document.getElementById('geminiApiKey').value=newKey;localStorage.setItem('geminiApiKey',newKey);notify('API Key actualizada');}};
+
+let manualToolsDiv=document.getElementById('manualTools');
+let manualModeBtn=document.getElementById('btnManualMode');
+let placeEquipBtn=document.getElementById('placeEquip');
+let startPipeBtn=document.getElementById('startPipe');
+let cancelPipeBtn=document.getElementById('cancelPipe');
+let placeCompBtn=document.getElementById('placeComp');
+let cancelPlaceCompBtn=document.getElementById('cancelPlaceComp');
+let pipeStatusSpan=document.getElementById('pipeStatus');
+
+placeEquipBtn.onclick=()=>{
+    if(!manualMode){notify("Active modo manual primero",true);return;}
+    let type=document.getElementById('manualEquipType').value;
+    let tag=document.getElementById('manualEquipTag').value.trim();
+    if(!tag)tag=type.toUpperCase()+String(db.equipos.length+1).padStart(3,'0');
+    let coords=askCoords(0,0,0);
+    if(coords){if(snap)coords=snapG(coords);applyCommand({type:'equipment',tag,x:coords.x,y:coords.y,z:coords.z,tipo:type});}
+};
+
+startPipeBtn.onclick=()=>{
+    if(!manualMode){notify("Active modo manual primero",true);return;}
+    drawingPipe=true;
+    pipePts=[];
+    pipeStatusSpan.textContent="Dibujando... doble clic para finalizar";
+    canvas.style.cursor="crosshair";
+};
+
+cancelPipeBtn.onclick=()=>{
+    drawingPipe=false;
+    pipePts=[];
+    pipeStatusSpan.textContent="Inactivo";
+    canvas.style.cursor=manualMode?"crosshair":"grab";
+};
+
+canvas.ondblclick=()=>{
+    if(!manualMode||!drawingPipe)return;
+    if(pipePts.length>=2){
+        let tag="L-MANUAL-"+Date.now();
+        let diam=parseFloat(document.getElementById('pipeDiameter').value);
+        let mat=document.getElementById('pipeMaterial').value;
+        let sch=document.getElementById('pipeSchedule').value;
+        let newLine={type:'line',tag,diameter:diam,material:mat,schedule:sch,points3D:[...pipePts],components:[],caudal:null,fluido:'agua',temp:25,color:'#58a6ff'};
+        if(routing&&newLine.points3D.length===2){let r=routeSync(newLine.points3D[0],newLine.points3D[1]);if(r&&r.length>2)newLine.points3D=r;}
+        applyCommand(newLine);
+        drawingPipe=false;
+        pipePts=[];
+        pipeStatusSpan.textContent="Inactivo";
+        canvas.style.cursor=manualMode?"crosshair":"grab";
+        notify("Tuberia "+tag+" creada con "+newLine.points3D.length+" puntos");
+    }else{
+        notify("Necesitas al menos dos puntos",true);
+        drawingPipe=false;
+        pipePts=[];
+        pipeStatusSpan.textContent="Inactivo";
+        canvas.style.cursor=manualMode?"crosshair":"grab";
+    }
+};
+
+placeCompBtn.onclick=()=>{
+    if(!manualMode){notify("Active modo manual primero",true);return;}
+    window.pendingComp={type:document.getElementById('compType').value,skey:document.getElementById('compSkey').value,tag:document.getElementById('compTag').value.trim()||"CMP-"+Date.now(),param:parseFloat(document.getElementById('compParam').value)};
+    notify("Haz clic sobre una línea para colocar el componente");
+};
+
+cancelPlaceCompBtn.onclick=()=>{
+    delete window.pendingComp;
+    notify("Colocación cancelada");
+};
+
+canvas.addEventListener('click',(e)=>{
+    if(manualMode&&window.pendingComp){
+        let rect=canvas.getBoundingClientRect();
+        let mouseCanvas={x:(e.clientX-rect.left)*canvas.width/rect.width,y:(e.clientY-rect.top)*canvas.height/rect.height};
+        let picked=pick(mouseCanvas);
+        if(picked&&picked.type==='line'){
+            let line=picked.obj;
+            let comp={type:window.pendingComp.type,skey:window.pendingComp.skey,tag:window.pendingComp.tag,param:window.pendingComp.param,material:line.material};
+            applyCommand({type:'component',comp,lineTag:line.tag});
+            render();
+            notify("Componente "+comp.tag+" colocado en línea "+line.tag);
+            delete window.pendingComp;
+        }else if(picked){notify("Debes hacer clic sobre una tubería",true);}
+    }
+});
+
+manualModeBtn.onclick=()=>{
+    manualMode=!manualMode;
+    if(manualMode){
+        manualToolsDiv.style.display='block';
+        manualModeBtn.textContent="Modo Manual ON";
+        manualModeBtn.classList.add('btn-primary');
+        canvas.style.cursor="crosshair";
+        notify("Modo manual activado");
+    }else{
+        manualToolsDiv.style.display='none';
+        manualModeBtn.textContent="Modo Manual OFF";
+        manualModeBtn.classList.remove('btn-primary');
+        canvas.style.cursor="grab";
+        drawingPipe=false;
+        pipePts=[];
+        delete window.pendingComp;
+        notify("Modo manual desactivado");
+    }
+};
+
+// ============================================================
+// CAPAS
+// ============================================================
+
+let layersPanel=document.getElementById('layersPanel');
+document.getElementById('btnLayers').onclick=()=>{layersPanel.style.display='block';};
+document.getElementById('closeLayers').onclick=()=>{layersPanel.style.display='none';};
+document.getElementById('layerPipes').onchange=(e)=>{layers.pipes=e.target.checked;render();};
+document.getElementById('layerEquipment').onchange=(e)=>{layers.eq=e.target.checked;render();};
+document.getElementById('layerSupports').onchange=(e)=>{layers.supports=e.target.checked;render();};
+document.getElementById('layerComponents').onchange=(e)=>{layers.comps=e.target.checked;render();};
+document.getElementById('layerGrid').onchange=(e)=>{layers.grid=e.target.checked;render();};
+
+// ============================================================
+// MANUAL DE USUARIO
+// ============================================================
+
+let manualContent=`
+<h2>Manual de Usuario - ACQ SmartFlow Pro Industrial</h2>
+<h3>Características Industriales</h3>
+<ul>
+<li><strong>SKEY</strong> - Symbol Key (VGBW, VBAL, EL90, RCC, RECE, FLWN)</li>
+<li><strong>END-POINT</strong> - Posicionamiento por puntos extremos</li>
+<li><strong>BRANCH-POINT</strong> - Ramales automáticos desde Tees</li>
+<li><strong>Reducciones excéntricas</strong> - Soportadas con offset</li>
+<li><strong>Codos con ángulo</strong> - Cálculo automático y take-off</li>
+<li><strong>PPR Socket Depth</strong> - Profundidad de inserción para termofusión</li>
+</ul>
+<h3>Comandos IA (ejemplos)</h3>
+<pre>coloca un tanque T-001 en (2000,0,0)
+crea una tubería de 6 pulgadas desde (0,0,0) hasta (5000,3000,0)
+coloca una válvula V-101 en la línea L-001 en posición 0.3
+agrega cuatro tanques en paralelo
+cambia el diámetro de la línea L-001 a 3 pulgadas
+elimina la línea L-001</pre>
+<h3>Funciones</h3>
+<ul><li>MTO - Lista de materiales Excel</li><li>Validar Hidráulica - Velocidad y pérdida</li><li>Soportes - Automáticos cada 3m</li><li>PDF, PNG, DXF, OBJ</li><li>PCF - Import/Export industrial con SKEY y END-POINT</li></ul>
+`;
+
+document.getElementById('btnManual').onclick=()=>{document.getElementById('manualModal').style.display='block';document.getElementById('manualContent').innerHTML=manualContent;};
+document.getElementById('closeManual').onclick=()=>{document.getElementById('manualModal').style.display='none';};
+
+let voiceEnabled=true;
+
+} // CIERRE DE LA FUNCIÓN init()
+
+// ============================================================
+// INICIAR LA APLICACIÓN
+// ============================================================
+
+init();
+
+</script>
+</body>
+</html>
