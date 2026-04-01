@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Acquablue Corp | SmartFlow Pro v7.1 - Ing. Osnay Romero</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Roboto,sans-serif;background:#0a0f1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{background:#161b22;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #30363d;align-items:center;z-index:10}
+button{padding:8px 14px;border:none;border-radius:6px;font-weight:bold;cursor:pointer;background:#21262d;color:#e0e0e0;transition:0.2s;font-size:13px}
+button:hover{background:#2c313a}
+.btn-primary{background:#238636;color:white}
+.btn-warning{background:#d29922;color:#1f1f1f}
+.btn-ai{background:linear-gradient(45deg,#7c3aed,#c084fc);color:white}
+.canvas-container{flex:1;position:relative;background:#0a0f1a;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab}
+canvas:active{cursor:grabbing}
+.command-panel{position:fixed;left:20px;bottom:20px;width:90%;max-width:500px;background:#1e1e2e;border-radius:12px;padding:16px;border:1px solid #3a3a4a;z-index:1000;display:none}
+textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:12px;font-family:monospace;font-size:16px}
+.notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #238636;padding:12px 24px;border-radius:8px;color:white;z-index:2000;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5)}
+.status-bar{background:#0f0f17;padding:6px 12px;font-size:12px;border-top:1px solid #30363d;display:flex;justify-content:space-between}
+.compass{position:fixed;bottom:20px;right:20px;width:80px;height:80px;background:rgba(0,0,0,0.5);border-radius:8px;pointer-events:none;z-index:100}
+@media (max-width: 768px){
+    .toolbar button{padding:10px 12px;font-size:14px}
+    .command-panel{left:10px;right:10px;width:auto;bottom:10px}
+    textarea{font-size:18px}
+}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="toolbar" role="toolbar">
+<button id="btnNew" class="btn-primary">Nuevo</button>
+<button id="btnExportPCF">Exportar PCF</button>
+<button id="btnImportPCF">Importar PCF</button>
+<button id="btnCommand" class="btn-ai">Comandos</button>
+<button id="btnMTO">MTO Excel</button>
+<button id="btnPDF">PDF Reporte</button>
+<button id="btnReset">Reset Vista</button>
+<button id="btnVoice" style="background:#7c3aed;color:white;">🔊 Voz: ON</button>
+</div>
+<div style="background:#1c2128; padding:8px 12px; display:flex; flex-wrap:wrap; gap:12px; border-bottom:1px solid #30363d;">
+    <div style="display:flex; flex-direction:column;">
+        <label style="font-size:10px; color:#8b949e;">PROYECTO:</label>
+        <input type="text" id="inputProyecto" value="PLANTA MARACAIBO" style="background:#0d1117; color:white; border:1px solid #30363d; padding:6px 10px; border-radius:6px; font-size:13px;">
+    </div>
+    <div style="display:flex; flex-direction:column;">
+        <label style="font-size:10px; color:#8b949e;">AUTOR:</label>
+        <input type="text" id="inputAutor" value="ING. OSNAY ROMERO" style="background:#0d1117; color:white; border:1px solid #30363d; padding:6px 10px; border-radius:6px; font-size:13px;">
+    </div>
+</div>
+<div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
+<div id="commandPanel" class="command-panel" role="dialog">
+<h3>Panel de Ingeniería - Ing. Osnay Romero</h3>
+<textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;crea un tanque vertical de 2400 diametro por 2900 altura llamado TK-01&#10;camina 5 metros horizontal, sube 2 metros&#10;crea una bomba B-01&#10;conecta TK-01 con B-01 con tubo de 6 pulgadas&#10;coloca válvula de bola V-101 en L-001 posición 0.5&#10;coloca codo de 90 grados EL-001 en L-001&#10;dime TK-01&#10;eliminar TK-01&#10;inicia recorrido"></textarea>
+<div style="margin-top:10px; display:flex; gap:10px;"><button id="runCommands" class="btn-primary" style="flex:1">Ejecutar</button><button id="closeCommand" style="flex:1">Cerrar</button></div>
+</div>
+<div id="notification" class="notification" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
+<div class="status-bar" role="status" aria-live="polite"><span id="statusMsg">Acquablue Corp | SmartFlow Pro v7.1 | Ing. Osnay Romero</span><span id="coordMsg">X:0 Y:0 Z:0 | 30° ISO</span></div>
+<div id="compass" class="compass"></div>
+
+<script>
+let db = { lines: [], equipos: [] };
+let cam = { scale: 0.15, panX: 0, panY: 0 };
+let drag = false, last = { x: 0, y: 0 };
+let canvas, ctx;
+let selectedEq = null;
+let selectedLine = null;
+let selectedComponent = null;
+let selectedComponentLine = null;
+let isDraggingEq = false;
+let dragOffset = { x: 0, y: 0 };
+let voiceEnabled = true;
+
+const SKEY_MAP = {
+    'VBAL': { type: 'VALVE', shape: 'gate' }, 'VCHK': { type: 'VALVE', shape: 'check' },
+    'EL90': { type: 'ELBOW', shape: 'elbow', angle: 90 }, 'EL45': { type: 'ELBOW', shape: 'elbow', angle: 45 },
+    'RCC': { type: 'REDUCER', shape: 'reducer' }, 'FLWN': { type: 'FLANGE', shape: 'flange' }
+};
+
+function getComp(s) { if(!s) return null; let u=s.toUpperCase(); for(let[c,i]of Object.entries(SKEY_MAP)) if(u.includes(c)) return {...i,skey:c}; return null; }
+
+function proj(p){
+    let c30=0.866, s30=0.5;
+    return { x:(p.x-p.z)*c30*cam.scale+cam.panX, y:(p.x+p.z)*s30*cam.scale-p.y*cam.scale+cam.panY };
+}
+
+function getPos(line,t){
+    let pts=line.points3D;
+    if(!pts||pts.length<2) return null;
+    if(t<=0) return pts[0];
+    if(t>=1) return pts[pts.length-1];
+    let idx=Math.floor(t*(pts.length-1));
+    let seg=t*(pts.length-1)-idx;
+    let p1=pts[idx],p2=pts[idx+1];
+    return { x:p1.x+seg*(p2.x-p1.x), y:p1.y+seg*(p2.y-p1.y), z:p1.z+seg*(p2.z-p1.z) };
+}
+
+function getDirection(line,t){
+    let pts=line.points3D;
+    if(!pts||pts.length<2) return 0;
+    let idx=Math.min(Math.floor(t*(pts.length-1)),pts.length-2);
+    let p1=pts[idx],p2=pts[idx+1];
+    return Math.atan2(p2.y-p1.y,p2.x-p1.x);
+}
+
+function drawCompass(){
+    let s=70,x=canvas.width-s-20,y=20;
+    ctx.save(); ctx.font='10px monospace';
+    ctx.beginPath(); ctx.arc(x+s/2,y+s/2,s/2,0,2*Math.PI);
+    ctx.strokeStyle='#3a6ea5'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+s/2,y+8); ctx.lineTo(x+s/2-6,y+22); ctx.lineTo(x+s/2+6,y+22);
+    ctx.fillStyle='#ff4444'; ctx.fill(); ctx.fillStyle='white'; ctx.fillText('N',x+s/2-4,y+20);
+    ctx.fillStyle='#44ff44'; ctx.fillText('S',x+s/2-4,y+s-8);
+    ctx.fillStyle='#4444ff'; ctx.fillText('E',x+s-15,y+s/2+4);
+    ctx.fillStyle='#ffaa44'; ctx.fillText('O',x+8,y+s/2+4);
+    ctx.restore();
+}
+
+function drawWatermark(){
+    ctx.save(); ctx.font='9px monospace'; ctx.fillStyle='rgba(100,100,100,0.3)';
+    ctx.fillText('Acquablue Corp | Ing. Osnay Romero',canvas.width-210,canvas.height-8);
+    ctx.restore();
+}
+
+function drawElevationGuides(){
+    let step=1000; ctx.save(); ctx.beginPath(); ctx.strokeStyle='#2a4a6a'; ctx.lineWidth=0.5; ctx.setLineDash([5,5]);
+    for(let y=0;y<10000;y+=step){
+        let p1=proj({x:0,y:y,z:0}),p2=proj({x:10000,y:y,z:0});
+        if(p1.x>=0&&p1.x<=canvas.width&&p2.x>=0&&p2.x<=canvas.width){
+            ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+            ctx.fillStyle='#3a6ea5'; ctx.font='9px monospace'; ctx.fillText(`${y/1000}m`,p1.x+5,p1.y-3);
+        }
+    }
+    ctx.setLineDash([]); ctx.restore();
+}
+
+function detectAndAddElbows(line){
+    let pts=line.points3D;
+    if(!pts||pts.length<3) return;
+    for(let i=1;i<pts.length-1;i++){
+        let p1=pts[i-1],p2=pts[i],p3=pts[i+1];
+        let v1={x:p2.x-p1.x,y:p2.y-p1.y,z:p2.z-p1.z};
+        let v2={x:p3.x-p2.x,y:p3.y-p2.y,z:p3.z-p2.z};
+        let dot=v1.x*v2.x+v1.y*v2.y+v1.z*v2.z;
+        let m1=Math.hypot(v1.x,v1.y,v1.z),m2=Math.hypot(v2.x,v2.y,v2.z);
+        if(m1>0&&m2>0){
+            let ang=Math.acos(Math.min(1,Math.max(-1,dot/(m1*m2))))*180/Math.PI;
+            if(ang>15&&ang<175){
+                let param=i/(pts.length-1),skey=ang>80?'EL90':'EL45';
+                let exists=line.components?.some(c=>c.type==='ELBOW'&&Math.abs(c.param-param)<0.05);
+                if(!exists){
+                    if(!line.components) line.components=[];
+                    line.components.push({type:'ELBOW',tag:`EL-${line.tag}-${i}`,skey:skey,param:param,angle:ang});
+                }
+            }
+        }
+    }
+}
+
+function render(){
+    if(!ctx) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    drawElevationGuides();
+    for(let l of db.lines){
+        if(!l.points3D||l.points3D.length<2) continue;
+        ctx.beginPath();
+        let pr=l.points3D.map(p=>proj(p));
+        ctx.moveTo(pr[0].x,pr[0].y);
+        for(let i=1;i<pr.length;i++) ctx.lineTo(pr[i].x,pr[i].y);
+        ctx.strokeStyle='#58a6ff';
+        ctx.lineWidth=Math.max(2,(l.diameter||6)*cam.scale/6);
+        ctx.stroke();
+        let lp=l.points3D[l.points3D.length-1];
+        if(lp.y>0){
+            let t=proj(lp),b=proj({x:lp.x,y:0,z:lp.z});
+            ctx.beginPath(); ctx.setLineDash([5,5]);
+            ctx.moveTo(t.x,t.y); ctx.lineTo(b.x,b.y);
+            ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        if(l.components){
+            for(let c of l.components){
+                let pos=getPos(l,c.param);
+                if(pos){
+                    let p=proj(pos);
+                    ctx.save(); ctx.translate(p.x,p.y);
+                    let ang=getDirection(l,c.param);
+                    ctx.rotate(ang);
+                    ctx.beginPath();
+                    if(c.type==='VALVE'){ ctx.moveTo(-8,-5); ctx.lineTo(0,0); ctx.lineTo(8,-5); ctx.lineTo(0,8); ctx.closePath(); ctx.fillStyle='#ffaa33'; ctx.fill(); ctx.stroke(); }
+                    else if(c.type==='FLANGE'){ ctx.rect(-6,-4,12,8); ctx.fillStyle='#cccc99'; ctx.fill(); ctx.stroke(); }
+                    else if(c.type==='ELBOW'){ ctx.arc(0,0,8,0,Math.PI/2); ctx.lineTo(8,0); ctx.fillStyle='#88aaff'; ctx.fill(); ctx.stroke(); }
+                    else if(c.type==='REDUCER'){ ctx.moveTo(-8,-4); ctx.lineTo(0,-2); ctx.lineTo(0,2); ctx.lineTo(-8,4); ctx.closePath(); ctx.fillStyle='#bb9966'; ctx.fill(); ctx.stroke(); }
+                    if(c.skey){ ctx.font='7px monospace'; ctx.fillStyle='white'; ctx.fillText(c.skey,-6,-6); }
+                    ctx.restore();
+                }
+            }
+        }
+    }
+    for(let e of db.equipos){
+        let p=proj(e);
+        let d=(e.diametro||1000)*cam.scale/10;
+        let h=(e.altura||2000)*cam.scale/10;
+        ctx.beginPath(); ctx.lineWidth=(selectedEq===e)?4:2;
+        ctx.strokeStyle=(selectedEq===e)?'#ffcc00':'#58a6ff';
+        switch(e.tipo){
+            case 'tanque_v':
+                ctx.ellipse(p.x,p.y-h/2,d/2,d/4,0,0,2*Math.PI);
+                ctx.rect(p.x-d/2,p.y-h/2,d,h);
+                ctx.ellipse(p.x,p.y+h/2,d/2,d/4,0,0,2*Math.PI);
+                ctx.fillStyle='#3498db'; ctx.fill(); ctx.stroke();
+                break;
+            case 'tanque_h':
+                ctx.rect(p.x-d/2,p.y-h/2,d,h);
+                ctx.arc(p.x-d/2,p.y,d/4,Math.PI/2,3*Math.PI/2);
+                ctx.arc(p.x+d/2,p.y,d/4,3*Math.PI/2,Math.PI/2);
+                ctx.fillStyle='#3498db'; ctx.fill(); ctx.stroke();
+                break;
+            case 'intercambiador':
+                ctx.arc(p.x,p.y,d/2,0,2*Math.PI);
+                ctx.moveTo(p.x-d/3,p.y-d/3); ctx.lineTo(p.x+d/3,p.y+d/3);
+                ctx.moveTo(p.x+d/3,p.y-d/3); ctx.lineTo(p.x-d/3,p.y+d/3);
+                ctx.fillStyle='#3498db'; ctx.fill(); ctx.stroke();
+                break;
+            case 'torre_enfriamiento':
+                ctx.moveTo(p.x-d/2,p.y+h/2); ctx.lineTo(p.x+d/2,p.y+h/2);
+                ctx.lineTo(p.x+d/3,p.y-h/2); ctx.lineTo(p.x-d/3,p.y-h/2);
+                ctx.closePath(); ctx.fillStyle='#3498db'; ctx.fill(); ctx.stroke();
+                break;
+            case 'lc':case 'pc':case 'tc':
+                ctx.arc(p.x,p.y,d/2,0,2*Math.PI);
+                ctx.moveTo(p.x-d/2,p.y); ctx.lineTo(p.x+d/2,p.y);
+                ctx.fillStyle='#ffaa44'; ctx.fill(); ctx.stroke();
+                break;
+            default:
+                ctx.arc(p.x,p.y,12*cam.scale,0,2*Math.PI);
+                ctx.moveTo(p.x-12*cam.scale,p.y); ctx.lineTo(p.x+12*cam.scale,p.y);
+                ctx.fillStyle=e.tipo==='bomba'?'#e67e22':'#3498db';
+                ctx.fill(); ctx.stroke();
+        }
+        ctx.fillStyle='white'; ctx.font=`${Math.max(10,12*cam.scale)}px Arial`;
+        ctx.fillText(e.tag,p.x+d/2+5,p.y);
+        if(e.diametro&&e.altura){
+            ctx.font='8px monospace'; ctx.fillStyle='rgba(255,255,255,0.6)';
+            ctx.fillText(`Ø${(e.diametro/1000).toFixed(1)}m x H${(e.altura/1000).toFixed(1)}m`,p.x+d/2+5,p.y-10);
+        }
+    }
+    drawCompass(); drawWatermark();
+    ctx.restore();
+}
+
+function updateCoordinatesDisplay(e){ if(e) document.getElementById('coordMsg').textContent=`X:${Math.round(e.x)} Y:${Math.round(e.y)} Z:${Math.round(e.z)} | 30° ISO`; }
+
+function initDragEvents(){
+    canvas.addEventListener('mousedown',(e)=>{
+        let rect=canvas.getBoundingClientRect();
+        let mx=(e.clientX-rect.left)*canvas.width/rect.width;
+        let my=(e.clientY-rect.top)*canvas.height/rect.height;
+        for(let eq of db.equipos){
+            let p=proj(eq);
+            if(Math.hypot(mx-p.x,my-p.y)<30*cam.scale){
+                selectedEq=eq; isDraggingEq=true;
+                dragOffset={x:mx-p.x,y:my-p.y};
+                canvas.style.cursor='grabbing'; render();
+                break;
+            }
+        }
+    });
+}
+
+function aplicarRutaIncremental(cmd){
+    let diamMatch=cmd.match(/(\d+)\s+pulgadas/);
+    let diam=diamMatch?parseFloat(diamMatch[1]):4;
+    let start=db.equipos[db.equipos.length-1]||{x:0,y:0,z:0};
+    let pts=[{...start}],cur={...start};
+    let moves=cmd.matchAll(/(\d+)\s+metros\s+(horizontal|vertical|fondo|desvio|sube|baja|izquierda|derecha)/g);
+    for(let m of moves){
+        let d=parseInt(m[1])*1000;
+        let dir=m[2];
+        if(dir==="horizontal"||dir==="derecha") cur.x+=d;
+        else if(dir==="izquierda") cur.x-=d;
+        else if(dir==="vertical"||dir==="sube") cur.y+=d;
+        else if(dir==="baja") cur.y-=d;
+        else if(dir==="fondo") cur.z+=d;
+        else if(dir==="desvio"){ cur.x+=d*0.707; cur.z+=d*0.707; }
+        pts.push({...cur});
+    }
+    if(pts.length>1){
+        applyCommand({type:'line',tag:`L-${db.lines.length+1}`,diameter:diam,material:'CS',schedule:'40',points3D:pts,components:[]});
+        return true;
+    }
+    return false;
+}
+
+function crearEquipoParametrico(cmd,tipo){
+    let diamMatch=cmd.match(/(\d+)\s+(?:de\s+)?diametro/);
+    let altMatch=cmd.match(/(\d+)\s+(?:de\s+)?altura/);
+    let diam=diamMatch?parseInt(diamMatch[1]):2000;
+    let alt=altMatch?parseInt(altMatch[1]):2500;
+    let tagMatch=cmd.match(/(?:llamado|tag)\s+(\S+)/i)||cmd.match(/\s([A-Z0-9-]+)$/i);
+    let tag=tagMatch?tagMatch[1].toUpperCase():`${tipo.toUpperCase()}-${db.equipos.length+1}`;
+    let ref=db.equipos[db.equipos.length-1];
+    let x=ref?ref.x+2000:0;
+    let y=(tipo==='tanque_v'||tipo==='tanque_h')?alt/2:0;
+    applyCommand({type:'equipment',tag:tag,x:x,y:y,z:0,tipo:tipo,diametro:diam,altura:alt});
+    return true;
+}
+
+function applyCommand(cmd){
+    if(cmd.type==='line'){ db.lines.push(cmd); detectAndAddElbows(cmd); render(); notify("Línea "+cmd.tag+" creada"); }
+    else if(cmd.type==='equipment'){ db.equipos.push(cmd); render(); notify(`Equipo ${cmd.tag} creado (Ø${(cmd.diametro/1000).toFixed(1)}m x H${(cmd.altura/1000).toFixed(1)}m)`); }
+    else if(cmd.type==='component'){
+        let line=db.lines.find(l=>l.tag===cmd.lineTag);
+        if(line){ if(!line.components) line.components=[]; line.components.push(cmd.comp); render(); notify("Componente "+cmd.comp.tag+" agregado a "+cmd.lineTag); }
+        else notify("Línea "+cmd.lineTag+" no encontrada",true);
+    }
+}
+
+function parseTechnicalCommands(raw){
+    let m=raw.match(/line\s+(\S+)\s+diameter\s+(\d+(?:\.\d+)?)\s+material\s+(\S+)\s+schedule\s+(\S+)\s+points\s+\((-?\d+),(-?\d+),(-?\d+)\)\s+\((-?\d+),(-?\d+),(-?\d+)\)/i);
+    if(m){ applyCommand({type:'line',tag:m[1],diameter:parseFloat(m[2]),material:m[3],schedule:m[4],points3D:[{x:parseFloat(m[5]),y:parseFloat(m[6]),z:parseFloat(m[7])},{x:parseFloat(m[8]),y:parseFloat(m[9]),z:parseFloat(m[10])}],components:[]}); return; }
+    m=raw.match(/equipment\s+(\S+)\s+at\s+\((-?\d+),(-?\d+),(-?\d+)\)/i);
+    if(m){ applyCommand({type:'equipment',tag:m[1],x:parseFloat(m[2]),y:parseFloat(m[3]),z:parseFloat(m[4]),tipo:'tanque'}); return; }
+    m=raw.match(/component\s+(\S+)\s+(\S+)\s+at\s+(\S+)\s+param\s+(\d+(?:\.\d+)?)(?:\s+skey\s+(\S+))?(?:\s+material\s+(\S+))?/i);
+    if(m){ let tipo=m[1].toUpperCase(),tag=m[2],lineaTag=m[3],param=parseFloat(m[4]),skey=m[5]||null,mat=m[6]||null,comp={type:tipo,tag:tag,param:param}; if(skey)comp.skey=skey; if(mat)comp.material=mat; applyCommand({type:'component',comp:comp,lineTag:lineaTag}); return; }
+    throw new Error("Formato no reconocido");
+}
+
+// ==================== RECORRIDO AUTOMÁTICO ====================
+async function iniciarRecorrido() {
+    if (db.equipos.length === 0) {
+        notify("No hay equipos en el diseño para recorrer.", true);
+        return;
+    }
+    notify("Iniciando recorrido técnico de inspección...");
+    const originalScale = cam.scale;
+    const originalPanX = cam.panX;
+    const originalPanY = cam.panY;
+    for (let i = 0; i < db.equipos.length; i++) {
+        let eq = db.equipos[i];
+        selectedEq = eq;
+        let eqPos = proj(eq);
+        cam.panX = canvas.width / 2 - eqPos.x;
+        cam.panY = canvas.height / 2 - eqPos.y;
+        cam.scale = 0.25;
+        render();
+        let tipoDisplay = eq.tipo?.replace('_', ' ') || 'EQUIPO';
+        let elevacionNPT = eq.y - (eq.altura / 2);
+        let msg = `Inspeccionando ${eq.tag}. Tipo: ${tipoDisplay.toUpperCase()}. Dimensiones: ${eq.diametro || 'N/A'} mm diámetro por ${eq.altura || 'N/A'} mm altura. Conexión NPT a ${Math.round(elevacionNPT)} mm del suelo.`;
+        notify(msg);
+        await new Promise(resolve => setTimeout(resolve, 5500));
+    }
+    selectedEq = null;
+    resetView();
+    notify("Recorrido de inspección finalizado.");
+}
+
+// ==================== COMANDOS EN ESPAÑOL PARA COMPONENTES ====================
+function procesarComandoComponente(cmd, raw) {
+    // Válvula
+    if (cmd.includes("valvula") || cmd.includes("válvula")) {
+        let tipo = "VALVE";
+        let tagMatch = raw.match(/(?:llamada|tag)\s+(\S+)/i) || raw.match(/\s([A-Z0-9-]+)$/i);
+        let tag = tagMatch ? tagMatch[1].toUpperCase() : `V-${Math.floor(Math.random()*1000)}`;
+        let lineaMatch = raw.match(/(?:en|sobre)\s+(\S+)/i);
+        let lineaTag = lineaMatch ? lineaMatch[1].toUpperCase() : null;
+        let paramMatch = raw.match(/(?:posicion|posición)\s+(\d+(?:\.\d+)?)/i);
+        let param = paramMatch ? parseFloat(paramMatch[1]) : 0.5;
+        let skey = cmd.includes("bola") ? "VBAL" : (cmd.includes("check") ? "VCHK" : "VBAL");
+        if (lineaTag) {
+            let comp = { type: tipo, tag: tag, param: param, skey: skey, material: 'CS' };
+            applyCommand({ type: 'component', comp: comp, lineTag: lineaTag });
+            return true;
+        } else {
+            notify("Debe especificar la línea: 'coloca válvula V-001 en L-001'", true);
+            return false;
+        }
+    }
+    // Reducción
+    if (cmd.includes("reduccion") || cmd.includes("reductor") || cmd.includes("reducción")) {
+        let tagMatch = raw.match(/(?:llamada|tag)\s+(\S+)/i) || raw.match(/\s([A-Z0-9-]+)$/i);
+        let tag = tagMatch ? tagMatch[1].toUpperCase() : `RED-${Math.floor(Math.random()*1000)}`;
+        let lineaMatch = raw.match(/(?:en|sobre)\s+(\S+)/i);
+        let lineaTag = lineaMatch ? lineaMatch[1].toUpperCase() : null;
+        let paramMatch = raw.match(/(?:posicion|posición)\s+(\d+(?:\.\d+)?)/i);
+        let param = paramMatch ? parseFloat(paramMatch[1]) : 0.05;
+        if (lineaTag) {
+            let comp = { type: 'REDUCER', tag: tag, param: param, skey: 'RCC', material: 'PPR' };
+            applyCommand({ type: 'component', comp: comp, lineTag: lineaTag });
+            return true;
+        } else {
+            notify("Debe especificar la línea: 'coloca reducción R-001 en L-001'", true);
+            return false;
+        }
+    }
+    // Codo
+    if (cmd.includes("codo")) {
+        let tagMatch = raw.match(/(?:llamado|tag)\s+(\S+)/i) || raw.match(/\s([A-Z0-9-]+)$/i);
+        let tag = tagMatch ? tagMatch[1].toUpperCase() : `EL-${Math.floor(Math.random()*1000)}`;
+        let lineaMatch = raw.match(/(?:en|sobre)\s+(\S+)/i);
+        let lineaTag = lineaMatch ? lineaMatch[1].toUpperCase() : null;
+        let paramMatch = raw.match(/(?:posicion|posición)\s+(\d+(?:\.\d+)?)/i);
+        let param = paramMatch ? parseFloat(paramMatch[1]) : 0.5;
+        let angulo = cmd.includes("45") ? "EL45" : "EL90";
+        if (lineaTag) {
+            let comp = { type: 'ELBOW', tag: tag, param: param, skey: angulo, material: 'PPR' };
+            applyCommand({ type: 'component', comp: comp, lineTag: lineaTag });
+            return true;
+        } else {
+            notify("Debe especificar la línea: 'coloca codo EL-001 en L-001'", true);
+            return false;
+        }
+    }
+    // Brida
+    if (cmd.includes("brida") || cmd.includes("flanche")) {
+        let tagMatch = raw.match(/(?:llamada|tag)\s+(\S+)/i) || raw.match(/\s([A-Z0-9-]+)$/i);
+        let tag = tagMatch ? tagMatch[1].toUpperCase() : `FL-${Math.floor(Math.random()*1000)}`;
+        let lineaMatch = raw.match(/(?:en|sobre)\s+(\S+)/i);
+        let lineaTag = lineaMatch ? lineaMatch[1].toUpperCase() : null;
+        let paramMatch = raw.match(/(?:posicion|posición)\s+(\d+(?:\.\d+)?)/i);
+        let param = paramMatch ? parseFloat(paramMatch[1]) : 0.5;
+        if (lineaTag) {
+            let comp = { type: 'FLANGE', tag: tag, param: param, skey: 'FLWN', material: 'CS' };
+            applyCommand({ type: 'component', comp: comp, lineTag: lineaTag });
+            return true;
+        } else {
+            notify("Debe especificar la línea: 'coloca brida FL-001 en L-001'", true);
+            return false;
+        }
+    }
+    // Instrumento
+    if (cmd.includes("instrumento") || cmd.includes("control")) {
+        let tagMatch = raw.match(/(?:llamado|tag)\s+(\S+)/i) || raw.match(/\s([A-Z0-9-]+)$/i);
+        let tag = tagMatch ? tagMatch[1].toUpperCase() : `INS-${Math.floor(Math.random()*1000)}`;
+        let lineaMatch = raw.match(/(?:en|sobre)\s+(\S+)/i);
+        let lineaTag = lineaMatch ? lineaMatch[1].toUpperCase() : null;
+        let paramMatch = raw.match(/(?:posicion|posición)\s+(\d+(?:\.\d+)?)/i);
+        let param = paramMatch ? parseFloat(paramMatch[1]) : 0.5;
+        let tipoInst = cmd.includes("nivel") ? "lc" : (cmd.includes("presion") ? "pc" : (cmd.includes("temperatura") ? "tc" : "instrumento"));
+        if (lineaTag) {
+            let comp = { type: 'INSTRUMENT', tag: tag, param: param, skey: tipoInst.toUpperCase(), material: 'CS' };
+            applyCommand({ type: 'component', comp: comp, lineTag: lineaTag });
+            return true;
+        } else {
+            notify("Debe especificar la línea: 'coloca instrumento PT-001 en L-001'", true);
+            return false;
+        }
+    }
+    return false;
+}
+
+function parseCommands(text){
+    let lines=text.split('\n');
+    for(let raw of lines){
+        let cmd=raw.trim().toLowerCase();
+        if(!cmd||cmd.startsWith('//')) continue;
+        
+        // === RECORRIDO AUTOMÁTICO ===
+        if(cmd.includes("recorrido") || cmd.includes("inspeccion") || cmd.includes("revisa todo")){
+            iniciarRecorrido();
+            return;
+        }
+        
+        // === COMANDOS EN ESPAÑOL PARA COMPONENTES ===
+        if(procesarComandoComponente(cmd, raw)) continue;
+        
+        // === CREAR EQUIPOS PARAMÉTRICOS ===
+        let tipo="";
+        if(cmd.includes("tanque vertical")) tipo="tanque_v";
+        else if(cmd.includes("tanque horizontal")) tipo="tanque_h";
+        else if(cmd.includes("intercambiador")) tipo="intercambiador";
+        else if(cmd.includes("torre de enfriamiento")) tipo="torre_enfriamiento";
+        else if(cmd.includes("bomba")) tipo="bomba";
+        else if(cmd.includes("compresor")) tipo="compresor";
+        else if(cmd.includes("filtro")) tipo="filtro";
+        else if(cmd.includes("control de nivel")) tipo="lc";
+        else if(cmd.includes("control de presion")) tipo="pc";
+        else if(cmd.includes("control de temperatura")) tipo="tc";
+        else if(cmd.includes("tanque")) tipo="tanque_v";
+        
+        if(tipo!==""){ crearEquipoParametrico(raw,tipo); continue; }
+        
+        // === RUTA INCREMENTAL ===
+        if(cmd.includes("camina")||cmd.includes("sube")||cmd.includes("sigue")||cmd.includes("desvio")||cmd.includes("fondo")){ 
+            if(aplicarRutaIncremental(cmd)) continue; 
+        }
+        
+        // === CONECTAR EQUIPOS ===
+        if(cmd.includes("conecta")||cmd.includes("une")){
+            let enc=db.equipos.filter(e=>cmd.includes(e.tag.toLowerCase()));
+            if(enc.length>=2){
+                let e1=enc[0],e2=enc[1];
+                let dMatch=cmd.match(/(\d+)\s+pulgadas/);
+                let diam=dMatch?parseFloat(dMatch[1]):4;
+                let pts=[{x:e1.x,y:e1.y,z:e1.z},{x:e2.x,y:e1.y,z:e1.z},{x:e2.x,y:e1.y,z:e2.z},{x:e2.x,y:e2.y,z:e2.z}];
+                applyCommand({type:'line',tag:`L-${e1.tag}-${e2.tag}`,diameter:diam,material:'CS',schedule:'40',points3D:pts,components:[]});
+                continue;
+            }
+        }
+        
+        // === AUDITORÍA POTENCIADA ===
+        if(cmd.includes("dime") || cmd.includes("detalles") || cmd.includes("revisa")){
+            let tagMatch = raw.match(/(?:dime|detalles|revisa)\s+(\S+)/i);
+            let target = tagMatch ? tagMatch[1].toUpperCase() : null;
+            if (!target) {
+                notify(`Resumen: ${db.equipos.length} equipos, ${db.lines.length} líneas.`);
+            } else {
+                let eq = db.equipos.find(e => e.tag === target);
+                if (eq) {
+                    let tipoDisplay = eq.tipo?.replace('_', ' ') || 'EQUIPO';
+                    let elevacionNPT = eq.y - (eq.altura / 2);
+                    notify(`Equipo ${eq.tag}: ${tipoDisplay.toUpperCase()}. Dimensiones: ${eq.diametro || 'N/A'} mm diámetro por ${eq.altura || 'N/A'} mm altura. Conexión NPT a ${Math.round(elevacionNPT)} mm del suelo.`);
+                } else {
+                    let li = db.lines.find(l => l.tag === target);
+                    if (li) {
+                        notify(`Línea ${li.tag}: Diámetro ${li.diameter} pulgadas. Material ${li.material || 'CS'}. Schedule ${li.schedule || '40'}. ${li.components?.length || 0} componentes instalados.`);
+                    } else {
+                        notify(`No se encontró el elemento ${target}.`, true);
+                    }
+                }
+            }
+            continue;
+        }
+        
+        // === ELIMINAR ELEMENTOS ===
+        if(cmd.includes("elimina")||cmd.includes("borra")||cmd.includes("quitar")){
+            let tagMatch=raw.match(/(?:elimina|borra|quitar)\s+(\S+)/i);
+            if(!tagMatch){
+                notify("Formato incorrecto. Use: eliminar TK-01", true);
+                continue;
+            }
+            let tagTarget=tagMatch[1].toUpperCase();
+            let esLinea=cmd.includes("linea")||cmd.includes("línea");
+            let esEquipo=cmd.includes("equipo")||cmd.includes("equipos");
+            let eliminado=false;
+            if(!esLinea){
+                let initEq=db.equipos.length;
+                db.equipos=db.equipos.filter(e=>e.tag!==tagTarget);
+                if(db.equipos.length<initEq) eliminado=true;
+            }
+            if(!esEquipo){
+                let initLi=db.lines.length;
+                db.lines=db.lines.filter(l=>l.tag!==tagTarget);
+                if(db.lines.length<initLi) eliminado=true;
+            }
+            db.lines.forEach(l=>{
+                if(l.components){
+                    let initComp=l.components.length;
+                    l.components=l.components.filter(c=>c.tag!==tagTarget);
+                    if(l.components.length<initComp) eliminado=true;
+                }
+            });
+            if(eliminado){
+                notify(`Elemento ${tagTarget} eliminado del proyecto.`);
+                if(selectedEq && selectedEq.tag===tagTarget) selectedEq=null;
+                if(selectedLine && selectedLine.tag===tagTarget) selectedLine=null;
+                if(selectedComponent && selectedComponent.tag===tagTarget) selectedComponent=null;
+                render();
+            } else {
+                notify(`No se encontró el tag ${tagTarget}.`, true);
+            }
+            continue;
+        }
+        
+        // === FORMATO TÉCNICO ORIGINAL ===
+        try{ parseTechnicalCommands(raw); } catch(e){ notify("No entendí: "+raw.substring(0,50),true); }
+    }
+    render();
+}
+
+function exportToPCF(){
+    if(!db.lines.length&&!db.equipos.length){ notify("No hay datos",true); return; }
+    const nombreProyecto=document.getElementById('inputProyecto').value;
+    const nombreAutor=document.getElementById('inputAutor').value;
+    let pcf=`!PCF v7.1 - ACQUABLUE CORP\n!PROJECT "${nombreProyecto}"\n!AUTHOR "${nombreAutor}"\n!UNITS MM\n!DATE ${new Date().toISOString().slice(0,10)}\n\n`;
+    for(let l of db.lines){
+        if(!l.points3D||l.points3D.length<2) continue;
+        pcf+=`PIPE\n    COMPONENT-IDENTIFIER ${l.tag}\n    DIAMETER ${(l.diameter*25.4).toFixed(3)} MM\n    MATERIAL ${l.material||'CS'}\n    SCHEDULE ${l.schedule||'40'}\n`;
+        for(let p of l.points3D) pcf+=`    POINT ${p.x.toFixed(3)} ${p.y.toFixed(3)} ${p.z.toFixed(3)}\n`;
+        if(l.components) for(let c of l.components){
+            let pos=getPos(l,c.param);
+            if(pos) pcf+=`    ${c.type}\n        COMPONENT-IDENTIFIER ${c.tag}\n        ${c.skey?`SKEY ${c.skey}\n`:''}        END-POINT ${pos.x.toFixed(3)} ${pos.y.toFixed(3)} ${pos.z.toFixed(3)}\n    END${c.type}\n`;
+        }
+        pcf+=`ENDPIPE\n\n`;
+    }
+    for(let e of db.equipos) pcf+=`NOZZLE\n    COMPONENT-IDENTIFIER ${e.tag}\n    END-POINT ${e.x.toFixed(3)} ${e.y.toFixed(3)} ${e.z.toFixed(3)}\nENDNOZZLE\n\n`;
+    let blob=new Blob([pcf],{type:'text/plain'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url; a.download=`${nombreProyecto.replace(/\s/g, '_')}_${Date.now()}.pcf`; a.click(); URL.revokeObjectURL(url);
+    notify("PCF exportado - Acquablue Corp");
+}
+
+function importPCFFile(file){
+    let reader=new FileReader();
+    reader.onload=e=>{
+        try{
+            let text=e.target.result,lines=[],curPipe=null,curPoints=[],arr=text.split('\n');
+            for(let raw of arr){
+                let line=raw.trim();
+                if(!line||line.startsWith('!')) continue;
+                if(line==='PIPE'){ if(curPipe){ curPipe.points3D=curPoints; lines.push(curPipe); } curPipe={components:[],points3D:[]}; curPoints=[]; continue; }
+                if(line==='ENDPIPE'){ if(curPipe){ curPipe.points3D=curPoints; lines.push(curPipe); } curPipe=null; continue; }
+                if(!curPipe) continue;
+                if(line.startsWith('COMPONENT-IDENTIFIER')) curPipe.tag=line.split(/\s+/)[1];
+                else if(line.startsWith('DIAMETER')) curPipe.diameter=parseFloat(line.split(/\s+/)[1])/25.4;
+                else if(line.startsWith('MATERIAL')) curPipe.material=line.split(/\s+/)[1];
+                else if(line.startsWith('POINT')){ let m=line.match(/POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i); if(m) curPoints.push({x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])}); }
+                else if(line==='VALVE'||line==='FLANGE'||line==='ELBOW'||line==='REDUCER'){
+                    let ct=line,ctag=null,cks=null,cpos=null,j=arr.indexOf(raw)+1;
+                    while(j<arr.length){
+                        let sub=arr[j].trim();
+                        if(sub.startsWith('COMPONENT-IDENTIFIER')) ctag=sub.split(/\s+/)[1];
+                        else if(sub.startsWith('SKEY')) cks=sub.split(/\s+/)[1];
+                        else if(sub.startsWith('END-POINT')){ let m=sub.match(/END-POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i); if(m) cpos={x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])}; }
+                        else if(sub.startsWith('END'+ct)) break;
+                        j++;
+                    }
+                    if(cpos&&curPoints.length>=2){
+                        let bestT=0.5,bestD=Infinity;
+                        for(let k=0;k<curPoints.length-1;k++){
+                            let p1=curPoints[k],p2=curPoints[k+1];
+                            let dx=p2.x-p1.x,dy=p2.y-p1.y,dz=p2.z-p1.z;
+                            let l2=dx*dx+dy*dy+dz*dz;
+                            if(l2===0) continue;
+                            let t=((cpos.x-p1.x)*dx+(cpos.y-p1.y)*dy+(cpos.z-p1.z)*dz)/l2;
+                            t=Math.max(0,Math.min(1,t));
+                            let px=p1.x+t*dx,py=p1.y+t*dy,pz=p1.z+t*dz;
+                            let d=Math.hypot(cpos.x-px,cpos.y-py,cpos.z-pz);
+                            if(d<bestD){ bestD=d; bestT=(k+t)/(curPoints.length-1); }
+                        }
+                        if(!curPipe.components) curPipe.components=[];
+                        curPipe.components.push({type:ct,tag:ctag||ct+'-'+Date.now(),skey:cks,param:bestT});
+                    }
+                }
+            }
+            db.lines=lines; render(); notify(`PCF importado: ${lines.length} líneas`);
+        } catch(err){ notify("Error: "+err.message,true); }
+    };
+    reader.readAsText(file);
+}
+
+function exportarMTO(){
+    if(!db.lines.length){ notify("No hay líneas",true); return; }
+    const nombreProyecto=document.getElementById('inputProyecto').value;
+    let data=db.lines.map(l=>({
+        Proyecto: nombreProyecto,
+        Tag: l.tag,
+        Diametro_pulg: l.diameter,
+        Material: l.material || 'CS',
+        Schedule: l.schedule || '40',
+        Puntos: l.points3D?.length || 0,
+        Componentes: l.components?.length || 0
+    }));
+    let wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Tuberias');
+    XLSX.writeFile(wb, `${nombreProyecto.replace(/\s/g, '_')}_MTO_${Date.now()}.xlsx`);
+    notify("MTO exportado - Acquablue Corp");
+}
+
+async function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const nombreProyecto = document.getElementById('inputProyecto').value.toUpperCase();
+    const nombreAutor = document.getElementById('inputAutor').value.toUpperCase();
+    notify("Generando reporte técnico completo...");
+    doc.setFillColor(10, 15, 26);
+    doc.rect(0, 0, 297, 210, 'F');
+    const imgData = canvas.toDataURL('image/png');
+    doc.addImage(imgData, 'PNG', 10, 30, 277, 150);
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.text("ACQUABLUE CORP", 10, 15);
+    doc.setFontSize(12);
+    doc.text(`PROYECTO: ${nombreProyecto}`, 10, 25);
+    doc.text(`RESPONSABLE: ${nombreAutor}`, 220, 15);
+    doc.setFontSize(10);
+    doc.text(`CÓDIGO PROYECTO: ACQ-${Math.floor(Math.random()*9000)}`, 10, 32);
+    doc.text(`FECHA: ${new Date().toLocaleDateString()}`, 220, 22);
+    doc.addPage('landscape');
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, 297, 210, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(16);
+    doc.text(`RESUMEN DE EQUIPOS - ${nombreProyecto}`, 15, 20);
+    doc.setFontSize(11);
+    doc.setFillColor(35, 134, 54);
+    doc.rect(15, 30, 267, 10, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.text("TAG EQUIPO", 20, 37);
+    doc.text("TIPO", 70, 37);
+    doc.text("DIÁMETRO (mm)", 120, 37);
+    doc.text("ALTURA (mm)", 170, 37);
+    doc.text("COORDENADAS (X, Y, Z)", 220, 37);
+    let yPos = 48;
+    doc.setTextColor(0, 0, 0);
+    db.equipos.forEach((eq, index) => {
+        if (index % 2 === 0) { doc.setFillColor(240, 240, 240); doc.rect(15, yPos-6, 267, 8, 'F'); }
+        doc.text(eq.tag, 20, yPos);
+        doc.text(eq.tipo?.replace('_', ' ').toUpperCase() || 'EQUIPO', 70, yPos);
+        doc.text(`${eq.diametro || 'N/A'}`, 120, yPos);
+        doc.text(`${eq.altura || 'N/A'}`, 170, yPos);
+        doc.text(`${Math.round(eq.x)}, ${Math.round(eq.y)}, ${Math.round(eq.z)}`, 220, yPos);
+        yPos += 10;
+        if (yPos > 190) return;
+    });
+    if(db.lines.length > 0){
+        doc.addPage('landscape');
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 0, 297, 210, 'F');
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(16);
+        doc.text(`RESUMEN DE TUBERÍAS - ${nombreProyecto}`, 15, 20);
+        doc.setFontSize(11);
+        doc.setFillColor(35, 134, 54);
+        doc.rect(15, 30, 267, 10, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.text("TAG LÍNEA", 20, 37);
+        doc.text("DIÁMETRO (pulg)", 70, 37);
+        doc.text("MATERIAL", 120, 37);
+        doc.text("SCHEDULE", 170, 37);
+        doc.text("COMPONENTES", 220, 37);
+        let yPos2 = 48;
+        doc.setTextColor(0, 0, 0);
+        db.lines.forEach((line, index) => {
+            if (index % 2 === 0) { doc.setFillColor(240, 240, 240); doc.rect(15, yPos2-6, 267, 8, 'F'); }
+            doc.text(line.tag, 20, yPos2);
+            doc.text(`${line.diameter}`, 70, yPos2);
+            doc.text(line.material || 'CS', 120, yPos2);
+            doc.text(line.schedule || '40', 170, yPos2);
+            doc.text(`${line.components?.length || 0}`, 220, yPos2);
+            yPos2 += 10;
+            if (yPos2 > 190) return;
+        });
+    }
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Documento generado por Acquablue Corp - ${nombreAutor}`, 15, 200);
+    doc.text(`Fecha: ${new Date().toLocaleString()}`, 230, 200);
+    doc.save(`Reporte_${nombreProyecto.replace(/\s/g, '_')}_${Date.now()}.pdf`);
+    notify("Reporte PDF generado y descargado.");
+}
+
+function resetView() {
+    cam.scale = 0.15;
+    cam.panX = canvas.width / 2;
+    cam.panY = canvas.height / 2;
+    render();
+}
+
+function nuevoProyecto() {
+    if (confirm('¿Borrar todo el proyecto?')) {
+        db = { lines: [], equipos: [] };
+        selectedEq = null;
+        selectedLine = null;
+        selectedComponent = null;
+        selectedComponentLine = null;
+        render();
+        notify('Nuevo proyecto - Acquablue Corp');
+    }
+}
+
+function toggleVoice() {
+    voiceEnabled = !voiceEnabled;
+    const btn = document.getElementById('btnVoice');
+    btn.textContent = voiceEnabled ? "🔊 Voz: ON" : "🔇 Voz: OFF";
+    btn.style.background = voiceEnabled ? "#7c3aed" : "#4a5568";
+    notify(voiceEnabled ? "Asistente de voz activado" : "Asistente de voz desactivado");
+}
+
+function notify(msg, isErr = false) {
+    const n = document.getElementById('notification');
+    n.textContent = msg;
+    n.style.display = 'block';
+    n.style.backgroundColor = isErr ? '#da3633' : '#238636';
+    document.getElementById('statusMsg').textContent = msg;
+    if (voiceEnabled) {
+        const utterance = new SpeechSynthesisUtterance(msg);
+        utterance.lang = 'es-ES';
+        window.speechSynthesis.cancel();
+        setTimeout(() => window.speechSynthesis.speak(utterance), 50);
+    }
+    setTimeout(() => { n.style.display = 'none'; }, 5000);
+}
+
+function pick(mouseCanvas) {
+    for (let eq of db.equipos) {
+        let p = proj(eq);
+        if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < 30 * cam.scale) {
+            return { type: 'equipment', obj: eq };
+        }
+    }
+    for (let line of db.lines) {
+        if (line.components) {
+            for (let comp of line.components) {
+                let pos = getPos(line, comp.param);
+                if (pos) {
+                    let p = proj(pos);
+                    if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < 20 * cam.scale) {
+                        return { type: 'component', obj: comp, line: line };
+                    }
+                }
+            }
+        }
+        if (!line.points3D || line.points3D.length < 2) continue;
+        let projPoints = line.points3D.map(p => proj(p));
+        for (let i = 0; i < projPoints.length - 1; i++) {
+            let p1 = projPoints[i], p2 = projPoints[i+1];
+            let dist = pointToSegmentDistance(mouseCanvas, p1, p2);
+            if (dist < 15 * cam.scale) {
+                return { type: 'line', obj: line };
+            }
+        }
+    }
+    return null;
+}
+
+function pointToSegmentDistance(p, a, b) {
+    let ax = p.x - a.x, ay = p.y - a.y;
+    let bx = b.x - a.x, by = b.y - a.y;
+    let dot = ax * bx + ay * by;
+    let len2 = bx * bx + by * by;
+    if (len2 === 0) return Math.hypot(ax, ay);
+    let t = dot / len2;
+    t = Math.max(0, Math.min(1, t));
+    let projX = a.x + t * bx, projY = a.y + t * by;
+    return Math.hypot(p.x - projX, p.y - projY);
+}
+
+function init() {
+    canvas = document.getElementById('isoCanvas');
+    ctx = canvas.getContext('2d');
+    
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - 140;
+        resetView();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+    
+    canvas.addEventListener('mousedown', (e) => {
+        drag = true;
+        last = { x: e.clientX, y: e.clientY };
+        canvas.style.cursor = 'grabbing';
+    });
+    
+    window.addEventListener('mousemove', (e) => {
+        if (isDraggingEq && selectedEq) {
+            let rect = canvas.getBoundingClientRect();
+            let mx = (e.clientX - rect.left) * canvas.width / rect.width;
+            let my = (e.clientY - rect.top) * canvas.height / rect.height;
+            selectedEq.x = (mx - dragOffset.x - cam.panX) / (cam.scale * 0.866);
+            selectedEq.z = (my - dragOffset.y - cam.panY) / (cam.scale * 0.5);
+            if (selectedEq.y < selectedEq.altura / 2) {
+                selectedEq.y = selectedEq.altura / 2;
+            }
+            updateCoordinatesDisplay(selectedEq);
+            render();
+        } else if (drag) {
+            let dx = e.clientX - last.x;
+            let dy = e.clientY - last.y;
+            if (Math.abs(cam.panX + dx) < 4000) cam.panX += dx;
+            if (Math.abs(cam.panY + dy) < 4000) cam.panY += dy;
+            last = { x: e.clientX, y: e.clientY };
+            render();
+        }
+    });
+    
+    window.addEventListener('mouseup', () => {
+        drag = false;
+        isDraggingEq = false;
+        selectedEq = null;
+        canvas.style.cursor = 'grab';
+    });
+    
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        cam.scale *= e.deltaY > 0 ? 0.9 : 1.1;
+        cam.scale = Math.min(Math.max(0.02, cam.scale), 0.8);
+        render();
+    });
+    
+    canvas.addEventListener('click', (e) => {
+        let rect = canvas.getBoundingClientRect();
+        let mouseCanvas = {
+            x: (e.clientX - rect.left) * canvas.width / rect.width,
+            y: (e.clientY - rect.top) * canvas.height / rect.height
+        };
+        let picked = pick(mouseCanvas);
+        if (picked) {
+            if (e.shiftKey) {
+                notify(`Seleccionado ${picked.type}`);
+            } else {
+                if (picked.type === 'line') {
+                    selectedLine = picked.obj;
+                    selectedEq = null;
+                    selectedComponent = null;
+                    notify(`Línea ${picked.obj.tag} seleccionada`);
+                } else if (picked.type === 'component') {
+                    selectedComponent = picked.obj;
+                    selectedComponentLine = picked.line;
+                    selectedEq = null;
+                    selectedLine = null;
+                    notify(`Componente ${picked.obj.tag} seleccionado`);
+                } else if (picked.type === 'equipment') {
+                    selectedEq = picked.obj;
+                    selectedLine = null;
+                    selectedComponent = null;
+                    notify(`Equipo ${picked.obj.tag} seleccionado`);
+                    updateCoordinatesDisplay(selectedEq);
+                }
+                render();
+            }
+        } else if (!e.shiftKey) {
+            selectedEq = null;
+            selectedLine = null;
+            selectedComponent = null;
+            selectedComponentLine = null;
+            render();
+        }
+    });
+    
+    window.addEventListener('keydown', (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+            if (selectedEq) {
+                if (confirm(`¿Desea eliminar el equipo ${selectedEq.tag}?`)) {
+                    db.equipos = db.equipos.filter(eq => eq !== selectedEq);
+                    selectedEq = null;
+                    notify(`Equipo eliminado.`);
+                    render();
+                }
+                e.preventDefault();
+                return;
+            }
+            if (selectedLine) {
+                if (confirm(`¿Desea eliminar la línea ${selectedLine.tag}?`)) {
+                    db.lines = db.lines.filter(l => l !== selectedLine);
+                    selectedLine = null;
+                    notify(`Línea eliminada.`);
+                    render();
+                }
+                e.preventDefault();
+                return;
+            }
+            if (selectedComponent && selectedComponentLine) {
+                if (confirm(`¿Desea eliminar el componente ${selectedComponent.tag}?`)) {
+                    if (selectedComponentLine.components) {
+                        selectedComponentLine.components = selectedComponentLine.components.filter(c => c !== selectedComponent);
+                    }
+                    selectedComponent = null;
+                    selectedComponentLine = null;
+                    notify(`Componente eliminado.`);
+                    render();
+                }
+                e.preventDefault();
+                return;
+            }
+            if (!selectedEq && !selectedLine && !selectedComponent) {
+                notify("Seleccione un elemento para eliminar.", true);
+            }
+        }
+    });
+    
+    initDragEvents();
+    
+    document.getElementById('btnNew').onclick = nuevoProyecto;
+    document.getElementById('btnExportPCF').onclick = exportToPCF;
+    document.getElementById('btnImportPCF').onclick = () => {
+        let inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.pcf';
+        inp.onchange = e => importPCFFile(e.target.files[0]);
+        inp.click();
+    };
+    document.getElementById('btnCommand').onclick = () => document.getElementById('commandPanel').style.display = 'block';
+    document.getElementById('closeCommand').onclick = () => document.getElementById('commandPanel').style.display = 'none';
+    document.getElementById('runCommands').onclick = () => {
+        parseCommands(document.getElementById('commandText').value);
+        document.getElementById('commandPanel').style.display = 'none';
+        document.getElementById('commandText').value = '';
+    };
+    document.getElementById('btnMTO').onclick = exportarMTO;
+    document.getElementById('btnPDF').onclick = exportPDF;
+    document.getElementById('btnReset').onclick = resetView;
+    document.getElementById('btnVoice').onclick = toggleVoice;
+    
+    db.equipos.push({ tag: 'TK-01', x: 2000, y: 1250, z: 0, tipo: 'tanque_v', diametro: 2400, altura: 2500 });
+    db.lines.push({
+        tag: 'L-001',
+        diameter: 4,
+        material: 'CS',
+        schedule: '40',
+        points3D: [{ x: 0, y: 0, z: 0 }, { x: 5000, y: 0, z: 0 }],
+        components: []
+    });
+    
+    render();
+    notify("Acquablue Corp SmartFlow Pro v7.1 - Ing. Osnay Romero");
+}
+
+init();
+</script>
+</body>
+</html>
