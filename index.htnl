@@ -1,0 +1,865 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Acquablue Corp | SmartFlow Pro - Ing. Osnay Romero</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Roboto,sans-serif;background:#0a0f1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{background:#161b22;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #30363d;align-items:center}
+button{padding:8px 14px;border:none;border-radius:6px;font-weight:bold;cursor:pointer;background:#21262d;color:#e0e0e0;transition:0.2s;font-size:13px}
+button:hover{background:#2c313a}
+.btn-primary{background:#238636;color:white}
+.btn-warning{background:#d29922;color:#1f1f1f}
+.btn-ai{background:linear-gradient(45deg,#7c3aed,#c084fc);color:white}
+.canvas-container{flex:1;position:relative;background:#0a0f1a;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab}
+canvas:active{cursor:grabbing}
+.command-panel{position:fixed;left:20px;bottom:20px;width:450px;background:#1e1e2e;border-radius:12px;padding:16px;border:1px solid #3a3a4a;z-index:1000;display:none}
+textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:8px;font-family:monospace}
+.notification{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #238636;padding:10px 20px;border-radius:40px;color:white;z-index:2000;display:none}
+.status-bar{background:#0f0f17;padding:4px 12px;font-size:12px;border-top:1px solid #30363d;display:flex;justify-content:space-between}
+.compass{position:fixed;bottom:20px;right:20px;width:80px;height:80px;background:rgba(0,0,0,0.5);border-radius:8px;pointer-events:none;z-index:100}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="toolbar">
+<button id="btnNew" class="btn-primary">Nuevo</button>
+<button id="btnExportPCF">Exportar PCF</button>
+<button id="btnImportPCF">Importar PCF</button>
+<button id="btnCommand">Comandos</button>
+<button id="btnMTO">MTO</button>
+<button id="btnReset">Reset Vista</button>
+</div>
+<div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
+<div class="status-bar" role="status" aria-live="polite" aria-label="Barra de estado">
+    <span id="statusMsg" aria-label="Estado actual">Acquablue Corp - SmartFlow Pro v5.0 | Ing. Osnay Romero</span>
+    <span aria-label="Ayuda">Arrastrar=mover | Rueda=zoom | Shift+clic=selección</span>
+</div>
+<div id="commandPanel" class="command-panel">
+<h3>Comandos - Ing. Osnay Romero</h3>
+<textarea id="commandText" rows="4" placeholder="crea un tanque vertical llamado TK-01&#10;crea una bomba B-01&#10;conecta TK-01 con B-01 con tubo de 6 pulgadas&#10;dime detalles de L-TK-01-B-01"></textarea>
+<button id="runCommands" class="btn-primary">Ejecutar</button>
+<button id="closeCommand">Cerrar</button>
+</div>
+<div id="notification" class="notification" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1" aria-label="Notificaciones del sistema"></div>
+<div id="compass" class="compass"></div>
+
+<script>
+// ==================== MODELO ====================
+let db = {
+    lines: [],
+    equipos: [],
+    components: []
+};
+
+let cam = { scale: 0.15, panX: 0, panY: 0 };
+let drag = false, last = { x: 0, y: 0 };
+let canvas, ctx;
+
+// ==================== SKEY MAP ====================
+const SKEY_MAP = {
+    'VBAL': { type: 'VALVE', shape: 'gate', desc: 'Válvula de bola' },
+    'VCHK': { type: 'VALVE', shape: 'check', desc: 'Válvula check' },
+    'EL90': { type: 'ELBOW', shape: 'elbow', angle: 90, desc: 'Codo 90°' },
+    'EL45': { type: 'ELBOW', shape: 'elbow', angle: 45, desc: 'Codo 45°' },
+    'RCC': { type: 'REDUCER', shape: 'reducer', desc: 'Reducción concéntrica' },
+    'FLWN': { type: 'FLANGE', shape: 'flange', desc: 'Brida cuello soldar' }
+};
+
+function getComp(skey) {
+    if (!skey) return null;
+    let upper = skey.toUpperCase();
+    for (let [code, info] of Object.entries(SKEY_MAP)) {
+        if (upper.includes(code)) return { ...info, skey: code };
+    }
+    return null;
+}
+
+// ==================== PROYECCIÓN ISOMÉTRICA (30°) ====================
+function proj(p) {
+    let c30 = Math.cos(30 * Math.PI / 180);
+    let s30 = Math.sin(30 * Math.PI / 180);
+    return {
+        x: (p.x - p.z) * c30 * cam.scale + cam.panX,
+        y: (p.x + p.z) * s30 * cam.scale - p.y * cam.scale + cam.panY
+    };
+}
+
+// ==================== UTILIDADES ====================
+function getPos(line, t) {
+    let pts = line.points3D;
+    if (!pts || pts.length < 2) return null;
+    if (t <= 0) return pts[0];
+    if (t >= 1) return pts[pts.length - 1];
+    let idx = Math.floor(t * (pts.length - 1));
+    let seg = (t * (pts.length - 1)) - idx;
+    let p1 = pts[idx], p2 = pts[idx + 1];
+    return {
+        x: p1.x + seg * (p2.x - p1.x),
+        y: p1.y + seg * (p2.y - p1.y),
+        z: p1.z + seg * (p2.z - p1.z)
+    };
+}
+
+function getDirection(line, t) {
+    let pts = line.points3D;
+    if (!pts || pts.length < 2) return 0;
+    let idx = Math.min(Math.floor(t * (pts.length - 1)), pts.length - 2);
+    let p1 = pts[idx], p2 = pts[idx + 1];
+    return Math.atan2(p2.y - p1.y, p2.x - p1.x);
+}
+
+// ==================== BRÚJULA ====================
+function drawCompass() {
+    let size = 70;
+    let x = canvas.width - size - 20;
+    let y = 20;
+    
+    ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.font = '10px monospace';
+    
+    ctx.beginPath();
+    ctx.arc(x + size/2, y + size/2, size/2, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#3a6ea5';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x + size/2, y + 8);
+    ctx.lineTo(x + size/2 - 6, y + 22);
+    ctx.lineTo(x + size/2 + 6, y + 22);
+    ctx.fillStyle = '#ff4444';
+    ctx.fill();
+    ctx.fillStyle = 'white';
+    ctx.fillText('N', x + size/2 - 4, y + 20);
+    
+    ctx.fillStyle = '#44ff44';
+    ctx.fillText('S', x + size/2 - 4, y + size - 8);
+    
+    ctx.fillStyle = '#4444ff';
+    ctx.fillText('E', x + size - 15, y + size/2 + 4);
+    
+    ctx.fillStyle = '#ffaa44';
+    ctx.fillText('O', x + 8, y + size/2 + 4);
+    
+    ctx.restore();
+}
+
+// ==================== MARCA DE AGUA ====================
+function drawWatermark() {
+    ctx.save();
+    ctx.font = '9px monospace';
+    ctx.fillStyle = 'rgba(100,100,100,0.3)';
+    ctx.fillText('Acquablue Corp | Ing. Osnay Romero', canvas.width - 210, canvas.height - 8);
+    ctx.restore();
+}
+
+// ==================== LÍNEAS GUÍA DE ELEVACIÓN ====================
+function drawElevationGuides() {
+    let bounds = { left: 0, right: canvas.width, top: 0, bottom: canvas.height };
+    let step = 1000;
+    
+    ctx.save();
+    ctx.beginPath();
+    ctx.strokeStyle = '#2a4a6a';
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([5, 5]);
+    
+    for (let y = 0; y < 10000; y += step) {
+        let p1 = proj({ x: 0, y: y, z: 0 });
+        let p2 = proj({ x: 10000, y: y, z: 0 });
+        
+        if (p1.x >= bounds.left && p1.x <= bounds.right && p2.x >= bounds.left && p2.x <= bounds.right) {
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+            
+            ctx.fillStyle = '#3a6ea5';
+            ctx.font = '9px monospace';
+            ctx.fillText(`${y/1000}m`, p1.x + 5, p1.y - 3);
+        }
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+}
+
+// ==================== DETECCIÓN AUTOMÁTICA DE CODOS ====================
+function detectAndAddElbows(line) {
+    let pts = line.points3D;
+    if (!pts || pts.length < 3) return;
+    
+    for (let i = 1; i < pts.length - 1; i++) {
+        let p1 = pts[i-1], p2 = pts[i], p3 = pts[i+1];
+        
+        let v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+        let v2 = { x: p3.x - p2.x, y: p3.y - p2.y, z: p3.z - p2.z };
+        
+        let dot = v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
+        let mag1 = Math.hypot(v1.x, v1.y, v1.z);
+        let mag2 = Math.hypot(v2.x, v2.y, v2.z);
+        
+        if (mag1 > 0 && mag2 > 0) {
+            let angle = Math.acos(Math.min(1, Math.max(-1, dot / (mag1 * mag2)))) * 180 / Math.PI;
+            
+            if (angle > 15 && angle < 175) {
+                let elbowTag = `EL-${line.tag}-${i}`;
+                let elbowParam = i / (pts.length - 1);
+                let elbowSkey = angle > 80 ? 'EL90' : 'EL45';
+                
+                let exists = line.components?.some(c => 
+                    c.type === 'ELBOW' && Math.abs(c.param - elbowParam) < 0.05
+                );
+                
+                if (!exists) {
+                    if (!line.components) line.components = [];
+                    line.components.push({
+                        type: 'ELBOW',
+                        tag: elbowTag,
+                        skey: elbowSkey,
+                        param: elbowParam,
+                        angle: angle
+                    });
+                }
+            }
+        }
+    }
+}
+
+// ==================== RENDER ====================
+function render() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    
+    drawElevationGuides();
+    
+    for (let line of db.lines) {
+        if (!line.points3D || line.points3D.length < 2) continue;
+        ctx.beginPath();
+        let pr = line.points3D.map(p => proj(p));
+        ctx.moveTo(pr[0].x, pr[0].y);
+        for (let i = 1; i < pr.length; i++) ctx.lineTo(pr[i].x, pr[i].y);
+        ctx.strokeStyle = '#58a6ff';
+        ctx.lineWidth = Math.max(2, (line.diameter || 6) * cam.scale / 6);
+        ctx.stroke();
+        
+        if (line.components) {
+            for (let comp of line.components) {
+                let pos = getPos(line, comp.param);
+                if (pos) {
+                    let p = proj(pos);
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    let angle = getDirection(line, comp.param);
+                    ctx.rotate(angle);
+                    ctx.beginPath();
+                    if (comp.type === 'VALVE') {
+                        ctx.moveTo(-8, -5);
+                        ctx.lineTo(0, 0);
+                        ctx.lineTo(8, -5);
+                        ctx.lineTo(0, 8);
+                        ctx.closePath();
+                        ctx.fillStyle = '#ffaa33';
+                        ctx.fill();
+                        ctx.stroke();
+                    } else if (comp.type === 'FLANGE') {
+                        ctx.rect(-6, -4, 12, 8);
+                        ctx.fillStyle = '#cccc99';
+                        ctx.fill();
+                        ctx.stroke();
+                    } else if (comp.type === 'ELBOW') {
+                        ctx.arc(0, 0, 8, 0, Math.PI / 2);
+                        ctx.lineTo(8, 0);
+                        ctx.fillStyle = '#88aaff';
+                        ctx.fill();
+                        ctx.stroke();
+                    } else if (comp.type === 'REDUCER') {
+                        ctx.moveTo(-8, -4);
+                        ctx.lineTo(0, -2);
+                        ctx.lineTo(0, 2);
+                        ctx.lineTo(-8, 4);
+                        ctx.closePath();
+                        ctx.fillStyle = '#bb9966';
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                    if (comp.skey) {
+                        ctx.font = '7px monospace';
+                        ctx.fillStyle = 'white';
+                        ctx.fillText(comp.skey, -6, -6);
+                    }
+                    ctx.restore();
+                }
+            }
+        }
+    }
+    
+    // Dibujar equipos con formas industriales
+    for (let eq of db.equipos) {
+        let p = proj(eq);
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#58a6ff';
+        
+        switch(eq.tipo) {
+            case 'tanque_v':
+                ctx.ellipse(p.x, p.y - 15, 10, 5, 0, 0, 2 * Math.PI);
+                ctx.rect(p.x - 10, p.y - 15, 20, 30);
+                ctx.ellipse(p.x, p.y + 15, 10, 5, 0, 0, 2 * Math.PI);
+                ctx.fillStyle = '#3498db';
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case 'tanque_h':
+                ctx.rect(p.x - 20, p.y - 10, 40, 20);
+                ctx.arc(p.x - 20, p.y, 10, Math.PI/2, 3*Math.PI/2);
+                ctx.arc(p.x + 20, p.y, 10, 3*Math.PI/2, Math.PI/2);
+                ctx.fillStyle = '#3498db';
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case 'intercambiador':
+                ctx.arc(p.x, p.y, 15, 0, 2 * Math.PI);
+                ctx.moveTo(p.x - 10, p.y - 10);
+                ctx.lineTo(p.x + 10, p.y + 10);
+                ctx.moveTo(p.x + 10, p.y - 10);
+                ctx.lineTo(p.x - 10, p.y + 10);
+                ctx.fillStyle = '#3498db';
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case 'torre_enfriamiento':
+                ctx.moveTo(p.x - 20, p.y + 20);
+                ctx.lineTo(p.x + 20, p.y + 20);
+                ctx.lineTo(p.x + 15, p.y - 20);
+                ctx.lineTo(p.x - 15, p.y - 20);
+                ctx.closePath();
+                ctx.fillStyle = '#3498db';
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case 'lc':
+            case 'pc':
+            case 'tc':
+            case 'instrumento':
+                ctx.arc(p.x, p.y, 8, 0, 2 * Math.PI);
+                ctx.moveTo(p.x - 8, p.y);
+                ctx.lineTo(p.x + 8, p.y);
+                ctx.fillStyle = '#ffaa44';
+                ctx.fill();
+                ctx.stroke();
+                break;
+            default:
+                ctx.arc(p.x, p.y, 12, 0, 2 * Math.PI);
+                ctx.moveTo(p.x - 12, p.y);
+                ctx.lineTo(p.x + 12, p.y);
+                if (eq.tipo === 'bomba') {
+                    ctx.fillStyle = '#e67e22';
+                } else {
+                    ctx.fillStyle = '#3498db';
+                }
+                ctx.fill();
+                ctx.stroke();
+        }
+        
+        ctx.fillStyle = 'white';
+        ctx.font = `${Math.max(10, 12 * cam.scale)}px Arial`;
+        ctx.fillText(eq.tag, p.x + 12, p.y + 4);
+    }
+    
+    drawCompass();
+    drawWatermark();
+    
+    ctx.restore();
+}
+
+// ==================== VALIDACIÓN DE INGENIERÍA ====================
+function validarIngenieria(l) {
+    if ((l.tag.includes("BOMBA") || l.tag.includes("P-")) && l.diameter < 3) {
+        notify("⚠️ Alerta: Diámetro de succión posiblemente pequeño para bomba industrial. Recomendado mínimo 3 pulgadas.", true);
+    }
+    if (l.tag.includes("TORRE") && l.diameter < 8) {
+        notify("⚠️ Aviso: Línea de torre de enfriamiento requiere mayor diámetro. Recomendado mínimo 8 pulgadas.", true);
+    }
+    if (l.tag.includes("INTERCAMBIADOR") && l.diameter < 4) {
+        notify("⚠️ Aviso: Diámetro pequeño para intercambiador de calor. Verifique caudal requerido.", true);
+    }
+    if ((l.tag.includes("TANQUE") || l.tag.includes("TK")) && l.diameter < 2) {
+        notify("⚠️ Aviso: Diámetro de conexión pequeño para tanque de almacenamiento.", true);
+    }
+}
+
+// ==================== COMANDOS ====================
+function applyCommand(cmd) {
+    if (cmd.type === 'line') {
+        db.lines.push(cmd);
+        detectAndAddElbows(cmd);
+        render();
+        notify("Línea " + cmd.tag + " creada");
+    } else if (cmd.type === 'equipment') {
+        db.equipos.push(cmd);
+        render();
+        notify("Equipo " + cmd.tag + " creado");
+    } else if (cmd.type === 'component') {
+        let line = db.lines.find(l => l.tag === cmd.lineTag);
+        if (line) {
+            if (!line.components) line.components = [];
+            line.components.push(cmd.comp);
+            render();
+            notify("Componente " + cmd.comp.tag + " agregado a " + cmd.lineTag);
+        } else {
+            notify("Línea " + cmd.lineTag + " no encontrada", true);
+        }
+    }
+}
+
+function parseTechnicalCommands(raw) {
+    let m = raw.match(/line\s+(\S+)\s+diameter\s+(\d+(?:\.\d+)?)\s+material\s+(\S+)\s+schedule\s+(\S+)\s+points\s+\((-?\d+),(-?\d+),(-?\d+)\)\s+\((-?\d+),(-?\d+),(-?\d+)\)/i);
+    if (m) {
+        applyCommand({
+            type: 'line',
+            tag: m[1],
+            diameter: parseFloat(m[2]),
+            material: m[3],
+            schedule: m[4],
+            points3D: [
+                { x: parseFloat(m[5]), y: parseFloat(m[6]), z: parseFloat(m[7]) },
+                { x: parseFloat(m[8]), y: parseFloat(m[9]), z: parseFloat(m[10]) }
+            ],
+            components: []
+        });
+        return;
+    }
+    
+    m = raw.match(/equipment\s+(\S+)\s+at\s+\((-?\d+),(-?\d+),(-?\d+)\)/i);
+    if (m) {
+        applyCommand({
+            type: 'equipment',
+            tag: m[1],
+            x: parseFloat(m[2]),
+            y: parseFloat(m[3]),
+            z: parseFloat(m[4]),
+            tipo: 'tanque'
+        });
+        return;
+    }
+    
+    m = raw.match(/component\s+(\S+)\s+(\S+)\s+at\s+(\S+)\s+param\s+(\d+(?:\.\d+)?)(?:\s+skey\s+(\S+))?(?:\s+material\s+(\S+))?/i);
+    if (m) {
+        let tipo = m[1].toUpperCase();
+        let tag = m[2];
+        let lineaTag = m[3];
+        let param = parseFloat(m[4]);
+        let skey = m[5] || null;
+        let material = m[6] || null;
+        let comp = { type: tipo, tag: tag, param: param };
+        if (skey) comp.skey = skey;
+        if (material) comp.material = material;
+        applyCommand({ type: 'component', comp: comp, lineTag: lineaTag });
+        return;
+    }
+    
+    throw new Error("Formato no reconocido");
+}
+
+function parseCommands(text) {
+    let lines = text.split('\n');
+    for (let raw of lines) {
+        let cmd = raw.trim().toLowerCase();
+        if (!cmd || cmd.startsWith('//')) continue;
+
+        // 1. LÓGICA DE EQUIPOS (Reconocimiento de todos los nuevos tipos)
+        let tipo = "";
+        if (cmd.includes("intercambiador")) tipo = "intercambiador";
+        else if (cmd.includes("compresor")) tipo = "compresor";
+        else if (cmd.includes("filtro")) tipo = "filtro";
+        else if (cmd.includes("torre de enfriamiento")) tipo = "torre_enfriamiento";
+        else if (cmd.includes("tanque vertical")) tipo = "tanque_v";
+        else if (cmd.includes("tanque horizontal")) tipo = "tanque_h";
+        else if (cmd.includes("control de nivel")) tipo = "lc";
+        else if (cmd.includes("control de presion")) tipo = "pc";
+        else if (cmd.includes("control de temperatura")) tipo = "tc";
+        else if (cmd.includes("bomba")) tipo = "bomba";
+        else if (cmd.includes("tanque")) tipo = "tanque";
+
+        if (tipo !== "") {
+            let tagMatch = cmd.match(/(?:llamado|tag|equipo)\s+([a-z0-9-]+)/i) || cmd.match(/\s([a-z0-9-]+)$/i);
+            let tag = tagMatch ? tagMatch[1].toUpperCase() : `${tipo.toUpperCase()}-${Math.floor(Math.random()*100)}`;
+            let ref = db.equipos.find(e => cmd.includes(e.tag.toLowerCase()));
+            let coords = ref ? { x: ref.x + 2000, y: ref.y, z: ref.z } : { x: 0, y: 0, z: 0 };
+            applyCommand({ type: 'equipment', tag: tag, ...coords, tipo: tipo });
+            continue;
+        }
+
+        // 2. ENRUTAMIENTO ORTOGONAL INTELIGENTE (X -> Z -> Y)
+        if (cmd.includes("conecta") || cmd.includes("une")) {
+            let enc = db.equipos.filter(e => cmd.includes(e.tag.toLowerCase()));
+            if (enc.length >= 2) {
+                let e1 = enc[0], e2 = enc[1];
+                let dMatch = cmd.match(/(\d+)\s+pulgadas/);
+                let diam = dMatch ? parseFloat(dMatch[1]) : 4;
+                
+                let puntos = [
+                    { x: e1.x, y: e1.y, z: e1.z },
+                    { x: e2.x, y: e1.y, z: e1.z },
+                    { x: e2.x, y: e1.y, z: e2.z },
+                    { x: e2.x, y: e2.y, z: e2.z }
+                ];
+
+                let linea = { 
+                    type: 'line', 
+                    tag: `L-${e1.tag}-${e2.tag}`, 
+                    diameter: diam, 
+                    material: 'CS', 
+                    schedule: '40',
+                    points3D: puntos, 
+                    components: [] 
+                };
+                applyCommand(linea);
+                validarIngenieria(linea);
+                continue;
+            }
+        }
+        
+        // 3. AUDITORÍA (Reporte para VoiceOver)
+        if (cmd.includes("dime") || cmd.includes("detalles") || cmd.includes("revisa")) {
+            let line = db.lines.find(l => cmd.includes(l.tag.toLowerCase()));
+            if (line) {
+                let nComp = line.components ? line.components.length : 0;
+                notify(`Reporte Acquablue: Línea ${line.tag}, diámetro ${line.diameter} pulgadas. Tiene ${nComp} accesorios.`);
+                continue;
+            }
+        }
+        
+        // 4. FORMATO TÉCNICO ORIGINAL (respaldo)
+        try { 
+            parseTechnicalCommands(raw); 
+        } catch(e) { 
+            notify("No entendí el comando. Intente: 'Crea un tanque vertical llamado TK1' o 'Conecta TK1 con B-01'", true); 
+        }
+    }
+}
+
+// ==================== EXPORTAR PCF ====================
+function exportToPCF() {
+    if (!db.lines.length && !db.equipos.length) {
+        notify("No hay datos para exportar", true);
+        return;
+    }
+    
+    let pcf = `!PCF v7.0 - Acquablue Corp SmartFlow Pro
+!AUTHOR "Ing. Osnay Romero"
+!COMPANY "Acquablue Corp"
+!UNITS MM
+!DATE ${new Date().toISOString().slice(0,10)}
+\n`;
+    
+    for (let line of db.lines) {
+        if (!line.points3D || line.points3D.length < 2) continue;
+        
+        pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n`;
+        pcf += `    DIAMETER ${(line.diameter * 25.4).toFixed(3)} MM\n`;
+        pcf += `    MATERIAL ${line.material || 'CS'}\n`;
+        pcf += `    SCHEDULE ${line.schedule || '40'}\n`;
+        
+        for (let p of line.points3D) {
+            pcf += `    POINT ${p.x.toFixed(3)} ${p.y.toFixed(3)} ${p.z.toFixed(3)}\n`;
+        }
+        
+        if (line.components) {
+            for (let comp of line.components) {
+                let pos = getPos(line, comp.param);
+                if (!pos) continue;
+                pcf += `    ${comp.type}\n`;
+                pcf += `        COMPONENT-IDENTIFIER ${comp.tag}\n`;
+                if (comp.skey) pcf += `        SKEY ${comp.skey}\n`;
+                pcf += `        END-POINT ${pos.x.toFixed(3)} ${pos.y.toFixed(3)} ${pos.z.toFixed(3)}\n`;
+                pcf += `    END${comp.type}\n`;
+            }
+        }
+        pcf += `ENDPIPE\n\n`;
+    }
+    
+    for (let eq of db.equipos) {
+        pcf += `NOZZLE\n    COMPONENT-IDENTIFIER ${eq.tag}\n`;
+        pcf += `    END-POINT ${eq.x.toFixed(3)} ${eq.y.toFixed(3)} ${eq.z.toFixed(3)}\n`;
+        pcf += `ENDNOZZLE\n\n`;
+    }
+    
+    let blob = new Blob([pcf], { type: 'text/plain' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url;
+    a.download = `Acquablue_${Date.now()}.pcf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    notify("PCF exportado correctamente - Acquablue Corp");
+}
+
+// ==================== IMPORTAR PCF ====================
+function importPCFFile(file) {
+    let reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            let text = e.target.result;
+            let lines = [];
+            let equipos = [];
+            let currentPipe = null;
+            let currentPoints = [];
+            
+            let lineArray = text.split('\n');
+            for (let raw of lineArray) {
+                let line = raw.trim();
+                if (!line || line.startsWith('!')) continue;
+                
+                if (line === 'PIPE') {
+                    if (currentPipe) {
+                        currentPipe.points3D = currentPoints;
+                        lines.push(currentPipe);
+                    }
+                    currentPipe = { components: [], points3D: [] };
+                    currentPoints = [];
+                    continue;
+                }
+                if (line === 'ENDPIPE') {
+                    if (currentPipe) {
+                        currentPipe.points3D = currentPoints;
+                        lines.push(currentPipe);
+                    }
+                    currentPipe = null;
+                    continue;
+                }
+                if (!currentPipe) continue;
+                
+                if (line.startsWith('COMPONENT-IDENTIFIER')) {
+                    currentPipe.tag = line.split(/\s+/)[1];
+                } else if (line.startsWith('DIAMETER')) {
+                    let diamMM = parseFloat(line.split(/\s+/)[1]);
+                    currentPipe.diameter = diamMM / 25.4;
+                } else if (line.startsWith('MATERIAL')) {
+                    currentPipe.material = line.split(/\s+/)[1];
+                } else if (line.startsWith('SCHEDULE')) {
+                    currentPipe.schedule = line.split(/\s+/)[1];
+                } else if (line.startsWith('POINT')) {
+                    let match = line.match(/POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i);
+                    if (match) {
+                        currentPoints.push({
+                            x: parseFloat(match[1]),
+                            y: parseFloat(match[2]),
+                            z: parseFloat(match[3])
+                        });
+                    }
+                } else if (line === 'VALVE' || line === 'FLANGE' || line === 'ELBOW' || line === 'REDUCER') {
+                    let compType = line;
+                    let compTag = null;
+                    let compSkey = null;
+                    let compPos = null;
+                    
+                    let j = lineArray.indexOf(raw) + 1;
+                    while (j < lineArray.length) {
+                        let subLine = lineArray[j].trim();
+                        if (subLine.startsWith('COMPONENT-IDENTIFIER')) {
+                            compTag = subLine.split(/\s+/)[1];
+                        } else if (subLine.startsWith('SKEY')) {
+                            compSkey = subLine.split(/\s+/)[1];
+                        } else if (subLine.startsWith('END-POINT')) {
+                            let match = subLine.match(/END-POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i);
+                            if (match) {
+                                compPos = { x: parseFloat(match[1]), y: parseFloat(match[2]), z: parseFloat(match[3]) };
+                            }
+                        } else if (subLine.startsWith('END' + compType)) {
+                            break;
+                        }
+                        j++;
+                    }
+                    
+                    if (compPos && currentPoints.length >= 2) {
+                        let bestT = 0.5;
+                        let bestDist = Infinity;
+                        for (let k = 0; k < currentPoints.length - 1; k++) {
+                            let p1 = currentPoints[k], p2 = currentPoints[k + 1];
+                            let dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z;
+                            let len2 = dx * dx + dy * dy + dz * dz;
+                            if (len2 === 0) continue;
+                            let t = ((compPos.x - p1.x) * dx + (compPos.y - p1.y) * dy + (compPos.z - p1.z) * dz) / len2;
+                            t = Math.max(0, Math.min(1, t));
+                            let px = p1.x + t * dx, py = p1.y + t * dy, pz = p1.z + t * dz;
+                            let dist = Math.hypot(compPos.x - px, compPos.y - py, compPos.z - pz);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestT = (k + t) / (currentPoints.length - 1);
+                            }
+                        }
+                        
+                        if (!currentPipe.components) currentPipe.components = [];
+                        currentPipe.components.push({
+
+                            type: compType,
+                            tag: compTag || compType + '-' + Date.now(),
+                            skey: compSkey,
+                            param: bestT
+                        });
+                    }
+                }
+            }
+            
+            db.lines = lines;
+            db.equipos = equipos;
+            render();
+            notify(`PCF importado: ${lines.length} líneas - Acquablue Corp`);
+        } catch (err) {
+            notify("Error al importar PCF: " + err.message, true);
+        }
+    };
+    reader.readAsText(file);
+}
+
+// ==================== NOTIFICACIÓN CON ACCESIBILIDAD ====================
+function notify(msg, isErr = false) {
+    const n = document.getElementById('notification');
+    n.textContent = msg;
+    n.style.display = 'block';
+    n.style.backgroundColor = isErr ? '#da3633' : '#238636';
+    
+    // VoiceOver leerá esto automáticamente por el aria-live="assertive"
+    document.getElementById('statusMsg').textContent = msg;
+    document.getElementById('statusMsg').setAttribute('aria-label', msg);
+    
+    // Forzamos un ligero retraso para que el lector de pantalla no se salte el mensaje
+    setTimeout(() => { 
+        n.focus(); 
+        // Anunciar explícitamente para VoiceOver
+        n.setAttribute('aria-label', msg);
+    }, 100);
+    
+    // Auto-ocultar después de 5 segundos
+    setTimeout(() => { 
+        n.style.display = 'none'; 
+        n.setAttribute('aria-label', '');
+    }, 5000);
+}
+
+// ==================== MTO EXPORT ====================
+function exportarMTO() {
+    if (!db.lines.length) {
+        notify("No hay líneas para exportar", true);
+        return;
+    }
+    let data = db.lines.map(l => ({
+        Tag: l.tag,
+        Diametro_pulg: l.diameter,
+        Material: l.material || 'CS',
+        Schedule: l.schedule || '40',
+        Puntos: l.points3D ? l.points3D.length : 0,
+        Componentes: l.components ? l.components.length : 0
+    }));
+    let wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Tuberias');
+    XLSX.writeFile(wb, `MTO_Acquablue_${Date.now()}.xlsx`);
+    notify("MTO exportado - Acquablue Corp");
+}
+
+// ==================== RESET VIEW ====================
+function resetView() {
+    cam.scale = 0.15;
+    cam.panX = canvas.width / 2;
+    cam.panY = canvas.height / 2;
+    render();
+}
+
+// ==================== NUEVO PROYECTO ====================
+function nuevoProyecto() {
+    if (confirm('¿Borrar todo el proyecto?')) {
+        db = { lines: [], equipos: [], components: [] };
+        render();
+        notify('Nuevo proyecto - Acquablue Corp');
+    }
+}
+
+// ==================== INICIALIZACIÓN ====================
+function init() {
+    canvas = document.getElementById('isoCanvas');
+    ctx = canvas.getContext('2d');
+    
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - 80;
+        resetView();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+    
+    // Eventos de cámara
+    canvas.addEventListener('mousedown', (e) => {
+        drag = true;
+        last = { x: e.clientX, y: e.clientY };
+        canvas.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!drag) return;
+        cam.panX += e.clientX - last.x;
+        cam.panY += e.clientY - last.y;
+        last = { x: e.clientX, y: e.clientY };
+        render();
+    });
+    window.addEventListener('mouseup', () => {
+        drag = false;
+        canvas.style.cursor = 'grab';
+    });
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        cam.scale *= e.deltaY > 0 ? 0.9 : 1.1;
+        cam.scale = Math.min(Math.max(0.05, cam.scale), 0.5);
+        render();
+    });
+    
+    // Botones
+    document.getElementById('btnNew').onclick = nuevoProyecto;
+    document.getElementById('btnExportPCF').onclick = exportToPCF;
+    document.getElementById('btnImportPCF').onclick = () => {
+        let inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.pcf';
+        inp.onchange = e => importPCFFile(e.target.files[0]);
+        inp.click();
+    };
+    document.getElementById('btnCommand').onclick = () => {
+        document.getElementById('commandPanel').style.display = 'block';
+    };
+    document.getElementById('closeCommand').onclick = () => {
+        document.getElementById('commandPanel').style.display = 'none';
+    };
+    document.getElementById('runCommands').onclick = () => {
+        parseCommands(document.getElementById('commandText').value);
+        document.getElementById('commandPanel').style.display = 'none';
+        document.getElementById('commandText').value = '';
+    };
+    document.getElementById('btnMTO').onclick = exportarMTO;
+    document.getElementById('btnReset').onclick = resetView;
+    
+    // Ejemplo inicial
+    db.lines.push({
+        tag: 'L-001',
+        diameter: 90,
+        material: 'PPR',
+        schedule: '40',
+        points3D: [{ x: 0, y: 0, z: 0 }, { x: 5000, y: 0, z: 0 }],
+        components: []
+    });
+    db.equipos.push({ tag: 'TK-01', x: 2000, y: 0, z: 0, tipo: 'tanque_v' });
+    
+    render();
+    notify("Acquablue Corp SmartFlow Pro v5.0 - Ing. Osnay Romero");
+}
+
+// Iniciar aplicación
+init();
+</script>
+</body>
+</html>
