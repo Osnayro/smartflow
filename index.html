@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Acquablue Corp | SmartFlow Pro v7.2 - Ing. Osnay Romero</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Roboto,sans-serif;background:#0a0f1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* Toolbar */
+.toolbar{background:#161b22;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #30363d;align-items:center;z-index:10}
+button{padding:8px 14px;border:none;border-radius:6px;font-weight:bold;cursor:pointer;background:#21262d;color:#e0e0e0;transition:0.2s;font-size:13px}
+button:hover{background:#2c313a;transform:translateY(-1px)}
+button:active{transform:translateY(0)}
+.btn-primary{background:#238636;color:white}
+.btn-primary:hover{background:#2ea043}
+.btn-warning{background:#d29922;color:#1f1f1f}
+.btn-ai{background:linear-gradient(45deg,#7c3aed,#c084fc);color:white}
+.btn-voice-on{background:#7c3aed;color:white}
+.btn-voice-off{background:#4a5568;color:#9ca3af}
+
+/* Canvas */
+.canvas-container{flex:1;position:relative;background:#0a0f1a;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab}
+canvas:active{cursor:grabbing}
+
+/* Paneles */
+.command-panel{position:fixed;left:20px;bottom:20px;width:90%;max-width:550px;background:#1e1e2e;border-radius:12px;border:1px solid #3a3a4a;z-index:1000;display:none;box-shadow:0 10px 40px rgba(0,0,0,0.5)}
+.command-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #3a3a4a}
+.command-header h3{margin:0;font-size:16px;color:#7c3aed}
+.command-buttons{display:flex;gap:10px;padding:12px 16px;border-top:1px solid #3a3a4a}
+textarea{width:calc(100% - 32px);margin:12px 16px;background:#0f0f17;color:#eee;border:none;border-radius:8px;padding:12px;font-family:monospace;font-size:14px;resize:vertical}
+textarea:focus{outline:none;border:1px solid #7c3aed}
+.notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #238636;padding:12px 24px;border-radius:8px;color:white;z-index:2000;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5);max-width:90%;text-align:center}
+.status-bar{background:#0f0f17;padding:6px 12px;font-size:12px;border-top:1px solid #30363d;display:flex;justify-content:space-between}
+.compass{position:fixed;bottom:20px;right:20px;width:80px;height:80px;background:rgba(0,0,0,0.5);border-radius:8px;pointer-events:none;z-index:100}
+
+/* Panel propiedades */
+.property-panel{position:fixed;right:0;top:100px;width:280px;background:#1e1e2e;border-left:2px solid #7c3aed;border-radius:12px 0 0 12px;padding:16px;z-index:900;display:none;backdrop-filter:blur(10px);box-shadow:-5px 0 20px rgba(0,0,0,0.3)}
+.property-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #3a3a4a;padding-bottom:8px}
+.property-header h4{margin:0;color:#7c3aed;font-size:14px}
+.property-placeholder{color:#8b949e;font-size:12px;text-align:center;padding:20px}
+.property-row{display:flex;margin-bottom:10px;gap:8px;align-items:center}
+.property-label{width:80px;font-size:12px;color:#8b949e}
+.property-value{flex:1;background:#0f0f17;border:1px solid #3a3a4a;border-radius:6px;padding:6px 8px;font-size:12px}
+.property-value input{width:100%;background:transparent;border:none;color:#e0e0e0;font-size:12px}
+.property-value input:focus{outline:none}
+
+/* Panel proyecto colapsable */
+.project-panel{background:#1c2128;border-bottom:1px solid #30363d;transition:all 0.3s ease}
+.project-panel.collapsed{height:0;overflow:hidden;padding:0;border-bottom:none}
+.project-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;background:#161b22}
+.project-header:hover{background:#21262d}
+.project-header h4{margin:0;font-size:13px;color:#8b949e}
+.project-toggle{background:none;border:none;color:#8b949e;cursor:pointer;font-size:16px;padding:0 8px}
+.project-content{display:flex;flex-wrap:wrap;gap:12px;padding:8px 12px;align-items:flex-end}
+.project-field{display:flex;flex-direction:column}
+.project-field label{font-size:10px;color:#8b949e;margin-bottom:4px}
+.project-field input,.project-field select{background:#0d1117;color:white;border:1px solid #30363d;padding:6px 10px;border-radius:6px;font-size:13px}
+
+/* Mini-mapa */
+.minimap{position:fixed;bottom:20px;left:20px;width:150px;height:150px;background:rgba(0,0,0,0.7);border:1px solid #7c3aed;border-radius:8px;z-index:100;overflow:hidden}
+.minimap canvas{width:100%;height:100%;cursor:crosshair}
+
+/* Sugerencias */
+.suggestion-panel{position:fixed;left:20px;bottom:120px;background:#1e1e2e;border:1px solid #7c3aed;border-radius:8px;padding:8px;max-width:400px;display:none;z-index:1001}
+.suggestion-item{padding:6px 12px;cursor:pointer;border-radius:4px;font-size:12px}
+.suggestion-item:hover{background:#2c313a;color:#7c3aed}
+
+/* Modal */
+.modal-reporte{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2e;border:2px solid #7c3aed;border-radius:12px;padding:20px;max-width:600px;max-height:80vh;overflow:auto;z-index:10000;font-family:monospace;font-size:12px;white-space:pre-wrap;box-shadow:0 10px 40px rgba(0,0,0,0.5)}
+.modal-header{display:flex;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid #3a3a4a;padding-bottom:8px}
+.modal-header strong{color:#7c3aed;font-size:14px}
+.modal-close{background:none;border:none;color:white;font-size:20px;cursor:pointer;padding:0 8px}
+.close-btn{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;padding:0 8px}
+.close-btn:hover{color:#ff5555}
+
+@media (max-width:768px){
+    .toolbar button{padding:10px 12px;font-size:14px}
+    .command-panel{left:10px;right:10px;width:auto;bottom:10px}
+    textarea{font-size:16px}
+    .property-panel{width:260px;top:60px}
+    .minimap{width:100px;height:100px}
+    .project-content{flex-direction:column;align-items:stretch}
+    .project-field input,.project-field select{width:100%}
+}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="toolbar">
+    <button id="btnNew" class="btn-primary">📄 Nuevo</button>
+    <button id="btnOpen">📂 Abrir</button>
+    <button id="btnSave">💾 Guardar</button>
+    <button id="btnExportPCF">📁 Exportar PCF</button>
+    <button id="btnImportPCF">📂 Importar PCF</button>
+    <button id="btnCommand" class="btn-ai">🤖 Comandos</button>
+    <button id="btnMTO">📊 MTO/APU Excel</button>
+    <button id="btnPDF">📄 PDF</button>
+    <button id="btnReset">🔄 Reset</button>
+    <button id="btnUndo" class="btn-warning">↩️ Deshacer</button>
+    <button id="btnRedo" class="btn-warning">↪️ Rehacer</button>
+    <button id="btnVoice" class="btn-voice-on">🔊 Voz: ON</button>
+    <button id="btnProperties">📋 Propiedades</button>
+    <button id="btnMinimap">🗺️ Mini-mapa</button>
+    <button id="btnValidarLayout" class="btn-warning">🔍 Validar Layout</button>
+    <button id="btnRepararLayout" class="btn-primary">🔧 Reparar Colisiones</button>
+    <button id="btnHelp">❓ Ayuda</button>
+</div>
+
+<div id="projectPanel" class="project-panel">
+    <div class="project-header" id="projectHeader">
+        <h4>📋 DATOS DEL PROYECTO</h4>
+        <button class="project-toggle" id="projectToggle">▲</button>
+    </div>
+    <div class="project-content">
+        <div class="project-field"><label>PROYECTO:</label><input type="text" id="inputProyecto" value="PLANTA MARACAIBO"></div>
+        <div class="project-field"><label>AUTOR:</label><input type="text" id="inputAutor" value="ING. OSNAY ROMERO"></div>
+        <div class="project-field">
+            <label>SECTOR:</label>
+            <select id="selectSector">
+                <option value="PETROLEO">🛢️ Petróleo & Gas</option>
+                <option value="PETROQUIMICA">🧪 Petroquímica</option>
+                <option value="ALIMENTOS">🍎 Alimentos</option>
+                <option value="FARMACEUTICA">💊 Farmacéutica</option>
+                <option value="AGUA_POTABLE">💧 Agua Potable</option>
+                <option value="AGUA_RESIDUAL">🌊 Aguas Residuales</option>
+                <option value="HVAC">❄️ HVAC</option>
+                <option value="MINERIA">⛏️ Minería</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
+<div id="minimap" class="minimap" style="display:none"><canvas id="minimapCanvas" width="150" height="150"></canvas></div>
+
+<div id="commandPanel" class="command-panel">
+    <div class="command-header"><h3>🤖 Panel de Ingeniería</h3><button id="closeCommand" class="close-btn">✖</button></div>
+    <textarea id="commandText" rows="5" placeholder="Escribe comandos en español...&#10;&#10;Ejemplos:&#10;crea 6 tanques en paralelo de 2380 mm diametro y 2900 mm altura&#10;crea 3 bombas en paralelo con salida central&#10;conecta TK-01 con B-01 con tubo de 6 pulgadas&#10;auditar planta&#10;explicar proceso&#10;estimar recursos"></textarea>
+    <div class="command-buttons"><button id="runCommands" class="btn-primary">▶ Ejecutar</button><button id="clearCommand">🗑️ Limpiar</button></div>
+    <div id="commandSuggestions" class="command-suggestions"></div>
+</div>
+
+<div id="propertyPanel" class="property-panel">
+    <div class="property-header"><h4>📋 Propiedades</h4><button id="closeProperties" class="close-btn">✖</button></div>
+    <div id="propertyContent"><p class="property-placeholder">Seleccione un elemento en el canvas</p></div>
+    <button id="applyProperties" style="display:none;">Aplicar Cambios</button>
+</div>
+
+<div id="suggestionPanel" class="suggestion-panel"></div>
+<div id="notification" class="notification"></div>
+<div class="status-bar"><span id="statusMsg">SmartFlow Pro v7.2 - Listo</span><span id="coordMsg">X:0 Y:0 Z:0 | 30° ISO</span></div>
+<div id="compass" class="compass"></div>
+
+<script>
+// ==================== CONFIGURACIÓN GLOBAL ====================
+const CONFIG = { version: "7.2", empresa: "Acquablue Corp", conversion: { pulgadaAMM: 25.4, metroAMM: 1000 }, voz: { activada: true, idioma: "es-ES", velocidad: 0.9 }, autosave: { activado: true, intervalo: 30000 } };
+function pulgadasToMM(p) { return p * CONFIG.conversion.pulgadaAMM; }
+function mmToPulgadas(mm) { return mm / CONFIG.conversion.pulgadaAMM; }
+function calcularLongitud(line) { if(!line.points3D||line.points3D.length<2) return 0; let len=0; for(let i=0;i<line.points3D.length-1;i++) len+=Math.hypot(line.points3D[i+1].x-line.points3D[i].x, line.points3D[i+1].y-line.points3D[i].y, line.points3D[i+1].z-line.points3D[i].z); return len; }
+
+// ==================== BASE DE DATOS ====================
+let db = { lines: [], equipos: [] };
+let cam = { scale: 0.15, panX: 0, panY: 0 };
+let drag = false, last = { x: 0, y: 0 };
+let canvas, ctx;
+let selectedEq = null, selectedLine = null, selectedComponent = null, selectedComponentLine = null;
+let isDraggingEq = false, dragOffset = { x: 0, y: 0 };
+let voiceEnabled = true, minimapEnabled = false;
+let history = { past: [], future: [], maxSize: 50 };
+
+function saveState() { const state = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.past.push(state); if(history.past.length>history.maxSize) history.past.shift(); history.future=[]; updateUndoButtons(); }
+function undo() { if(history.past.length===0) return; const current = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.future.push(current); const prev = history.past.pop(); db.equipos = prev.equipos; db.lines = prev.lines; render(); notify("↩️ Deshecho"); updateUndoButtons(); }
+function redo() { if(history.future.length===0) return; const current = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.past.push(current); const next = history.future.pop(); db.equipos = next.equipos; db.lines = next.lines; render(); notify("↪️ Rehecho"); updateUndoButtons(); }
+function updateUndoButtons() { const u=document.getElementById('btnUndo'), r=document.getElementById('btnRedo'); if(u) u.disabled=history.past.length===0; if(r) r.disabled=history.future.length===0; }
+
+// ==================== RENDERIZADO 3D ====================
+function proj(p) { let c30=0.866, s30=0.5; return { x:(p.x-p.z)*c30*cam.scale+cam.panX, y:(p.x+p.z)*s30*cam.scale-p.y*cam.scale+cam.panY }; }
+function getPos(line,t) { let pts=line.points3D; if(!pts||pts.length<2) return null; if(t<=0) return pts[0]; if(t>=1) return pts[pts.length-1]; let idx=Math.floor(t*(pts.length-1)); let seg=t*(pts.length-1)-idx; let p1=pts[idx],p2=pts[idx+1]; return { x:p1.x+seg*(p2.x-p1.x), y:p1.y+seg*(p2.y-p1.y), z:p1.z+seg*(p2.z-p1.z) }; }
+function getDirection(line,t) { let pts=line.points3D; if(!pts||pts.length<2) return 0; let idx=Math.min(Math.floor(t*(pts.length-1)),pts.length-2); let p1=pts[idx],p2=pts[idx+1]; return Math.atan2(p2.y-p1.y,p2.x-p1.x); }
+function detectAndAddElbows(line) { let pts=line.points3D; if(!pts||pts.length<3) return; for(let i=1;i<pts.length-1;i++){ let p1=pts[i-1],p2=pts[i],p3=pts[i+1]; let v1={x:p2.x-p1.x,y:p2.y-p1.y,z:p2.z-p1.z}; let v2={x:p3.x-p2.x,y:p3.y-p2.y,z:p3.z-p2.z}; let dot=v1.x*v2.x+v1.y*v2.y+v1.z*v2.z; let m1=Math.hypot(v1.x,v1.y,v1.z),m2=Math.hypot(v2.x,v2.y,v2.z); if(m1>0&&m2>0){ let ang=Math.acos(Math.min(1,Math.max(-1,dot/(m1*m2))))*180/Math.PI; if(ang>15&&ang<175){ let param=i/(pts.length-1),skey=ang>80?'EL90':'EL45'; if(!line.components?.some(c=>c.type==='ELBOW'&&Math.abs(c.param-param)<0.05)){ if(!line.components) line.components=[]; line.components.push({type:'ELBOW',tag:`EL-${line.tag}-${i}`,skey:skey,param:param,angle:ang}); } } } } }
+
+function drawCompass() { let s=70,x=canvas.width-s-20,y=20; ctx.save(); ctx.beginPath(); ctx.arc(x+s/2,y+s/2,s/2,0,2*Math.PI); ctx.strokeStyle='#3a6ea5'; ctx.stroke(); ctx.beginPath(); ctx.moveTo(x+s/2,y+8); ctx.lineTo(x+s/2-6,y+22); ctx.lineTo(x+s/2+6,y+22); ctx.fillStyle='#ff4444'; ctx.fill(); ctx.fillStyle='white'; ctx.fillText('N',x+s/2-4,y+20); ctx.fillStyle='#44ff44'; ctx.fillText('S',x+s/2-4,y+s-8); ctx.fillStyle='#4444ff'; ctx.fillText('E',x+s-15,y+s/2+4); ctx.fillStyle='#ffaa44'; ctx.fillText('O',x+8,y+s/2+4); ctx.restore(); }
+function drawWatermark() { ctx.save(); ctx.font='9px monospace'; ctx.fillStyle='rgba(100,100,100,0.3)'; ctx.fillText('Acquablue Corp | Ing. Osnay Romero',canvas.width-210,canvas.height-8); ctx.restore(); }
+function drawElevationGuides() { let step=1000; ctx.save(); ctx.beginPath(); ctx.strokeStyle='#2a4a6a'; ctx.lineWidth=0.5; ctx.setLineDash([5,5]); for(let y=0;y<10000;y+=step){ let p1=proj({x:0,y:y,z:0}),p2=proj({x:10000,y:y,z:0}); if(p1.x>=0&&p1.x<=canvas.width&&p2.x>=0&&p2.x<=canvas.width){ ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke(); ctx.fillStyle='#3a6ea5'; ctx.font='9px monospace'; ctx.fillText(`${y/1000}m`,p1.x+5,p1.y-3); } } ctx.setLineDash([]); ctx.restore(); }
+
+function render() { if(!ctx) return; ctx.clearRect(0,0,canvas.width,canvas.height); ctx.save(); drawElevationGuides(); for(let l of db.lines){ if(!l.points3D||l.points3D.length<2) continue; ctx.beginPath(); let pr=l.points3D.map(p=>proj(p)); ctx.moveTo(pr[0].x,pr[0].y); for(let i=1;i<pr.length;i++) ctx.lineTo(pr[i].x,pr[i].y); ctx.strokeStyle='#58a6ff'; ctx.lineWidth=Math.max(2,(l.diameter||6)*cam.scale/6); ctx.stroke(); if(l.components){ for(let c of l.components){ let pos=getPos(l,c.param); if(pos){ let p=proj(pos); ctx.save(); ctx.translate(p.x,p.y); let ang=getDirection(l,c.param); ctx.rotate(ang); ctx.beginPath(); if(c.type==='VALVE'){ ctx.moveTo(-8,-5); ctx.lineTo(0,0); ctx.lineTo(8,-5); ctx.lineTo(0,8); ctx.closePath(); ctx.fillStyle='#ffaa33'; ctx.fill(); ctx.stroke(); } else if(c.type==='FLANGE'){ ctx.rect(-6,-4,12,8); ctx.fillStyle='#cccc99'; ctx.fill(); ctx.stroke(); } else if(c.type==='ELBOW'){ ctx.arc(0,0,8,0,Math.PI/2); ctx.lineTo(8,0); ctx.fillStyle='#88aaff'; ctx.fill(); ctx.stroke(); } else if(c.type==='REDUCER'){ ctx.moveTo(-8,-4); ctx.lineTo(0,-2); ctx.lineTo(0,2); ctx.lineTo(-8,4); ctx.closePath(); ctx.fillStyle='#bb9966'; ctx.fill(); ctx.stroke(); } if(c.skey){ ctx.font='7px monospace'; ctx.fillStyle='white'; ctx.fillText(c.skey,-6,-6); } ctx.restore(); } } } } for(let e of db.equipos){ let p=proj(e); let d=(e.diametro||1000)*cam.scale/10; let h=(e.altura||2000)*cam.scale/10; ctx.beginPath(); ctx.lineWidth=(selectedEq===e)?4:2; ctx.strokeStyle=(selectedEq===e)?'#ffcc00':'#58a6ff'; switch(e.tipo){ case 'tanque_v': ctx.ellipse(p.x,p.y-h/2,d/2,d/4,0,0,2*Math.PI); ctx.rect(p.x-d/2,p.y-h/2,d,h); ctx.ellipse(p.x,p.y+h/2,d/2,d/4,0,0,2*Math.PI); ctx.fillStyle='#3498db'; ctx.fill(); ctx.stroke(); break; case 'bomba': ctx.arc(p.x,p.y,12*cam.scale,0,2*Math.PI); ctx.moveTo(p.x-12*cam.scale,p.y); ctx.lineTo(p.x+12*cam.scale,p.y); ctx.fillStyle='#e67e22'; ctx.fill(); ctx.stroke(); break; default: ctx.arc(p.x,p.y,12*cam.scale,0,2*Math.PI); ctx.fillStyle='#3498db'; ctx.fill(); ctx.stroke(); } ctx.fillStyle='white'; ctx.font=`${Math.max(10,12*cam.scale)}px Arial`; ctx.fillText(e.tag,p.x+d/2+5,p.y); } drawCompass(); drawWatermark(); ctx.restore(); actualizarMinimap(); }
+
+function actualizarMinimap() { if(!minimapEnabled) return; const mc=document.getElementById('minimapCanvas'); if(!mc) return; const mCtx=mc.getContext('2d'); const w=mc.width,h=mc.height; mCtx.fillStyle='#0a0f1a'; mCtx.fillRect(0,0,w,h); let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity; db.equipos.forEach(e=>{minX=Math.min(minX,e.x);maxX=Math.max(maxX,e.x);minZ=Math.min(minZ,e.z);maxZ=Math.max(maxZ,e.z);}); db.lines.forEach(l=>{l.points3D?.forEach(p=>{minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z);});}); if(minX===Infinity){minX=-5000;maxX=5000;minZ=-5000;maxZ=5000;} const sx=w/(maxX-minX),sz=h/(maxZ-minZ); db.lines.forEach(l=>{if(!l.points3D)return; mCtx.beginPath(); l.points3D.forEach((p,i)=>{const x=(p.x-minX)*sx, z=(p.z-minZ)*sz; if(i===0)mCtx.moveTo(x,z); else mCtx.lineTo(x,z);}); mCtx.strokeStyle='#58a6ff'; mCtx.lineWidth=1; mCtx.stroke();}); db.equipos.forEach(e=>{const x=(e.x-minX)*sx, z=(e.z-minZ)*sz; mCtx.fillStyle='#ffaa33'; mCtx.beginPath(); mCtx.arc(x,z,3,0,2*Math.PI); mCtx.fill();}); }
+
+// ==================== VALIDACIÓN ESPACIAL (COLISIONES) ====================
+const ValidadorEspacial = {
+    umbrales: { separacion_minima_entre_equipos: 500, separacion_tanque_tanque: 1500, separacion_bomba_bomba: 1000 },
+    obtenerAABB: function(e) { const radio = (e.diametro || 1000) / 2; const h = e.altura || 2000; return { minX: e.x - radio, maxX: e.x + radio, minY: e.y - h/2, maxY: e.y + h/2, minZ: e.z - radio, maxZ: e.z + radio }; },
+    hayColision: function(e1, e2) { const a = this.obtenerAABB(e1); const b = this.obtenerAABB(e2); return (a.minX <= b.maxX && a.maxX >= b.minX) && (a.minY <= b.maxY && a.maxY >= b.minY) && (a.minZ <= b.maxZ && a.maxZ >= b.minZ); },
+    colisionConAlguno: function(nuevo, existentes) { for(let eq of existentes) if(this.hayColision(nuevo, eq)) return { colision: true, con: eq }; return { colision: false, con: null }; },
+    encontrarEspacioLibre: function(nuevo, existentes, direccion='x') { let colisionInfo = this.colisionConAlguno(nuevo, existentes); let intentos = 0; const offsetBase = (nuevo.diametro || 2000) + this.umbrales.separacion_minima_entre_equipos; while(colisionInfo.colision && intentos < 20) { if(direccion === 'x') nuevo.x += offsetBase; else nuevo.z += offsetBase; colisionInfo = this.colisionConAlguno(nuevo, existentes); intentos++; } return nuevo; },
+    validarDisenoCompleto: function() { let alertas = []; for(let i=0;i<db.equipos.length;i++) for(let j=i+1;j<db.equipos.length;j++) if(this.hayColision(db.equipos[i], db.equipos[j])) alertas.push(`🚨 COLISIÓN: ${db.equipos[i].tag} y ${db.equipos[j].tag} están superpuestos`); return alertas; },
+    generarReporteLayout: function() { const alertas = this.validarDisenoCompleto(); let reporte = "═══════════════════════════════════════════════════════════\n              VALIDACIÓN ESPACIAL DEL LAYOUT\n═══════════════════════════════════════════════════════════\n\n"; if(alertas.length===0) reporte += "✅ LAYOUT VALIDADO: No se detectaron colisiones.\n"; else { reporte += `⚠️ SE ENCONTRARON ${alertas.length} OBSERVACIONES:\n\n`; alertas.forEach(a => reporte += `   ${a}\n`); } mostrarReporteDetallado(reporte); return alertas; }
+};
+
+// ==================== EXPORTADOR MTO/APU DINÁMICO ====================
+const ExportadorMTO_APU = {
+    columnasMTO: ["Item", "Código Material", "Tag / ID", "Descripción Técnica", "Norma / Especificación", "Clase / Rating", "Piping Class", "Unidad", "Cantidad", "Proveedor", "Fecha Cotización", "Precio Unitario ($)", "Precio Total ($)", "Observaciones"],
+    columnasRecursos: ["Item", "Descripción", "Unidad", "Cantidad", "Tarifa ($)", "Precio Total ($)", "Observaciones"],
+    columnasResumen: ["Ítem", "Descripción de la Partida", "Total ($)", "% de Incidencia"],
+    tarifas: { ingeniero_hh: 25.00, termofusionista_hh: 20.00, ayudante_hh: 12.00, maquina_termofusora_dia: 85.00, herramientas_dia: 35.00, andamios_dia: 45.00 },
+    
+    generarPortada: function() {
+        const proyecto = document.getElementById('inputProyecto').value;
+        const autor = document.getElementById('inputAutor').value;
+        const fecha = new Date().toLocaleDateString('es-ES');
+        return [["Acquablue International Corp", "", ""], ["Ingeniería y Construcción", "", ""], ["", "", ""], [`Instalación Sistema de Almacenamiento y Bombeo - ${proyecto}`, "", ""], ["Presupuesto Base - MTO y APU - Versión 03 (Actualización Automática)", "", ""], ["", "", ""], ["Versión:", "03", ""], ["Fecha:", fecha, ""], ["Elaborado por:", autor || "Acquablue International Corp", ""], ["Revisado por:", "Ingeniería de Proyectos", ""], ["Aprobado por:", "Gerencia", ""]];
+    },
+    
+    generarMTO: function() {
+        const items = []; 
+        let contador = 1, contadorMat = 1;
+        
+        // 1. EQUIPOS (Tanques, Bombas, etc.)
+        for(let eq of db.equipos) { 
+            let desc = "", norma = "", clase = "", piping = ""; 
+            if(eq.tipo === 'tanque_v') { 
+                desc = `Tanque cilíndrico acero carbono Ø${(eq.diametro/1000).toFixed(1)}m x H${(eq.altura/1000).toFixed(1)}m`; 
+                norma = "API 650"; 
+                clase = "Clase 150"; 
+                piping = "CS-150"; 
+            } else if(eq.tipo === 'bomba') { 
+                desc = `Bomba centrífuga horizontal ${eq.diametro ? `${eq.diametro/1000}HP` : '5HP'} (Conexión 3" NPT)`; 
+                norma = "API 610"; 
+                clase = "Clase 300"; 
+                piping = "CS-300"; 
+            } else if(eq.tipo === 'tanque_h') {
+                desc = `Tanque horizontal acero carbono Ø${(eq.diametro/1000).toFixed(1)}m x H${(eq.altura/1000).toFixed(1)}m`;
+                norma = "API 620";
+                clase = "Clase 150";
+                piping = "CS-150";
+            } else if(eq.tipo === 'intercambiador') {
+                desc = `Intercambiador de calor de tubos y coraza`;
+                norma = "API 660 / TEMA";
+                clase = "Clase 300";
+                piping = "CS-300";
+            } else { 
+                desc = `${eq.tipo} estándar industrial`; 
+                norma = "ASME VIII"; 
+                clase = "Clase 150"; 
+                piping = "CS-150"; 
+            } 
+            items.push([`A.${String(contador++).padStart(2,'0')}`, `MAT-${String(contadorMat++).padStart(3,'0')}`, eq.tag, desc, norma, clase, piping, "Und", 1, "Pendiente", "", 0, `=I${items.length+2}*L${items.length+2}`, eq.material || "Acero al Carbono"]);
+        }
+        
+        // 2. TUBERÍAS (Líneas dibujadas)
+        for(let line of db.lines) { 
+            const longM = (calcularLongitud(line)/1000).toFixed(2); 
+            const dimPulg = line.diameter || 4; 
+            const dimMM = dimPulg * 25.4; 
+            let desc = `Tubo ${line.material === 'PPR' ? 'PPR' : 'Acero'} D.E. ${dimMM} mm (${dimPulg}") PN ${line.schedule === '40' ? '12.5' : '16'}`; 
+            let norma = line.material === 'PPR' ? "IRAM 13471 / PN 12.5" : "ASTM A106 Gr. B"; 
+            let clase = `PN ${line.schedule === '40' ? '12.5' : '16'}`; 
+            let piping = line.material === 'PPR' ? "PPR-12-2" : "CS-150"; 
+            items.push([`A.${String(contador++).padStart(2,'0')}`, `MAT-${String(contadorMat++).padStart(3,'0')}`, line.tag, desc, norma, clase, piping, "Mts", parseFloat(longM), "Pendiente", "", 0, `=I${items.length+2}*L${items.length+2}`, `Schedule ${line.schedule || '40'}`]);
+        }
+        
+        // 3. COMPONENTES (Válvulas, Codos, Bridas instalados en líneas)
+        for(let line of db.lines) { 
+            if(line.components && line.components.length > 0) { 
+                for(let comp of line.components) { 
+                    let desc = "", norma = "", clase = "", piping = ""; 
+                    switch(comp.type) { 
+                        case 'VALVE': 
+                            desc = `Válvula de ${comp.skey === 'VBAL' ? 'Bloqueo manual (Esfera/Bola)' : 'Retención (Check)'} ${line.diameter || 2}" NPT`; 
+                            norma = comp.skey === 'VBAL' ? "API 608" : "API 594"; 
+                            clase = "Clase 150"; 
+                            piping = "CS-150"; 
+                            break; 
+                        case 'ELBOW': 
+                            const angulo = comp.skey === 'EL90' ? '90°' : '45°'; 
+                            desc = `Codo ${angulo} ${line.material === 'PPR' ? 'PPR' : 'Acero'} de ${line.diameter || 2}"`; 
+                            norma = "ASME B16.9"; 
+                            clase = "PN 12.5"; 
+                            piping = line.material === 'PPR' ? "PPR-12-2" : "CS-150"; 
+                            break; 
+                        case 'FLANGE': 
+                            desc = `Brida (Flanche) ${line.material === 'PPR' ? 'PPR' : 'Acero'} ${line.diameter || 2}" + Porta-brida + Kit pernos`; 
+                            norma = "ASME B16.5"; 
+                            clase = "Clase 150"; 
+                            piping = line.material === 'PPR' ? "PPR-12-2" : "CS-150"; 
+                            break; 
+                        case 'REDUCER': 
+                            desc = `Reducción ${line.material === 'PPR' ? 'PPR' : 'Acero'} de ${line.diameter || 2}"`; 
+                            norma = "ASME B16.9"; 
+                            clase = "PN 12.5"; 
+                            piping = line.material === 'PPR' ? "PPR-12-2" : "CS-150"; 
+                            break; 
+                        default: 
+                            desc = `${comp.type} estándar para línea ${line.tag}`; 
+                            norma = "ASME"; 
+                            clase = "Clase 150"; 
+                            piping = "CS-150"; 
+                    } 
+                    items.push([`A.${String(contador++).padStart(2,'0')}`, `MAT-${String(contadorMat++).padStart(3,'0')}`, comp.tag, desc, norma, clase, piping, "Und", 1, "Pendiente", "", 0, `=I${items.length+2}*L${items.length+2}`, `Instalado en ${line.tag}`]);
+                } 
+            } 
+        }
+        
+        return items;
+    },
+    
+    calcularManoObra: function(metrajeTotal) {
+        const items = [];
+        const hhSupervision = Math.ceil(metrajeTotal * 0.8);
+        const hhTermofusion = Math.ceil(metrajeTotal * 1.5);
+        const hhAyudante = Math.ceil(metrajeTotal * 2.5);
+        
+        items.push(["C.01", "Ingeniero / Supervisor Mecánico (QA/QC)", "HH", hhSupervision, this.tarifas.ingeniero_hh, hhSupervision * this.tarifas.ingeniero_hh, "Tarifa según convenio"]);
+        items.push(["C.02", "Técnico Termofusionista (Tubero 1era)", "HH", hhTermofusion, this.tarifas.termofusionista_hh, hhTermofusion * this.tarifas.termofusionista_hh, "Tarifa según convenio"]);
+        items.push(["C.03", "Ayudante Mecánico (Armador / Fitter)", "HH", hhAyudante, this.tarifas.ayudante_hh, hhAyudante * this.tarifas.ayudante_hh, "Tarifa según convenio"]);
+        
+        const subtotal = items.reduce((sum, i) => sum + i[5], 0);
+        return { items, subtotal };
+    },
+    
+    calcularEquipos: function(metrajeTotal) {
+        const items = [];
+        const diasObra = Math.ceil((metrajeTotal * 4.1) / 40);
+        
+        items.push(["B.01", "Máquina Termofusora 1500W con dados 63, 90 y 110mm", "Día", diasObra, this.tarifas.maquina_termofusora_dia, diasObra * this.tarifas.maquina_termofusora_dia, "Incluye operador"]);
+        items.push(["B.02", "Set de Herramientas (Cortatubos, Biselador, Llaves tubo)", "Día", Math.ceil(diasObra / 2), this.tarifas.herramientas_dia, Math.ceil(diasObra / 2) * this.tarifas.herramientas_dia, "Incluye operador"]);
+        items.push(["B.03", "Andamios Tubulares (Cuerpos para trabajo a 4m altura)", "Día", Math.ceil(diasObra / 2), this.tarifas.andamios_dia, Math.ceil(diasObra / 2) * this.tarifas.andamios_dia, "Incluye operador"]);
+        
+        const subtotal = items.reduce((sum, i) => sum + i[5], 0);
+        return { items, subtotal };
+    },
+    
+    calcularCostoMateriales: function(mtoItems) {
+        let total = 0;
+        for(let item of mtoItems) {
+            let precioUnitario = 0;
+            const desc = item[3].toLowerCase();
+            if(desc.includes("tanque")) precioUnitario = 8500;
+            else if(desc.includes("bomba")) precioUnitario = 3500;
+            else if(desc.includes("tubo") && desc.includes("110")) precioUnitario = 85;
+            else if(desc.includes("tubo") && desc.includes("90")) precioUnitario = 65;
+            else if(desc.includes("tubo") && desc.includes("63")) precioUnitario = 45;
+            else if(desc.includes("válvula") || desc.includes("valvula")) precioUnitario = 250;
+            else if(desc.includes("codo")) precioUnitario = 35;
+            else if(desc.includes("brida")) precioUnitario = 45;
+            else precioUnitario = 100;
+            total += precioUnitario * item[8];
+        }
+        return total;
+    },
+    
+    exportarAExcel: function() {
+        notify("📊 Generando reporte MTO/APU desde el proyecto...");
+        
+        const mtoItems = this.generarMTO();
+        const totalMetros = db.lines.reduce((sum, l) => sum + (calcularLongitud(l) / 1000), 0);
+        
+        if(mtoItems.length === 0 && db.equipos.length === 0 && db.lines.length === 0) {
+            notify("⚠️ No hay elementos en el proyecto para exportar", true);
+            return false;
+        }
+        
+        const manoObra = this.calcularManoObra(totalMetros);
+        const equipos = this.calcularEquipos(totalMetros);
+        const costoMateriales = this.calcularCostoMateriales(mtoItems);
+        
+        const costoDirecto = costoMateriales + manoObra.subtotal + equipos.subtotal;
+        const gastosGenerales = costoDirecto * 0.15;
+        const imprevistos = costoDirecto * 0.05;
+        const utilidad = costoDirecto * 0.20;
+        const precioTotal = costoDirecto + gastosGenerales + imprevistos + utilidad;
+        
+        const incidenciaMateriales = (costoMateriales / precioTotal) * 100;
+        const incidenciaManoObra = (manoObra.subtotal / precioTotal) * 100;
+        const incidenciaEquipos = (equipos.subtotal / precioTotal) * 100;
+        
+        const wb = XLSX.utils.book_new();
+        
+        const portadaData = this.generarPortada();
+        const portadaSheet = XLSX.utils.aoa_to_sheet(portadaData);
+        XLSX.utils.book_append_sheet(wb, portadaSheet, "Portada");
+        
+        const mtoSheetData = [this.columnasMTO, ...mtoItems];
+        const mtoSheet = XLSX.utils.aoa_to_sheet(mtoSheetData);
+        XLSX.utils.book_append_sheet(wb, mtoSheet, "MTO");
+        
+        const recursosData = [this.columnasRecursos, ...manoObra.items, ["", "SUBTOTAL MANO DE OBRA", "", "", "", manoObra.subtotal, ""], [], ["", "EQUIPOS", "", "", "", "", ""], ...equipos.items, ["", "SUBTOTAL EQUIPOS", "", "", "", equipos.subtotal, ""]];
+        const recursosSheet = XLSX.utils.aoa_to_sheet(recursosData);
+        XLSX.utils.book_append_sheet(wb, recursosSheet, "Recursos");
+        
+        const resumenData = [this.columnasResumen, ["1.0", "Total Materiales (MTO)", costoMateriales, incidenciaMateriales.toFixed(2)], ["2.0", "Total Mano de Obra", manoObra.subtotal, incidenciaManoObra.toFixed(2)], ["3.0", "Total Equipos", equipos.subtotal, incidenciaEquipos.toFixed(2)], ["4.0", "COSTO DIRECTO (CD = 1.0 + 2.0 + 3.0)", costoDirecto, ""], ["5.0", "Gastos Generales (15% del CD)", gastosGenerales, ""], ["6.0", "Imprevistos (5% del CD)", imprevistos, ""], ["7.0", "Utilidad Empresarial (20% del CD)", utilidad, ""], ["8.0", "PRECIO TOTAL DE LA INSTALACIÓN", precioTotal, "1.0"]];
+        const resumenSheet = XLSX.utils.aoa_to_sheet(resumenData);
+        XLSX.utils.book_append_sheet(wb, resumenSheet, "Resumen de Costos");
+        
+        const nombreProyecto = document.getElementById('inputProyecto').value.replace(/\s/g, '_');
+        const nombreArchivo = `${nombreProyecto}_MTO_APU_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.xlsx`;
+        XLSX.writeFile(wb, nombreArchivo);
+        
+        notify(`✅ MTO/APU exportado: ${nombreArchivo} (${mtoItems.length} ítems, ${totalMetros.toFixed(1)}m de tubería)`);
+        return true;
+    }
+};
+
+// ==================== COMANDOS Y FUNCIONES PRINCIPALES ====================
+function notify(msg, isErr, duracion) {
+    const n = document.getElementById('notification');
+    n.textContent = msg;
+    n.style.display = 'block';
+    n.style.backgroundColor = isErr ? '#da3633' : '#238636';
+    document.getElementById('statusMsg').textContent = msg.substring(0, 80);
+    if(voiceEnabled && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        setTimeout(() => { const utterance = new SpeechSynthesisUtterance(msg); utterance.lang = 'es-ES'; window.speechSynthesis.speak(utterance); }, 50);
+    }
+    setTimeout(() => { n.style.display = 'none'; }, duracion || 4000);
+}
+
+function mostrarReporteDetallado(texto) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-reporte';
+    modal.innerHTML = `<div class="modal-header"><strong>🔍 REPORTE TÉCNICO</strong><button class="modal-close">✖</button></div><pre style="color:#e0e0e0;margin:0;white-space:pre-wrap;">${texto}</pre>`;
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close').onclick = () => modal.remove();
+    modal.onclick = (e) => { if(e.target === modal) modal.remove(); };
+}
+
+function mostrarAyuda() {
+    let ayuda = "═══════════════════════════════════════════════════════════\n";
+    ayuda += "                    SMARTFLOW PRO v7.2\n";
+    ayuda += "═══════════════════════════════════════════════════════════\n\n";
+    ayuda += "📖 COMANDOS DISPONIBLES:\n\n";
+    ayuda += "🏭 EQUIPOS:\n";
+    ayuda += "   • crea [cantidad] tanques en [paralelo/serie] de [diametro] mm diametro y [altura] mm altura\n";
+    ayuda += "   • crea [cantidad] bombas en [paralelo/serie]\n\n";
+    ayuda += "🔗 CONEXIONES:\n";
+    ayuda += "   • conecta [equipo1] con [equipo2] con tubo de [pulgadas] pulgadas\n\n";
+    ayuda += "🔍 AUDITORÍA:\n";
+    ayuda += "   • auditar planta - Verifica cumplimiento normativo\n";
+    ayuda += "   • explicar proceso - Muestra recorrido técnico\n";
+    ayuda += "   • estimar recursos - Calcula HH, días y costos\n\n";
+    ayuda += "📊 EXPORTACIÓN:\n";
+    ayuda += "   • exportar mto - Genera Excel con MTO/APU\n\n";
+    ayuda += "ℹ️ INFORMACIÓN:\n";
+    ayuda += "   • dime [equipo] - Muestra detalles del equipo\n";
+    ayuda += "   • eliminar [equipo] - Elimina un elemento\n";
+    ayuda += "═══════════════════════════════════════════════════════════\n";
+    mostrarReporteDetallado(ayuda);
+}
+
+function crearEquipoParametrico(cmd, tipo) {
+    let diamMatch = cmd.match(/(\d+)\s+(?:de\s+)?diametro/);
+    let altMatch = cmd.match(/(\d+)\s+(?:de\s+)?altura/);
+    let diam = diamMatch ? parseInt(diamMatch[1]) : 2400;
+    let alt = altMatch ? parseInt(altMatch[1]) : 2900;
+    let tagMatch = cmd.match(/(?:llamado|tag)\s+(\S+)/i) || cmd.match(/\s([A-Z0-9-]+)$/i);
+    let tag = tagMatch ? tagMatch[1].toUpperCase() : `${tipo.toUpperCase()}-${db.equipos.length+1}`;
+    let ref = db.equipos[db.equipos.length-1];
+    let x = ref ? ref.x + 3000 : 0;
+    let y = (tipo==='tanque_v'||tipo==='tanque_h') ? alt/2 : 600;
+    
+    const nuevoEquipo = { type:'equipment', tag:tag, x:x, y:y, z:0, tipo:tipo, diametro:diam, altura:alt };
+    const colision = ValidadorEspacial.colisionConAlguno(nuevoEquipo, db.equipos);
+    if(colision.colision) {
+        notify(`⚠️ ${tag} colisionaría con ${colision.con.tag}. Reposicionando...`, true);
+        const reposicionado = ValidadorEspacial.encontrarEspacioLibre(nuevoEquipo, db.equipos);
+        applyCommand(reposicionado);
+    } else {
+        applyCommand(nuevoEquipo);
+    }
+    return true;
+}
+
+function extraerIntencionTecnica(comando) {
+    const cmd = comando.toLowerCase();
+    const intencion = { esTanque: false, esBomba: false, especificaciones: { cantidad: 1, diametro_tanque: null, altura_tanque: null, salida_fondo: null, colector: null, material: null, disposicion: 'paralelo' } };
+    if(cmd.includes("tanque") || cmd.includes("tanques")) intencion.esTanque = true;
+    if(cmd.includes("bomba") || cmd.includes("bombas")) intencion.esBomba = true;
+    const cantMatch = cmd.match(/(\d+|seis|siete|ocho|nueve|diez)\s+tanques?/i);
+    if(cantMatch) { const nums = { seis:6, siete:7, ocho:8, nueve:9, diez:10 }; intencion.especificaciones.cantidad = nums[cantMatch[1]] || parseInt(cantMatch[1]); }
+    const diamMatch = cmd.match(/di[áa]metro\s+de\s+(\d+)\s*mm/i);
+    if(diamMatch) intencion.especificaciones.diametro_tanque = parseInt(diamMatch[1]);
+    const altMatch = cmd.match(/altura\s+de\s+(\d+)\s*mm/i);
+    if(altMatch) intencion.especificaciones.altura_tanque = parseInt(altMatch[1]);
+    const colectorMatch = cmd.match(/colector\s+de\s+(\d+)\s*pulgadas?/i);
+    if(colectorMatch) intencion.especificaciones.colector = parseInt(colectorMatch[1]);
+    if(cmd.includes("paralelo")) intencion.especificaciones.disposicion = 'paralelo';
+    if(cmd.includes("serie")) intencion.especificaciones.disposicion = 'serie';
+    return intencion;
+}
+
+function crearSistemaTanques(intencion) {
+    const n = Math.min(intencion.especificaciones.cantidad, 12);
+    const diametro = intencion.especificaciones.diametro_tanque || 2400;
+    const altura = intencion.especificaciones.altura_tanque || 2900;
+    const disposicion = intencion.especificaciones.disposicion;
+    const colector = intencion.especificaciones.colector;
+    
+    notify(`🔧 Creando ${n} tanque(s) de Ø${diametro}mm x H${altura}mm en ${disposicion}`);
+    
+    for(let i = 0; i < n; i++) {
+        const tag = `TK-${(i+1).toString().padStart(2,'0')}`;
+        let x = 0, z = 0;
+        if(disposicion === 'paralelo') x = i * 3000;
+        else z = i * 4000;
+        const nuevoEquipo = { type:'equipment', tag:tag, x:x, y:altura/2, z:z, tipo:'tanque_v', diametro:diametro, altura:altura };
+        const colision = ValidadorEspacial.colisionConAlguno(nuevoEquipo, db.equipos);
+        if(colision.colision) {
+            const reposicionado = ValidadorEspacial.encontrarEspacioLibre(nuevoEquipo, db.equipos, disposicion === 'paralelo' ? 'x' : 'z');
+            applyCommand(reposicionado);
+        } else {
+            applyCommand(nuevoEquipo);
+        }
+    }
+    
+    if(colector && n > 1) {
+        notify(`🔗 Creando colector de ${colector}" para conectar ${n} tanques`);
+        const puntos = [];
+        for(let i = 0; i < n; i++) {
+            const x = disposicion === 'paralelo' ? i * 3000 + 1500 : 1500;
+            const z = disposicion === 'paralelo' ? 500 : i * 4000 + 1500;
+            puntos.push({ x: x, y: 400, z: z });
+        }
+        applyCommand({ type:'line', tag:`COLECTOR-TK`, diameter:colector, material:'CS', schedule:'40', points3D:puntos, components:[] });
+    }
+    return true;
+}
+
+function crearSistemaBombas(intencion) {
+    const n = Math.min(intencion.especificaciones.cantidad, 4);
+    const disposicion = intencion.especificaciones.disposicion;
+    const colector = intencion.especificaciones.colector;
+    
+    notify(`🔧 Creando ${n} bomba(s) en ${disposicion}`);
+    
+    for(let i = 0; i < n; i++) {
+        const tag = `B-${(i+1).toString().padStart(2,'0')}`;
+        let x = 0, z = 0;
+        if(disposicion === 'paralelo') x = i * 2500;
+        else z = i * 3000;
+        applyCommand({ type:'equipment', tag:tag, x:x, y:600, z:z, tipo:'bomba', diametro:500, altura:800 });
+    }
+    
+    if(colector && n > 1) {
+        notify(`🔗 Creando colector de ${colector}" para ${n} bombas`);
+        const puntos = [];
+        for(let i = 0; i < n; i++) {
+            const x = disposicion === 'paralelo' ? i * 2500 + 1200 : 1200;
+            const z = disposicion === 'paralelo' ? 500 : i * 3000 + 1200;
+            puntos.push({ x: x, y: 800, z: z });
+        }
+        applyCommand({ type:'line', tag:`COLECTOR-BOMBAS`, diameter:colector, material:'CS', schedule:'40', points3D:puntos, components:[] });
+    }
+    return true;
+}
+
+function aplicarRutaIncremental(cmd) {
+    let diamMatch = cmd.match(/(\d+)\s+pulgadas/);
+    let diam = diamMatch ? parseFloat(diamMatch[1]) : 4;
+    let start = db.equipos[db.equipos.length-1] || { x:0, y:0, z:0 };
+    let pts = [{ ...start }], cur = { ...start };
+    let moves = cmd.matchAll(/(\d+)\s+metros\s+(horizontal|vertical|fondo|sube|baja|izquierda|derecha)/g);
+    for(let m of moves) {
+        let d = parseInt(m[1]) * 1000;
+        let dir = m[2];
+        if(dir === "horizontal" || dir === "derecha") cur.x += d;
+        else if(dir === "izquierda") cur.x -= d;
+        else if(dir === "vertical" || dir === "sube") cur.y += d;
+        else if(dir === "baja") cur.y -= d;
+        else if(dir === "fondo") cur.z += d;
+        pts.push({ ...cur });
+    }
+    if(pts.length > 1) {
+        applyCommand({ type:'line', tag:`L-${db.lines.length+1}`, diameter:diam, material:'CS', schedule:'40', points3D:pts, components:[] });
+        return true;
+    }
+    return false;
+}
+
+function applyCommand(cmd) {
+    if(cmd.type === 'line') { 
+        db.lines.push(cmd); 
+        detectAndAddElbows(cmd); 
+        render(); 
+        notify("Línea " + cmd.tag + " creada"); 
+    } else if(cmd.type === 'equipment') { 
+        db.equipos.push(cmd); 
+        render(); 
+        notify(`Equipo ${cmd.tag} creado (Ø${(cmd.diametro/1000).toFixed(1)}m x H${(cmd.altura/1000).toFixed(1)}m)`); 
+    } else if(cmd.type === 'component') { 
+        let line = db.lines.find(l => l.tag === cmd.lineTag); 
+        if(line) { 
+            if(!line.components) line.components = []; 
+            line.components.push(cmd.comp); 
+            render(); 
+            notify("Componente " + cmd.comp.tag + " agregado"); 
+        } else notify("Línea no encontrada", true); 
+    }
+    guardarProyecto();
+}
+
+function parseCommands(text) {
+    let lines = text.split('\n');
+    for(let raw of lines) {
+        let cmd = raw.trim().toLowerCase();
+        if(!cmd || cmd.startsWith('//')) continue;
+        saveState();
+        
+        if(cmd.includes("auditar") || cmd.includes("auditoria")) { AgenteEspecialista.auditarPlanta(); continue; }
+        if(cmd.includes("explicar proceso") || cmd.includes("recorrido")) { AgenteEspecialista.explicarProceso(); continue; }
+        if(cmd.includes("estimar recursos") || cmd.includes("presupuesto")) { ConsultorObra.estimarRecursos(); continue; }
+        if(cmd.includes("exportar mto") || cmd.includes("generar presupuesto") || cmd.includes("mto completo")) { ExportadorMTO_APU.exportarAExcel(); continue; }
+        
+        const intencion = extraerIntencionTecnica(raw);
+        if(intencion.esTanque) { crearSistemaTanques(intencion); continue; }
+        if(intencion.esBomba) { crearSistemaBombas(intencion); continue; }
+        
+        if(cmd.includes("conecta") || cmd.includes("une")) {
+            let equiposEncontrados = db.equipos.filter(e => cmd.includes(e.tag.toLowerCase()));
+            if(equiposEncontrados.length >= 2) {
+                let e1 = equiposEncontrados[0], e2 = equiposEncontrados[1];
+                let diamMatch = cmd.match(/(\d+)\s+pulgadas/);
+                let diam = diamMatch ? parseFloat(diamMatch[1]) : 4;
+                let pts = [{x:e1.x, y:e1.y, z:e1.z}, {x:e2.x, y:e1.y, z:e1.z}, {x:e2.x, y:e1.y, z:e2.z}, {x:e2.x, y:e2.y, z:e2.z}];
+                applyCommand({ type:'line', tag:`L-${e1.tag}-${e2.tag}`, diameter:diam, material:'CS', schedule:'40', points3D:pts, components:[] });
+                continue;
+            }
+        }
+        
+        if(cmd.includes("camina") || cmd.includes("sube")) { if(aplicarRutaIncremental(cmd)) continue; }
+        
+        let tipo = "";
+        if(cmd.includes("tanque vertical")) tipo = "tanque_v";
+        else if(cmd.includes("tanque horizontal")) tipo = "tanque_h";
+        else if(cmd.includes("bomba")) tipo = "bomba";
+        if(tipo !== "") { crearEquipoParametrico(raw, tipo); continue; }
+        
+        if(cmd.includes("dime") || cmd.includes("detalles")) {
+            let tagMatch = raw.match(/(?:dime|detalles)\s+(\S+)/i);
+            let target = tagMatch ? tagMatch[1].toUpperCase() : null;
+            if(target) {
+                let eq = db.equipos.find(e => e.tag === target);
+                if(eq) notify(`Equipo ${eq.tag}: ${eq.tipo}, Ø${(eq.diametro/1000).toFixed(1)}m x H${(eq.altura/1000).toFixed(1)}m`);
+                else notify(`No encontrado: ${target}`, true);
+            } else { notify(`Resumen: ${db.equipos.length} equipos, ${db.lines.length} líneas`); }
+            continue;
+        }
+        
+        if(cmd.includes("elimina") || cmd.includes("borra")) {
+            let tagMatch = raw.match(/(?:elimina|borra)\s+(\S+)/i);
+            if(tagMatch) {
+                let target = tagMatch[1].toUpperCase();
+                let antes = db.equipos.length;
+                db.equipos = db.equipos.filter(e => e.tag !== target);
+                db.lines = db.lines.filter(l => l.tag !== target);
+                if(db.equipos.length < antes) { notify(`Elemento ${target} eliminado`); if(selectedEq?.tag===target) selectedEq=null; render(); }
+                else notify(`No se encontró ${target}`, true);
+            }
+            continue;
+        }
+        notify(`❌ No entendí: "${raw.substring(0,50)}..."`, true);
+    }
+    render();
+}
+
+// ==================== AGENTES ESPECIALISTA Y CONSULTOR ====================
+const AgenteEspecialista = {
+    auditarPlanta: function() {
+        let alertas = [];
+        notify("🔍 Iniciando auditoría técnica...");
+        db.equipos.filter(e => e.tipo === "bomba").forEach(b => {
+            const conectadas = db.lines.filter(l => l.points3D?.some(p => Math.hypot(p.x-b.x, p.y-b.y, p.z-b.z) < 500));
+            const tieneCheck = conectadas.some(l => l.components?.some(c => c.skey === "VCHK"));
+            if(!tieneCheck) alertas.push(`⚠️ BOMBA ${b.tag}: Sin válvula Check. Riesgo de golpe de ariete.`);
+        });
+        db.lines.forEach(l => {
+            const diamMM = (l.diameter || 4) * 25.4;
+            if(diamMM >= 110) {
+                const longitudMM = calcularLongitud(l);
+                const soportesNecesarios = Math.max(1, Math.floor(longitudMM / 1500));
+                const soportesActuales = l.components?.filter(c => c.type === "SOPORTE").length || 0;
+                if(soportesActuales < soportesNecesarios) alertas.push(`⚠️ LÍNEA ${l.tag}: Requiere ${soportesNecesarios} soportes, tiene ${soportesActuales}.`);
+            }
+        });
+        if(alertas.length === 0) notify("✅ Planta validada: 100% cumplimiento.");
+        else { alertas.forEach(a => notify(a, true)); notify(`⚠️ ${alertas.length} observaciones.`, true); }
+        return alertas;
+    },
+    explicarProceso: function() {
+        let relato = "═══════════════════════════════════════\n     RECORRIDO TÉCNICO DE INSTALACIÓN\n═══════════════════════════════════════\n\n";
+        const tanques = db.equipos.filter(e => e.tipo?.includes("tanque"));
+        if(tanques.length > 0) { 
+            relato += `🏭 ALMACENAMIENTO: ${tanques.length} tanques\n`; 
+            tanques.forEach(t => relato += `   • ${t.tag}: Ø${(t.diametro/1000).toFixed(1)}m x H${(t.altura/1000).toFixed(1)}m\n`); 
+        }
+        const bombas = db.equipos.filter(e => e.tipo === "bomba");
+        if(bombas.length > 0) relato += `⚙️ BOMBEO: ${bombas.length} bombas instaladas\n`;
+        const valvulas = db.lines.reduce((sum,l) => sum + (l.components?.filter(c => c.type === "VALVE").length || 0), 0);
+        if(valvulas > 0) relato += `🔧 COMPONENTES: ${valvulas} válvulas\n`;
+        const longitudTotal = db.lines.reduce((sum,l) => sum + (calcularLongitud(l)/1000), 0);
+        relato += `📏 TUBERÍAS: ${longitudTotal.toFixed(1)} metros lineales\n`;
+        relato += `\n📊 TOTAL: ${db.equipos.length} equipos, ${db.lines.length} líneas\n`;
+        mostrarReporteDetallado(relato);
+        return relato;
+    }
+};
+
+const ConsultorObra = {
+    estimarRecursos: function() {
+        if(db.lines.length === 0) { notify("⚠️ No hay líneas para estimar.", true); return null; }
+        let totalMetros = db.lines.reduce((sum,l) => sum + (calcularLongitud(l)/1000), 0);
+        let hhTotales = totalMetros * 4.1;
+        let diasObra = Math.ceil(hhTotales / 40);
+        let costoManoObra = hhTotales * 18;
+        let costoMateriales = totalMetros * 120;
+        let costoTotal = costoManoObra + costoMateriales;
+        let reporte = "═══════════════════════════════════════\n     📊 ESTIMACIÓN DE RECURSOS\n═══════════════════════════════════════\n\n";
+        reporte += `📏 METRAJE TOTAL: ${totalMetros.toFixed(1)} m\n👷 ESFUERZO: ${hhTotales.toFixed(0)} Horas-Hombre\n📅 DURACIÓN: ${diasObra} días (cuadrilla 5 personas)\n💰 COSTO ESTIMADO: USD ${costoTotal.toLocaleString()}\n`;
+        mostrarReporteDetallado(reporte);
+        notify(`📊 ${totalMetros.toFixed(1)}m | ${hhTotales.toFixed(0)} HH | ${diasObra} días`);
+        return { totalMetros, hhTotales, diasObra, costoTotal };
+    }
+};
+
+// ==================== PERSISTENCIA Y EXPORTACIÓN ====================
+function guardarProyecto() {
+    try {
+        const proyecto = { equipos: db.equipos, lines: db.lines, proyecto: document.getElementById('inputProyecto').value, autor: document.getElementById('inputAutor').value, sector: document.getElementById('selectSector').value, fecha: new Date().toISOString() };
+        localStorage.setItem('smartflow_proyecto', JSON.stringify(proyecto));
+    } catch(e) { console.warn("Error guardando:", e); }
+}
+
+function cargarProyecto() {
+    try {
+        const guardado = localStorage.getItem('smartflow_proyecto');
+        if(guardado) {
+            const p = JSON.parse(guardado);
+            db.equipos = p.equipos || [];
+            db.lines = p.lines || [];
+            document.getElementById('inputProyecto').value = p.proyecto || "PLANTA MARACAIBO";
+            document.getElementById('inputAutor').value = p.autor || "ING. OSNAY ROMERO";
+            if(p.sector) document.getElementById('selectSector').value = p.sector;
+            render();
+            notify("📁 Proyecto cargado");
+        }
+    } catch(e) { console.warn("Error cargando:", e); }
+}
+
+function nuevoProyecto() { if(confirm('¿Borrar todo el proyecto?')) { db = { lines: [], equipos: [] }; selectedEq = null; render(); notify('Nuevo proyecto'); saveState(); } }
+function resetView() { cam.scale = 0.15; cam.panX = canvas.width/2; cam.panY = canvas.height/2; render(); }
+
+function exportToPCF() {
+    const nombreProyecto = document.getElementById('inputProyecto').value;
+    let pcf = `!PCF v7.2 - ACQUABLUE CORP\n!PROJECT "${nombreProyecto}"\n!UNITS MM\n`;
+    for(let l of db.lines) {
+        if(!l.points3D) continue;
+        pcf += `PIPE\n    COMPONENT-IDENTIFIER ${l.tag}\n    DIAMETER ${(l.diameter * 25.4).toFixed(3)} MM\n`;
+        l.points3D.forEach(p => pcf += `    POINT ${p.x.toFixed(3)} ${p.y.toFixed(3)} ${p.z.toFixed(3)}\n`);
+        pcf += `ENDPIPE\n`;
+    }
+    const blob = new Blob([pcf], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${nombreProyecto.replace(/\s/g, '_')}.pcf`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify("PCF exportado");
+}
+
+function importPCFFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        const text = e.target.result;
+        const lines = []; let curPipe = null, curPoints = [];
+        text.split('\n').forEach(line => {
+            const l = line.trim();
+            if(l === 'PIPE') { if(curPipe) { curPipe.points3D = curPoints; lines.push(curPipe); } curPipe = { components: [], points3D: [] }; curPoints = []; }
+            else if(l === 'ENDPIPE') { if(curPipe) { curPipe.points3D = curPoints; lines.push(curPipe); } curPipe = null; }
+            else if(curPipe && l.startsWith('COMPONENT-IDENTIFIER')) curPipe.tag = l.split(/\s+/)[1];
+            else if(curPipe && l.startsWith('DIAMETER')) curPipe.diameter = parseFloat(l.split(/\s+/)[1]) / 25.4;
+            else if(curPipe && l.startsWith('POINT')) { const m = l.match(/POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i); if(m) curPoints.push({ x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) }); }
+        });
+        db.lines = lines;
+        render();
+        notify(`PCF importado: ${lines.length} líneas`);
+    };
+    reader.readAsText(file);
+}
+
+function exportarMTO() { ExportadorMTO_APU.exportarAExcel(); }
+
+async function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const imgData = canvas.toDataURL('image/png');
+    doc.addImage(imgData, 'PNG', 10, 10, 277, 150);
+    doc.setFontSize(16);
+    doc.text("ACQUABLUE CORP - REPORTE", 10, 175);
+    doc.text(`Proyecto: ${document.getElementById('inputProyecto').value}`, 10, 185);
+    doc.text(`Autor: ${document.getElementById('inputAutor').value}`, 10, 192);
+    doc.save(`Reporte_${Date.now()}.pdf`);
+    notify("PDF generado");
+}
+
+function toggleVoice() {
+    voiceEnabled = !voiceEnabled;
+    const btn = document.getElementById('btnVoice');
+    btn.textContent = voiceEnabled ? "🔊 Voz: ON" : "🔇 Voz: OFF";
+    btn.className = voiceEnabled ? "btn-voice-on" : "btn-voice-off";
+    notify(voiceEnabled ? "Voz activada" : "Voz desactivada");
+    if(!voiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+// ==================== INICIALIZACIÓN ====================
+function init() {
+    canvas = document.getElementById('isoCanvas');
+    ctx = canvas.getContext('2d');
+    
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight - 140; resetView(); }
+    window.addEventListener('resize', resize);
+    resize();
+    
+    canvas.addEventListener('mousedown', (e) => { drag = true; last = { x: e.clientX, y: e.clientY }; canvas.style.cursor = 'grabbing'; });
+    window.addEventListener('mousemove', (e) => { if(drag) { let dx = e.clientX - last.x, dy = e.clientY - last.y; cam.panX += dx; cam.panY += dy; last = { x: e.clientX, y: e.clientY }; render(); } });
+    window.addEventListener('mouseup', () => { drag = false; canvas.style.cursor = 'grab'; });
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.scale *= e.deltaY > 0 ? 0.9 : 1.1; cam.scale = Math.min(Math.max(0.02, cam.scale), 0.8); render(); });
+    
+    window.addEventListener('keydown', (e) => {
+        const active = document.activeElement;
+        const isTextInput = active.tagName === 'INPUT' || active.tagName === 'TEXTAREA';
+        if((e.key === "Delete" || e.key === "Backspace") && !isTextInput) {
+            if(selectedEq) { if(confirm(`¿Eliminar ${selectedEq.tag}?`)) { db.equipos = db.equipos.filter(eq => eq !== selectedEq); selectedEq = null; render(); notify("Equipo eliminado"); } e.preventDefault(); }
+        }
+        if(e.ctrlKey && e.key === 'z') { undo(); e.preventDefault(); }
+        if(e.ctrlKey && e.key === 'y') { redo(); e.preventDefault(); }
+        if(e.ctrlKey && e.key === 's') { guardarProyecto(); e.preventDefault(); }
+        if(e.key === 'F1') { mostrarAyuda(); e.preventDefault(); }
+    });
+    
+    document.getElementById('btnNew').onclick = nuevoProyecto;
+    document.getElementById('btnOpen').onclick = cargarProyecto;
+    document.getElementById('btnSave').onclick = guardarProyecto;
+    document.getElementById('btnExportPCF').onclick = exportToPCF;
+    document.getElementById('btnImportPCF').onclick = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pcf'; inp.onchange = e => importPCFFile(e.target.files[0]); inp.click(); };
+    document.getElementById('btnCommand').onclick = () => document.getElementById('commandPanel').style.display = 'block';
+    document.getElementById('closeCommand').onclick = () => document.getElementById('commandPanel').style.display = 'none';
+    document.getElementById('clearCommand').onclick = () => document.getElementById('commandText').value = '';
+    document.getElementById('runCommands').onclick = () => { parseCommands(document.getElementById('commandText').value); document.getElementById('commandPanel').style.display = 'none'; };
+    document.getElementById('btnMTO').onclick = () => ExportadorMTO_APU.exportarAExcel();
+    document.getElementById('btnPDF').onclick = exportPDF;
+    document.getElementById('btnReset').onclick = resetView;
+    document.getElementById('btnUndo').onclick = undo;
+    document.getElementById('btnRedo').onclick = redo;
+    document.getElementById('btnVoice').onclick = toggleVoice;
+    document.getElementById('btnProperties').onclick = () => { const p = document.getElementById('propertyPanel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
+    document.getElementById('closeProperties').onclick = () => document.getElementById('propertyPanel').style.display = 'none';
+    document.getElementById('btnMinimap').onclick = () => { minimapEnabled = !minimapEnabled; document.getElementById('minimap').style.display = minimapEnabled ? 'block' : 'none'; actualizarMinimap(); };
+    document.getElementById('btnValidarLayout').onclick = () => ValidadorEspacial.generarReporteLayout();
+    document.getElementById('btnRepararLayout').onclick = () => {
+        notify("🔧 Reparando colisiones...");
+        let reubicados = 0;
+        let equiposTemp = [...db.equipos];
+        for(let eq of equiposTemp) {
+            const colisionInfo = ValidadorEspacial.colisionConAlguno(eq, db.equipos.filter(e => e !== eq));
+            if(colisionInfo.colision) {
+                const nuevaPos = ValidadorEspacial.encontrarEspacioLibre(eq, db.equipos.filter(e => e !== eq));
+                eq.x = nuevaPos.x;
+                eq.z = nuevaPos.z;
+                reubicados++;
+            }
+        }
+        render();
+        notify(`✅ ${reubicados} equipos reubicados`);
+    };
+    document.getElementById('btnHelp').onclick = mostrarAyuda;
+    
+    document.getElementById('projectHeader').onclick = () => { const panel = document.getElementById('projectPanel'); panel.classList.toggle('collapsed'); document.getElementById('projectToggle').textContent = panel.classList.contains('collapsed') ? '▼' : '▲'; };
+    
+    const textarea = document.getElementById('commandText');
+    const sugerencias = ["crea 6 tanques en paralelo de 2380 mm diametro y 2900 mm altura", "crea 3 bombas en paralelo", "auditar planta", "explicar proceso", "estimar recursos", "exportar mto"];
+    textarea.addEventListener('input', (e) => {
+        const val = e.target.value.toLowerCase();
+        const panel = document.getElementById('suggestionPanel');
+        if(val.length < 2) { panel.style.display = 'none'; return; }
+        const matches = sugerencias.filter(s => s.toLowerCase().includes(val)).slice(0, 3);
+        if(matches.length === 0) { panel.style.display = 'none'; return; }
+        panel.innerHTML = matches.map(s => `<div class="suggestion-item" onclick="document.getElementById('commandText').value='${s.replace(/'/g, "\\'")}'; panel.style.display='none';">💡 ${s}</div>`).join('');
+        panel.style.display = 'block';
+    });
+    document.addEventListener('click', (e) => { if(!e.target.closest('#suggestionPanel') && !e.target.closest('#commandText')) document.getElementById('suggestionPanel').style.display = 'none'; });
+    
+    db.equipos.push({ tag: 'TK-01', x: 2000, y: 1250, z: 0, tipo: 'tanque_v', diametro: 2400, altura: 2500 });
+    db.lines.push({ tag: 'L-001', diameter: 4, material: 'CS', points3D: [{ x: 0, y: 0, z: 0 }, { x: 5000, y: 0, z: 0 }], components: [] });
+    
+    render();
+    cargarProyecto();
+    saveState();
+    notify("SmartFlow Pro v7.2 - Listo");
+}
+
+init();
+</script>
+</body>
+</html>
