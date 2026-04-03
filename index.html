@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v8.5 | Panel de Proyecto Ocultable</title>
+<title>SmartFlow Pro v8.7 | Voz restaurada - Comportamiento original</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Roboto,sans-serif;background:#0a0f1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -85,7 +85,7 @@ textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;borde
 </div>
 </div>
 <div id="notification" class="notification" role="alert" aria-live="assertive"></div>
-<div class="status-bar" role="status"><span id="statusMsg">SmartFlow Pro v8.5 | Panel ocultable</span><span id="coordMsg">X:0 Y:0 Z:0 | ISO 30°</span></div>
+<div class="status-bar" role="status"><span id="statusMsg">SmartFlow Pro v8.7 | Voz restaurada</span><span id="coordMsg">X:0 Y:0 Z:0 | ISO 30°</span></div>
 <div id="compass" class="compass"></div>
 
 <script>
@@ -101,7 +101,7 @@ let history = { past: [], future: [], maxSize: 30 };
 const canvas = document.getElementById('isoCanvas');
 let ctx = canvas.getContext('2d');
 
-// ==================== FUNCIONES AUXILIARES ====================
+// ==================== NOTIFICACIÓN CON VOZ (exactamente como en v7.9) ====================
 function notify(msg, isErr = false) {
     const n = document.getElementById('notification');
     n.textContent = msg;
@@ -217,7 +217,7 @@ function autoCenter() {
     render();
 }
 
-// ==================== DIBUJO ====================
+// ==================== DIBUJO (igual que antes) ====================
 function drawGrid() {
     const step = 1000;
     const minX = -8000, maxX = 20000, minZ = -8000, maxZ = 15000;
@@ -409,7 +409,7 @@ function drawWatermark() {
     ctx.save();
     ctx.font = '9px monospace';
     ctx.fillStyle = 'rgba(100,100,100,0.3)';
-    ctx.fillText('Acquablue Corp | v8.5', canvas.width - 200, canvas.height - 8);
+    ctx.fillText('Acquablue Corp | v8.7', canvas.width - 200, canvas.height - 8);
     ctx.restore();
 }
 
@@ -579,7 +579,7 @@ function crearEquipoParametrico(cmd, tipo) {
     return true;
 }
 
-// ==================== REPORTE DETALLADO ====================
+// ==================== REPORTE DETALLADO CON VOZ ====================
 function mostrarReporte(texto) {
     const existing = document.querySelector('.modal-reporte');
     if (existing) existing.remove();
@@ -595,34 +595,39 @@ function mostrarReporte(texto) {
     document.body.appendChild(modal);
     modal.querySelector('.modal-close').onclick = () => modal.remove();
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    // Leer el resumen en voz alta (exactamente como en v7.9)
+    if (voiceEnabled && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(texto);
+        u.lang = 'es-ES';
+        setTimeout(() => window.speechSynthesis.speak(u), 50);
+    }
 }
 
 function generarResumenDetallado() {
     let reporte = '';
-    reporte += '🏭 EQUIPOS:\n';
+    reporte += 'Equipos:\n';
     if (db.equipos.length === 0) {
         reporte += '  Ninguno.\n';
     } else {
         for (let eq of db.equipos) {
             let tipoEq = eq.tipo || 'desconocido';
-            let info = `  • ${eq.tag} (${tipoEq})`;
+            let info = `  ${eq.tag} (${tipoEq})`;
             if (eq.diametro && eq.altura) {
-                info += ` | Ø${(eq.diametro/1000).toFixed(1)}m x H${(eq.altura/1000).toFixed(1)}m`;
+                info += ` diámetro ${(eq.diametro/1000).toFixed(1)} metros, altura ${(eq.altura/1000).toFixed(1)} metros`;
             }
-            info += ` | posición (${Math.round(eq.x)}, ${Math.round(eq.y)}, ${Math.round(eq.z)})`;
             reporte += info + '\n';
         }
     }
-    reporte += '\n📐 LÍNEAS Y COMPONENTES:\n';
+    reporte += '\nLíneas y componentes:\n';
     if (db.lines.length === 0) {
         reporte += '  Ninguna.\n';
     } else {
         for (let line of db.lines) {
-            reporte += `  • ${line.tag} (${line.diameter}\", ${line.material || 'CS'}, Sch ${line.schedule || '40'})\n`;
+            reporte += `  ${line.tag} diámetro ${line.diameter} pulgadas, material ${line.material || 'CS'}\n`;
             if (line.components && line.components.length > 0) {
                 for (let comp of line.components) {
-                    let paramPos = (comp.param * 100).toFixed(1);
-                    reporte += `      - ${comp.tag} (${comp.type})${comp.skey ? ` [${comp.skey}]` : ''} @ ${paramPos}%\n`;
+                    reporte += `      - ${comp.tag} (${comp.type})${comp.skey ? ` [${comp.skey}]` : ''}\n`;
                 }
             } else {
                 reporte += `      Sin componentes.\n`;
@@ -633,13 +638,10 @@ function generarResumenDetallado() {
     const totalLineas = db.lines.length;
     let totalComponentes = 0;
     db.lines.forEach(l => totalComponentes += (l.components ? l.components.length : 0));
-    reporte += '\n📊 RESUMEN NUMÉRICO:\n';
-    reporte += `  • Equipos: ${totalEquipos}\n`;
-    reporte += `  • Líneas: ${totalLineas}\n`;
-    reporte += `  • Componentes: ${totalComponentes}\n`;
+    reporte += `\nTotal: ${totalEquipos} equipos, ${totalLineas} líneas, ${totalComponentes} componentes.`;
     let longitudTotal = 0;
     db.lines.forEach(l => longitudTotal += calcularLongitud(l) / 1000);
-    reporte += `  • Longitud total de tuberías: ${longitudTotal.toFixed(2)} metros\n`;
+    reporte += ` Longitud total de tuberías: ${longitudTotal.toFixed(2)} metros.`;
     return reporte;
 }
 
@@ -774,10 +776,9 @@ function calcularLongitud(line) {
     return len;
 }
 
+// ==================== EJECUTAR COMANDOS SIN MENSAJES GENÉRICOS ====================
 function ejecutarComandos(texto) {
     const lines = texto.split('\n');
-    let successCount = 0;
-    let errorCount = 0;
     for (let raw of lines) {
         let cmd = raw.trim();
         if (!cmd || cmd.startsWith('//')) continue;
@@ -785,26 +786,20 @@ function ejecutarComandos(texto) {
         let ok = false;
         try {
             if (parseNatural(cmd) || parseClassic(cmd)) {
-                successCount++;
                 ok = true;
-            } else {
-                errorCount++;
             }
         } catch(e) {
-            errorCount++;
+            // Error interno
         }
         if (!ok) {
-            notify(`❌ No entendí: "${cmd.substring(0,50)}..."`, true);
+            notify(`No entendí: "${cmd.substring(0,50)}..."`, true);
         }
-    }
-    if (successCount === 0 && errorCount > 0) {
-        notify(`⚠️ No se pudo ejecutar ningún comando. Revisa la sintaxis.`, true);
     }
     render();
     autoCenter();
 }
 
-// ==================== PERSISTENCIA Y EXPORTACIONES (simplificadas) ====================
+// ==================== PERSISTENCIA Y EXPORTACIONES ====================
 function guardarProyecto() {
     localStorage.setItem('smartflow_pro_v8', JSON.stringify({ equipos: db.equipos, lines: db.lines }));
     notify("Proyecto guardado");
@@ -1071,10 +1066,11 @@ function init() {
     };
 
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v8.5 - Panel de proyecto ocultable. Usa 'dime resumen'.");
+    notify("SmartFlow Pro v8.7 - Voz restaurada. Listo.");
 }
 
 init();
 </script>
 </body>
 </html>
+ 
