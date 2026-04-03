@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v8.3 | Reporte Detallado de Proyecto</title>
+<title>SmartFlow Pro v8.5 | Panel de Proyecto Ocultable</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Roboto,sans-serif;background:#0a0f1a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -30,10 +29,15 @@ textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;borde
     color:#e0e0e0; box-shadow:0 10px 25px rgba(0,0,0,0.5);
 }
 .modal-reporte pre{margin:0; font-size:13px;}
+.panel-proyecto{background:#1c2128; padding:8px 12px; display:flex; flex-wrap:wrap; gap:12px; border-bottom:1px solid #30363d; align-items:flex-end;}
+.panel-proyecto .campo{display:flex; flex-direction:column;}
+.panel-proyecto label{font-size:10px; color:#8b949e;}
+.panel-proyecto input{background:#0d1117; color:white; border:1px solid #30363d; padding:6px 10px; border-radius:6px; font-size:13px;}
 @media (max-width: 768px){
     .toolbar button{padding:10px 12px;font-size:14px}
     .command-panel{left:10px;right:10px;width:auto;bottom:10px}
     textarea{font-size:18px}
+    .panel-proyecto{gap:8px;}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -54,17 +58,21 @@ textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;borde
 <button id="btnUndo" class="btn-warning">↩️ Undo</button>
 <button id="btnRedo" class="btn-warning">↪️ Redo</button>
 <button id="btnVoice" style="background:#7c3aed;color:white;">🔊 Voz ON</button>
+<button id="btnEditProject" class="btn-primary">✏️ Editar Proyecto</button>
 </div>
-<div style="background:#1c2128; padding:8px 12px; display:flex; flex-wrap:wrap; gap:12px; border-bottom:1px solid #30363d;">
-    <div style="display:flex; flex-direction:column;">
-        <label style="font-size:10px; color:#8b949e;">PROYECTO:</label>
-        <input type="text" id="inputProyecto" value="PLANTA MARACAIBO" style="background:#0d1117; color:white; border:1px solid #30363d; padding:6px 10px; border-radius:6px; font-size:13px;">
+
+<div id="panelProyecto" class="panel-proyecto">
+    <div class="campo">
+        <label>PROYECTO:</label>
+        <input type="text" id="inputProyecto" value="PLANTA MARACAIBO">
     </div>
-    <div style="display:flex; flex-direction:column;">
-        <label style="font-size:10px; color:#8b949e;">AUTOR:</label>
-        <input type="text" id="inputAutor" value="ING. OSNAY ROMERO" style="background:#0d1117; color:white; border:1px solid #30363d; padding:6px 10px; border-radius:6px; font-size:13px;">
+    <div class="campo">
+        <label>AUTOR:</label>
+        <input type="text" id="inputAutor" value="ING. OSNAY ROMERO">
     </div>
+    <button id="btnAceptarProyecto" class="btn-primary" style="padding:6px 14px;">✓ Aceptar</button>
 </div>
+
 <div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
 <div id="commandPanel" class="command-panel" role="dialog">
 <h3>Panel de Ingeniería - Comandos Naturales / Clásicos</h3>
@@ -76,7 +84,7 @@ textarea{width:100%;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;borde
 </div>
 </div>
 <div id="notification" class="notification" role="alert" aria-live="assertive"></div>
-<div class="status-bar" role="status"><span id="statusMsg">SmartFlow Pro v8.3 | Reporte Detallado</span><span id="coordMsg">X:0 Y:0 Z:0 | ISO 30°</span></div>
+<div class="status-bar" role="status"><span id="statusMsg">SmartFlow Pro v8.5 | Panel ocultable</span><span id="coordMsg">X:0 Y:0 Z:0 | ISO 30°</span></div>
 <div id="compass" class="compass"></div>
 
 <script>
@@ -208,7 +216,7 @@ function autoCenter() {
     render();
 }
 
-// ==================== DIBUJO (resumido pero funcional) ====================
+// ==================== DIBUJO ====================
 function drawGrid() {
     const step = 1000;
     const minX = -8000, maxX = 20000, minZ = -8000, maxZ = 15000;
@@ -400,7 +408,7 @@ function drawWatermark() {
     ctx.save();
     ctx.font = '9px monospace';
     ctx.fillStyle = 'rgba(100,100,100,0.3)';
-    ctx.fillText('Acquablue Corp | v8.3', canvas.width - 200, canvas.height - 8);
+    ctx.fillText('Acquablue Corp | v8.5', canvas.width - 200, canvas.height - 8);
     ctx.restore();
 }
 
@@ -570,7 +578,7 @@ function crearEquipoParametrico(cmd, tipo) {
     return true;
 }
 
-// ==================== FUNCIÓN PARA MOSTRAR REPORTE EN MODAL ====================
+// ==================== REPORTE DETALLADO ====================
 function mostrarReporte(texto) {
     const existing = document.querySelector('.modal-reporte');
     if (existing) existing.remove();
@@ -590,7 +598,6 @@ function mostrarReporte(texto) {
 
 function generarResumenDetallado() {
     let reporte = '';
-    // Equipos
     reporte += '🏭 EQUIPOS:\n';
     if (db.equipos.length === 0) {
         reporte += '  Ninguno.\n';
@@ -605,7 +612,6 @@ function generarResumenDetallado() {
             reporte += info + '\n';
         }
     }
-    // Líneas y componentes
     reporte += '\n📐 LÍNEAS Y COMPONENTES:\n';
     if (db.lines.length === 0) {
         reporte += '  Ninguna.\n';
@@ -622,7 +628,6 @@ function generarResumenDetallado() {
             }
         }
     }
-    // Totales
     const totalEquipos = db.equipos.length;
     const totalLineas = db.lines.length;
     let totalComponentes = 0;
@@ -770,19 +775,29 @@ function calcularLongitud(line) {
 
 function ejecutarComandos(texto) {
     const lines = texto.split('\n');
-    let count = 0;
+    let successCount = 0;
+    let errorCount = 0;
     for (let raw of lines) {
         let cmd = raw.trim();
         if (!cmd || cmd.startsWith('//')) continue;
         saveState();
-        if (!parseNatural(cmd) && !parseClassic(cmd)) {
+        let ok = false;
+        try {
+            if (parseNatural(cmd) || parseClassic(cmd)) {
+                successCount++;
+                ok = true;
+            } else {
+                errorCount++;
+            }
+        } catch(e) {
+            errorCount++;
+        }
+        if (!ok) {
             notify(`❌ No entendí: "${cmd.substring(0,50)}..."`, true);
-        } else {
-            count++;
         }
     }
-    if (count > 0) {
-        notify(`${count} comando(s) ejecutado(s).`);
+    if (successCount === 0 && errorCount > 0) {
+        notify(`⚠️ No se pudo ejecutar ningún comando. Revisa la sintaxis.`, true);
     }
     render();
     autoCenter();
@@ -993,6 +1008,22 @@ function resizeCanvas() {
 function init() {
     resizeCanvas();
     initCanvasEvents();
+
+    // Recuperar estado del panel de proyecto (oculto o visible)
+    const panelVisible = localStorage.getItem('panelProyectoVisible');
+    const panel = document.getElementById('panelProyecto');
+    if (panelVisible === 'false') {
+        panel.style.display = 'none';
+    } else {
+        panel.style.display = 'flex';
+    }
+
+    // Cargar valores guardados del proyecto
+    const savedProyecto = localStorage.getItem('proyectoNombre');
+    const savedAutor = localStorage.getItem('proyectoAutor');
+    if (savedProyecto) document.getElementById('inputProyecto').value = savedProyecto;
+    if (savedAutor) document.getElementById('inputAutor').value = savedAutor;
+
     // Datos de ejemplo
     db.equipos.push({ tag: 'TK-01', tipo: 'tanque_v', x: 2000, y: 1250, z: 0, diametro: 2400, altura: 2500 });
     db.lines.push({ tag: 'L-101', diameter: 4, material: 'CS', schedule: '40', points3D: [{x:2000, y:1500, z:0}, {x:5000, y:1500, z:0}], components: [] });
@@ -1000,6 +1031,7 @@ function init() {
     autoCenter();
     saveState();
 
+    // Eventos de UI
     document.getElementById('btnNew').onclick = nuevoProyecto;
     document.getElementById('btnOpen').onclick = cargarProyecto;
     document.getElementById('btnSave').onclick = guardarProyecto;
@@ -1018,8 +1050,27 @@ function init() {
     document.getElementById('btnUndo').onclick = undo;
     document.getElementById('btnRedo').onclick = redo;
     document.getElementById('btnVoice').onclick = toggleVoice;
+
+    // Botón Aceptar del panel de proyecto
+    document.getElementById('btnAceptarProyecto').onclick = () => {
+        const proyecto = document.getElementById('inputProyecto').value;
+        const autor = document.getElementById('inputAutor').value;
+        localStorage.setItem('proyectoNombre', proyecto);
+        localStorage.setItem('proyectoAutor', autor);
+        localStorage.setItem('panelProyectoVisible', 'false');
+        document.getElementById('panelProyecto').style.display = 'none';
+        notify(`Proyecto actualizado: ${proyecto} - ${autor}`);
+    };
+
+    // Botón Editar Proyecto (en toolbar)
+    document.getElementById('btnEditProject').onclick = () => {
+        const panel = document.getElementById('panelProyecto');
+        panel.style.display = 'flex';
+        localStorage.setItem('panelProyectoVisible', 'true');
+    };
+
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v8.3 - Reporte detallado de proyecto incluido");
+    notify("SmartFlow Pro v8.5 - Panel de proyecto ocultable. Usa 'dime resumen'.");
 }
 
 init();
