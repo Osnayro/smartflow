@@ -1,741 +1,672 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v - Ingeniería Inteligente</title>
+<title>SmartFlow Pro v8.0 - Acquablue Corp</title>
 <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-    .toolbar{background:#1a1a2e;padding:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;border-bottom:1px solid #2a2a4a}
-    button{background:#2c3e66;border:none;color:white;padding:8px 12px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:12px}
-    button:hover{background:#3b5a8c}
-    .btn-primary{background:#238636}
-    .btn-warning{background:#d29922;color:#1f1f1f}
-    .canvas-container{flex:1;position:relative;background:#000}
-    canvas{display:block;width:100%;height:100%;cursor:grab}
-    canvas:active{cursor:grabbing}
-    .command-panel{position:fixed;left:10px;bottom:10px;width:90%;max-width:500px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:1000;display:none}
-    .command-header{display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid #3a3a4a}
-    .command-buttons{display:flex;gap:8px;padding:12px}
-    textarea{width:calc(100% - 24px);margin:12px;background:#0f0f17;color:#eee;border:none;border-radius:8px;padding:12px;font-family:monospace;font-size:14px;resize:vertical}
-    .notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#238636;padding:10px 20px;border-radius:8px;z-index:2000;display:none;text-align:center}
-    .status-bar{background:#111;padding:6px;font-size:12px;text-align:center;border-top:1px solid #2a2a4a}
-    .modal-reporte{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2e;border:2px solid #7c3aed;border-radius:12px;padding:20px;max-width:90%;max-height:80vh;overflow:auto;z-index:3000;font-family:monospace;white-space:pre-wrap}
-    .modal-close{float:right;background:none;border:none;color:white;font-size:20px;cursor:pointer}
-    @media (max-width:768px){button{padding:8px;font-size:11px}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:linear-gradient(135deg,#0a0f1a 0%,#0a192f 100%);color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:'Segoe UI',Roboto,sans-serif}
+:root{--primary:#00d4ff;--primary-dark:#0099cc;--secondary:#7c3aed;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--dark-bg:#0a192f;--card-bg:#112240;--border:#1e3a5f;--text:#e0e0e0;--text-muted:#8892b0}
+.toolbar{background:var(--dark-bg);padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid var(--border);z-index:10}
+button{background:rgba(255,255,255,0.1);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;transition:all 0.2s ease;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+button:hover{background:var(--primary);color:#0a192f;border-color:var(--primary);transform:translateY(-1px)}
+.btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#0a192f;border:none}
+.btn-primary:hover{background:linear-gradient(135deg,var(--primary-dark),var(--primary))}
+.btn-warning{background:rgba(245,158,11,0.2);border-color:var(--warning);color:var(--warning)}
+.btn-warning:hover{background:var(--warning);color:#0a192f}
+.canvas-container{flex:1;position:relative;background:radial-gradient(circle at 20% 50%,rgba(0,212,255,0.05) 0%,transparent 50%);overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab}
+canvas:active{cursor:grabbing}
+.logo{display:flex;align-items:center;gap:8px;margin-right:auto;padding:0 8px}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--primary),var(--secondary));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px}
+.logo-text{font-weight:700;font-size:14px;letter-spacing:1px}
+.logo-text small{font-size:10px;color:var(--text-muted);display:block}
+.command-panel{position:fixed;left:20px;bottom:20px;width:90%;max-width:550px;background:var(--card-bg);border-radius:16px;border:1px solid var(--border);z-index:1000;display:none;box-shadow:0 20px 40px rgba(0,0,0,0.4);backdrop-filter:blur(10px)}
+.command-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--border);background:rgba(10,25,47,0.9);border-radius:16px 16px 0 0}
+.command-header strong{color:var(--primary);font-size:14px}
+.command-buttons{display:flex;gap:12px;padding:16px;border-top:1px solid var(--border)}
+textarea{width:calc(100% - 32px);margin:16px;background:rgba(10,25,47,0.9);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px;font-family:monospace;font-size:14px;resize:vertical}
+textarea:focus{outline:none;border-color:var(--primary)}
+.notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--success);padding:12px 24px;border-radius:40px;z-index:2000;display:none;text-align:center;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:90%}
+.status-bar{background:var(--dark-bg);padding:8px 16px;font-size:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.coords{font-family:monospace;color:var(--primary);font-weight:bold}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);backdrop-filter:blur(5px);z-index:10000;display:flex;align-items:center;justify-content:center}
+.modal-content{background:var(--card-bg);border-radius:20px;padding:32px;max-width:500px;width:90%;border:1px solid var(--border);box-shadow:0 30px 50px rgba(0,0,0,0.5)}
+.modal-content h2{color:var(--primary);margin-bottom:24px;font-size:24px}
+.modal-content label{display:block;margin-top:16px;margin-bottom:8px;color:var(--text-muted);font-size:12px;font-weight:600}
+.modal-content input{width:100%;padding:12px;background:rgba(10,25,47,0.9);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px}
+.modal-content input:focus{outline:none;border-color:var(--primary)}
+.modal-buttons{display:flex;gap:12px;margin-top:24px;justify-content:flex-end}
+.property-panel{position:fixed;right:20px;top:100px;width:280px;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:16px;z-index:900;display:none;backdrop-filter:blur(10px);box-shadow:-5px 0 30px rgba(0,0,0,0.3)}
+.property-panel h4{color:var(--primary);margin-bottom:16px;font-size:14px;border-bottom:1px solid var(--border);padding-bottom:8px}
+.property-row{margin-bottom:12px;display:flex;align-items:center;gap:12px}
+.property-label{width:80px;font-size:12px;color:var(--text-muted)}
+.property-value{flex:1}
+.property-value input,.property-value select{width:100%;padding:6px 8px;background:rgba(10,25,47,0.9);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px}
+.edit-toolbar{position:fixed;bottom:20px;right:20px;background:var(--card-bg);border-radius:40px;padding:8px 16px;display:none;gap:12px;border:1px solid var(--border);z-index:800;backdrop-filter:blur(10px)}
+.edit-toolbar button{padding:6px 12px;font-size:11px}
+.project-badge{background:rgba(0,212,255,0.1);padding:4px 12px;border-radius:20px;font-size:11px;color:var(--primary);margin-left:auto;display:flex;align-items:center;gap:8px}
+.project-badge button{background:none;border:none;color:var(--primary);font-size:11px;padding:0;margin:0}
+.project-badge button:hover{text-decoration:underline;background:none;transform:none}
+@media (max-width:768px){.toolbar button{padding:6px 10px;font-size:10px}.logo-text{display:none}.property-panel{width:240px;right:10px;top:80px}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 <div class="toolbar">
-    <button id="btnNew" class="btn-primary">Nuevo</button>
-    <button id="btnOpen">Abrir</button>
-    <button id="btnSave">Guardar</button>
-    <button id="btnReset">Centrar</button>
-    <button id="btnCommand" class="btn-primary">Comandos</button>
-    <button id="btnMTO">MTO</button>
-    <button id="btnPDF">PDF</button>
-    <button id="btnUndo" class="btn-warning">Deshacer</button>
-    <button id="btnRedo" class="btn-warning">Rehacer</button>
-    <button id="btnVoice" style="background:#7c3aed">Voz ON</button>
-    <button id="btnApplyNorm">Normas</button>
+<div class="logo"><div class="logo-icon">⚡</div><div class="logo-text">ACQUABLUE CORP<small>SmartFlow Pro v8.0</small></div></div>
+<button id="btnNew" class="btn-primary">Nuevo</button>
+<button id="btnOpen">Abrir</button>
+<button id="btnSave">Guardar</button>
+<button id="btnReset">Centrar</button>
+<button id="btnCommand" class="btn-primary">Comandos</button>
+<button id="btnMTO">MTO</button>
+<button id="btnPDF">PDF</button>
+<button id="btnExportPCF">PCF</button>
+<button id="btnImportPCF">Importar</button>
+<button id="btnUndo" class="btn-warning">Deshacer</button>
+<button id="btnRedo" class="btn-warning">Rehacer</button>
+<button id="btnManual">Manual</button>
+<button id="btnMeasure">Medir</button>
+<button id="btnSnap">Snap ON</button>
+<button id="btnVoice" style="background:var(--secondary)">Voz ON</button>
+<button id="btnApplyNorm">Normas</button>
+<button id="btnEditProyecto" style="display:none;">Editar</button>
+<button id="btnAddValve">+Valvula</button>
+<div class="project-badge" id="projectBadge" style="display:none;"><span id="badgeProjectName"></span><span>|</span><span id="badgeAuthor"></span><button id="btnEditProyectoBadge">Editar</button></div>
 </div>
 <div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
-<div id="commandPanel" class="command-panel">
-    <div class="command-header"><strong>Comando de voz o texto</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;">Cerrar</button></div>
-    <textarea id="commandText" rows="6" placeholder="Ejemplos:
+<div id="edit-toolbar" class="edit-toolbar"><span style="font-size:11px;color:var(--primary)">Modo Edicion Activo</span><button id="btnEliminar">Eliminar</button></div>
+<div id="commandPanel" class="command-panel"><div class="command-header"><strong>Comando de voz o texto</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">X</button></div>
+<textarea id="commandText" rows="5" placeholder="Ejemplos:
 crear tanque de 2400 mm diametro y 2900 mm altura material acero carbono
-crear bomba centrifuga entrada 3 pulgadas salida 3 pulgadas
-conectar 4 pulgadas PPR desde salida de TK-01 hasta entrada de B-01
+crear bomba de 5 HP
+conectar 4 pulgadas CS desde TK-01 hasta B-01
 comenzar tuberia 4 pulgadas PPR desde salida de TK-01 avanzar 50 cm frente avanzar 30 cm derecha conectar con entrada de B-01
 instalar distribuidor de 4 pulgadas PPR desde entrada de TK-01 hasta entrada de TK-06 a 80 cm
-agregar valvula de bola acero en tuberia L-001 posicion 0.5
+agregar valvula de bola en L-001 posicion 0.5
 resumen
 eliminar TK-01"></textarea>
-    <div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div>
-</div>
+<div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div></div>
+<div id="propertyPanel" class="property-panel"><h4>Propiedades</h4><div id="prop-tag" style="margin-bottom:12px;font-size:12px;color:var(--primary)"></div>
+<div class="property-row"><div class="property-label">Diametro</div><div class="property-value"><input type="range" id="prop-diam-slider" min="500" max="5000" step="100" value="2000"></div><div class="property-value"><input type="number" id="prop-diam-num" value="2000" step="100"></div></div>
+<div class="property-row"><div class="property-label">Altura</div><div class="property-value"><input type="range" id="prop-alt-slider" min="500" max="8000" step="100" value="2500"></div><div class="property-value"><input type="number" id="prop-alt-num" value="2500" step="100"></div></div>
+<div class="property-row"><div class="property-label">Material</div><div class="property-value"><select id="prop-mat"><option value="CS">Acero Carbono</option><option value="SS">Acero Inoxidable</option><option value="PPR">PPR</option></select></div></div>
+<div class="property-row" id="prop-elevacion-row" style="display:none;"><div class="property-label">Elevacion</div><div class="property-value"><input type="number" id="prop-elevacion" value="500" step="100"></div></div></div>
 <div id="notification" class="notification"></div>
-<div class="status-bar" id="statusMsg">SmartFlow Pro v7.9 - Listo</div>
-
+<div class="status-bar"><span id="statusMsg">SmartFlow Pro v8.0 - Listo</span><span id="coords" class="coords">X:0 Z:0</span></div>
+<div id="modalProyecto" class="modal" style="display:flex"><div class="modal-content"><h2>SmartFlow Pro v8.0</h2><p style="color:var(--text-muted);margin-bottom:24px;">Ingenieria Inteligente</p>
+<label>Nombre del Proyecto</label><input type="text" id="proyectoNombre" value="Planta Dalvi">
+<label>Ingeniero Responsable</label><input type="text" id="proyectoAutor" value="Ing. Osnay Romero">
+<label>Fecha</label><input type="date" id="proyectoFecha" value="2025-01-15">
+<label>Version</label><input type="text" id="proyectoVersion" value="1.0">
+<div class="modal-buttons"><button id="guardarProyectoBtn" class="btn-primary">Iniciar Proyecto</button></div></div></div>
 <script>
-// ==================== CONFIGURACIÓN GLOBAL ====================
+// ==================== CONFIGURACION GLOBAL ====================
 let db = { equipos: [], lines: [], puntosLibres: [] };
 let cam = { scale: 0.5, panX: 0, panY: 0 };
 let dragging = false, lastPos = { x: 0, y: 0 };
 let selectedElement = null;
-let voiceEnabled = true;
-let history = { past: [], future: [], maxSize: 30 };
-let nextPointId = 1;
-let currentCursor = null;
-
-const canvas = document.getElementById('isoCanvas');
-const ctx = canvas.getContext('2d');
-
-// ==================== FUNCIONES AUXILIARES ====================
-function notify(msg, isErr = false) {
-    const n = document.getElementById('notification');
-    n.textContent = msg;
-    n.style.backgroundColor = isErr ? '#da3633' : '#238636';
-    n.style.display = 'block';
-    document.getElementById('statusMsg').innerHTML = msg;
-    if (voiceEnabled && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(msg);
-        u.lang = 'es-ES';
-        setTimeout(() => window.speechSynthesis.speak(u), 50);
-    }
-    setTimeout(() => n.style.display = 'none', 4000);
-}
-
-function saveState() {
-    const state = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines, puntosLibres: db.puntosLibres }));
-    history.past.push(state);
-    if (history.past.length > history.maxSize) history.past.shift();
-    history.future = [];
-}
-function undo() {
-    if (history.past.length === 0) return;
-    const current = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines, puntosLibres: db.puntosLibres }));
-    history.future.push(current);
-    const prev = history.past.pop();
-    db.equipos = prev.equipos || [];
-    db.lines = prev.lines || [];
-    db.puntosLibres = prev.puntosLibres || [];
-    selectedElement = null;
-    render();
-    autoCenter();
-    notify("Deshecho");
-}
-function redo() {
-    if (history.future.length === 0) return;
-    const current = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines, puntosLibres: db.puntosLibres }));
-    history.past.push(current);
-    const next = history.future.pop();
-    db.equipos = next.equipos || [];
-    db.lines = next.lines || [];
-    db.puntosLibres = next.puntosLibres || [];
-    selectedElement = null;
-    render();
-    autoCenter();
-    notify("Rehecho");
-}
-
-// ==================== GENERACIÓN DE TAGS AUTOMÁTICOS ====================
-function generarTagAutomatico(tipo) {
-    const prefijos = { 'tanque': 'TK', 'tanque_v': 'TK', 'tanque_h': 'TK', 'bomba': 'B', 'intercambiador': 'E', 'torre': 'CT', 'colector': 'COL', 'distribuidor': 'COL' };
-    const prefijo = prefijos[tipo] || 'EQ';
-    let numero = 1;
-    while (db.equipos.some(eq => eq.tag === `${prefijo}-${String(numero).padStart(2,'0')}`)) numero++;
-    return `${prefijo}-${String(numero).padStart(2,'0')}`;
-}
-
-function generarTagLinea() {
-    let numero = 1;
-    while (db.lines.some(l => l.tag === `L-${String(numero).padStart(3,'0')}`)) numero++;
-    return `L-${String(numero).padStart(3,'0')}`;
-}
-
-// ==================== SISTEMA DE VOZ SIN INTERRUPCIONES ====================
-let speechQueue = [];
-let isSpeaking = false;
-let voiceEnabled = true;
-
-function speakText(text, isUrgent = false) {
-    if (!voiceEnabled || !text) return;
-    
-    if (isUrgent) {
-        if (window.speechSynthesis) window.speechSynthesis.cancel();
-        speechQueue = [];
-        isSpeaking = false; // ✅ CORRECCIÓN: Resetear el flag al limpiar por urgencia
-    }
-    
-    speechQueue.push(text);
-    processSpeechQueue();
-}
-
-function processSpeechQueue() {
-    if (isSpeaking || speechQueue.length === 0) return;
-    if (!window.speechSynthesis) return;
-    
-    isSpeaking = true;
-    const text = speechQueue.shift();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    
-    utterance.onend = () => {
-        isSpeaking = false;
-        processSpeechQueue();
-    };
-    
-    utterance.onerror = () => {
-        isSpeaking = false;
-        processSpeechQueue();
-    };
-    
-    window.speechSynthesis.speak(utterance);
-}
-
-function notify(msg, isErr = false) {
-    const n = document.getElementById('notification');
-    n.textContent = msg;
-    n.style.backgroundColor = isErr ? 'var(--danger)' : 'var(--success)';
-    n.style.display = 'block';
-    document.getElementById('statusMsg').innerHTML = msg;
-    
-    speakText(msg, isErr);
-    
-    setTimeout(() => {
-        if (n.style.display === 'block') n.style.display = 'none';
-    }, 5000);
-}
-
-// ==================== DATOS DEL PROYECTO ====================
-let proyectoData = { nombre: 'Proyecto Sin Nombre', autor: 'Ingeniero' };
-
-function mostrarModalProyecto(obligatorio = true) {
-    const modal = document.getElementById('modalProyecto');
-    modal.style.display = 'block';
-    if (!obligatorio) {
-        document.getElementById('proyectoNombre').value = proyectoData.nombre;
-        document.getElementById('proyectoAutor').value = proyectoData.autor;
-    }
-}
-
-function guardarProyecto() {
-    const nombre = document.getElementById('proyectoNombre').value.trim();
-    const autor = document.getElementById('proyectoAutor').value.trim();
-    
-    if (nombre) proyectoData.nombre = nombre;
-    if (autor) proyectoData.autor = autor;
-    
-    document.getElementById('modalProyecto').style.display = 'none';
-    notify(`Proyecto: ${proyectoData.nombre} | Ingeniero: ${proyectoData.autor}`);
-    speakText(`Bienvenido ${proyectoData.autor}. Proyecto ${proyectoData.nombre} cargado. Sistema listo para comandos.`);
-}
-
-function editarProyecto() {
-    mostrarModalProyecto(false);
-}
-
-// ==================== CONFIGURACIÓN GLOBAL ====================
-let db = { equipos: [], lines: [], puntosLibres: [] };
-let cam = { scale: 0.5, panX: 0, panY: 0 };
-let dragging = false, lastPos = { x: 0, y: 0 };
-let selectedElement = null;
-let editMode = false;
-let measuringMode = false;
-let snapEnabled = true;
+let editMode = false, measuringMode = false, snapEnabled = true, voiceEnabled = true;
+let addAccessoryMode = false, accessoryType = 'VALVE', accessorySkey = 'VBAL';
 let currentCursor = { x: 0, y: 0, z: 0 };
 let history = { past: [], future: [], maxSize: 30 };
-
+let tempMeasurePoint = null;
+let speechQueue = [], isSpeaking = false;
 const canvas = document.getElementById('isoCanvas');
 const ctx = canvas.getContext('2d');
 
-// ==================== FUNCIONES BÁSICAS ====================
-function autoCenter() {
-    cam.panX = canvas.width / 2;
-    cam.panY = canvas.height / 2;
-    cam.scale = 0.5;
-    render();
-}
+// ==================== SISTEMA DE VOZ ====================
+function speakText(t, u) { if (!voiceEnabled || !t) return; if (u && window.speechSynthesis) { window.speechSynthesis.cancel(); speechQueue = []; isSpeaking = false; } speechQueue.push(t); processSpeechQueue(); }
+function processSpeechQueue() { if (isSpeaking || speechQueue.length === 0) return; if (!window.speechSynthesis) return; isSpeaking = true; let t = speechQueue.shift(); let u = new SpeechSynthesisUtterance(t); u.lang = 'es-ES'; u.rate = 0.9; u.pitch = 1; u.onend = () => { isSpeaking = false; processSpeechQueue(); }; u.onerror = () => { isSpeaking = false; processSpeechQueue(); }; window.speechSynthesis.speak(u); }
+function notify(m, e) { let n = document.getElementById('notification'); n.textContent = m; n.style.backgroundColor = e ? 'var(--danger)' : 'var(--success)'; n.style.display = 'block'; document.getElementById('statusMsg').innerHTML = m; speakText(m, e); setTimeout(() => { if (n.style.display === 'block') n.style.display = 'none'; }, 5000); }
 
-function saveState() {
-    const state = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines }));
-    history.past.push(state);
-    if (history.past.length > history.maxSize) history.past.shift();
-    history.future = [];
-}
+// ==================== PROYECTO ====================
+let proyectoData = { nombre: '', autor: '', fecha: '', version: '' };
+function guardarProyectoModal() { let n = document.getElementById('proyectoNombre').value.trim(); let a = document.getElementById('proyectoAutor').value.trim(); let f = document.getElementById('proyectoFecha').value; let v = document.getElementById('proyectoVersion').value.trim(); if (!n || !a) { notify("Complete nombre e ingeniero", true); return; } proyectoData.nombre = n; proyectoData.autor = a; proyectoData.fecha = f; proyectoData.version = v; document.getElementById('modalProyecto').style.display = 'none'; document.getElementById('badgeProjectName').innerHTML = n; document.getElementById('badgeAuthor').innerHTML = a; document.getElementById('projectBadge').style.display = 'flex'; document.getElementById('btnEditProyecto').style.display = 'inline-flex'; notify(`Proyecto: ${n} | Ingeniero: ${a}`); }
+function editarProyecto() { document.getElementById('proyectoNombre').value = proyectoData.nombre; document.getElementById('proyectoAutor').value = proyectoData.autor; document.getElementById('proyectoFecha').value = proyectoData.fecha; document.getElementById('proyectoVersion').value = proyectoData.version; document.getElementById('modalProyecto').style.display = 'flex'; }
 
-function undo() {
-    if (history.past.length === 0) return notify("Nada que deshacer", true);
-    const current = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines }));
-    history.future.push(current);
-    const prev = history.past.pop();
-    db.equipos = prev.equipos || [];
-    db.lines = prev.lines || [];
-    selectedElement = null;
-    render();
-    notify("Acción deshecha");
-}
-
-function redo() {
-    if (history.future.length === 0) return notify("Nada que rehacer", true);
-    const current = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines }));
-    history.past.push(current);
-    const next = history.future.pop();
-    db.equipos = next.equipos || [];
-    db.lines = next.lines || [];
-    selectedElement = null;
-    render();
-    notify("Acción rehecha");
-}
-
-function generarTagAutomatico(tipo) {
-    const prefijos = { 'tanque': 'TK', 'bomba': 'B' };
-    const prefijo = prefijos[tipo] || 'EQ';
-    let numero = 1;
-    while (db.equipos.some(eq => eq.tag === `${prefijo}-${String(numero).padStart(2,'0')}`)) numero++;
-    return `${prefijo}-${String(numero).padStart(2,'0')}`;
-}
-
-function generarTagLinea() {
-    let numero = 1;
-    while (db.lines.some(l => l.tag === `L-${String(numero).padStart(3,'0')}`)) numero++;
-    return `L-${String(numero).padStart(3,'0')}`;
-}
-
-function calcularLongitud(line) {
-    if (!line.points3D || line.points3D.length < 2) return 0;
-    let total = 0;
-    for (let i = 1; i < line.points3D.length; i++) {
-        const p1 = line.points3D[i-1];
-        const p2 = line.points3D[i];
-        total += Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
-    }
-    return total;
-}
+// ==================== FUNCIONES BASE ====================
+function saveState() { let s = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.past.push(s); if (history.past.length > history.maxSize) history.past.shift(); history.future = []; }
+function undo() { if (history.past.length === 0) return notify("Nada que deshacer", true); let c = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.future.push(c); let p = history.past.pop(); db.equipos = p.equipos || []; db.lines = p.lines || []; selectedElement = null; render(); notify("Deshecho"); }
+function redo() { if (history.future.length === 0) return notify("Nada que rehacer", true); let c = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.past.push(c); let n = history.future.pop(); db.equipos = n.equipos || []; db.lines = n.lines || []; selectedElement = null; render(); notify("Rehecho"); }
+function autoCenter() { if (db.equipos.length === 0) { cam.panX = canvas.width / 2; cam.panY = canvas.height / 2; cam.scale = 0.5; } else { let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity; db.equipos.forEach(e => { minX = Math.min(minX, e.x); maxX = Math.max(maxX, e.x); minZ = Math.min(minZ, e.z); maxZ = Math.max(maxZ, e.z); }); let cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2; let p = project({ x: cx, y: 0, z: cz }); cam.panX = canvas.width / 2 - p.x; cam.panY = canvas.height / 2 - p.y; let md = Math.max(maxX - minX, maxZ - minZ); cam.scale = Math.min(0.8, canvas.width / (md + 2000)); cam.scale = Math.max(cam.scale, 0.2); } render(); }
+function generarTag(t) { let p = { 'tanque': 'TK', 'bomba': 'B' }; let pre = p[t] || 'EQ'; let num = 1; while (db.equipos.some(e => e.tag === `${pre}-${String(num).padStart(2, '0')}`)) num++; return `${pre}-${String(num).padStart(2, '0')}`; }
+function generarTagLinea() { let num = 1; while (db.lines.some(l => l.tag === `L-${String(num).padStart(3, '0')}`)) num++; return `L-${String(num).padStart(3, '0')}`; }
+function calcLongitud(l) { if (!l.points3D || l.points3D.length < 2) return 0; let t = 0; for (let i = 1; i < l.points3D.length; i++) { let p1 = l.points3D[i - 1], p2 = l.points3D[i]; t += Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z); } return t; }
+function pointToSegmentDistance(p, a, b) { let ax = p.x - a.x, ay = p.y - a.y; let bx = b.x - a.x, by = b.y - a.y; let dot = ax * bx + ay * by; let len2 = bx * bx + by * by; if (len2 === 0) return Math.hypot(ax, ay); let t = dot / len2; t = Math.max(0, Math.min(1, t)); let px = a.x + t * bx, py = a.y + t * by; return Math.hypot(p.x - px, p.y - py); }
+function pulgadasToMM(p) { return p * 25.4; }
 
 // ==================== MOTOR DE RENDER ====================
-function project(p) {
-    const cos30 = 0.866, sin30 = 0.5;
-    const x = (p.x - p.z) * cos30;
-    const y = (p.x + p.z) * sin30 - (p.y || 0);
-    return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY };
-}
+function project(p) { let c30 = 0.866, s30 = 0.5; let x = (p.x - p.z) * c30; let y = (p.x + p.z) * s30 - (p.y || 0); return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY }; }
+function drawGrid() { ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1; for (let i = -10000; i <= 10000; i += 1000) { let p1 = project({ x: i, y: 0, z: -10000 }), p2 = project({ x: i, y: 0, z: 10000 }); ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); let p3 = project({ x: -10000, y: 0, z: i }), p4 = project({ x: 10000, y: 0, z: i }); ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke(); } ctx.restore(); }
+function checkCollisions() { for (let i = 0; i < db.equipos.length; i++) { for (let j = i + 1; j < db.equipos.length; j++) { let e1 = db.equipos[i], e2 = db.equipos[j]; let r1 = (e1.diametro || 2000) / 2, r2 = (e2.diametro || 2000) / 2; let dx = Math.abs(e1.x - e2.x), dz = Math.abs(e1.z - e2.z); let md = r1 + r2 + 500; if (dx < md && dz < md) { e1._collision = true; e2._collision = true; } else { e1._collision = false; e2._collision = false; } } } }
+function drawTank(e) { let p = project(e); let r = (e.diametro / 2) * cam.scale; let h = e.altura * cam.scale; let c = '#3b82f6'; if (e.material === 'Acero Inoxidable') c = '#94a3b8'; if (e.material === 'Acero al Carbono') c = '#475569'; if (e.material === 'PPR') c = '#22c55e'; ctx.fillStyle = c; ctx.fillRect(p.x - r, p.y - h, r * 2, h); ctx.beginPath(); ctx.ellipse(p.x, p.y - h, r, r * 0.5, 0, 0, 2 * Math.PI); ctx.fill(); if (e._collision) { ctx.strokeStyle = 'var(--danger)'; ctx.lineWidth = 3; ctx.strokeRect(p.x - r - 5, p.y - h - 5, r * 2 + 10, h + 10); } if (selectedElement && selectedElement.obj === e) { ctx.strokeStyle = 'var(--primary)'; ctx.lineWidth = 3; ctx.strokeRect(p.x - r - 5, p.y - h - 5, r * 2 + 10, h + 10); } ctx.fillStyle = 'white'; ctx.font = `bold ${12 * cam.scale}px 'Segoe UI'`; ctx.textAlign = 'center'; ctx.fillText(e.tag, p.x, p.y - h - 10); if (e.tipo === 'bomba') { ctx.fillStyle = '#ffaa00'; ctx.font = `10px 'Segoe UI'`; ctx.fillText(`${e.potencia} HP`, p.x, p.y - h - 25); } }
+function drawPipe(l) { if (!l.points3D || l.points3D.length < 2) return; ctx.beginPath(); let s = project(l.points3D[0]); ctx.moveTo(s.x, s.y); for (let i = 1; i < l.points3D.length; i++) { let p = project(l.points3D[i]); ctx.lineTo(p.x, p.y); } let c = '#94a3b8'; if (l.material === 'PPR') c = '#22c55e'; ctx.strokeStyle = c; ctx.lineWidth = Math.max(3, (l.diameter || 4) * 1.5); ctx.stroke(); if (selectedElement && selectedElement.obj === l) { ctx.strokeStyle = 'var(--primary)'; ctx.lineWidth = Math.max(3, (l.diameter || 4) * 1.5) + 2; ctx.stroke(); } if (l.components) { l.components.forEach(c => { if (c.type === 'VALVE' && l.points3D) { let idx = Math.floor(c.param * (l.points3D.length - 1)); if (idx < l.points3D.length) { let pos = project(l.points3D[idx]); ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.rect(pos.x - 8, pos.y - 4, 16, 8); ctx.fill(); ctx.fillStyle = 'white'; ctx.font = '8px monospace'; ctx.fillText(c.skey || 'VLV', pos.x - 6, pos.y - 6); } } }); } }
+function render() { if (!ctx) return; ctx.clearRect(0, 0, canvas.width, canvas.height); checkCollisions(); drawGrid(); for (let l of db.lines) drawPipe(l); for (let e of db.equipos) drawTank(e); if (tempMeasurePoint) { let p1 = project(tempMeasurePoint), p2 = project(currentCursor); ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.strokeStyle = 'var(--warning)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]); } document.getElementById('coords').innerHTML = `X: ${currentCursor.x.toFixed(0)} | Z: ${currentCursor.z.toFixed(0)}`; }
 
-function drawGrid() {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    for (let i = -10000; i <= 10000; i += 1000) {
-        const p1 = project({ x: i, y: 0, z: -10000 });
-        const p2 = project({ x: i, y: 0, z: 10000 });
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-        
-        const p3 = project({ x: -10000, y: 0, z: i });
-        const p4 = project({ x: 10000, y: 0, z: i });
-        ctx.beginPath();
-        ctx.moveTo(p3.x, p3.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.stroke();
-    }
-    ctx.restore();
-}
-
-function drawTank(eq) {
-    const p = project(eq);
-    const r = (eq.diametro / 2) * cam.scale;
-    const h = eq.altura * cam.scale;
-    
-    let color = '#3b82f6';
-    if (eq.material === 'Acero Inoxidable') color = '#94a3b8';
-    if (eq.material === 'Acero al Carbono') color = '#475569';
-    if (eq.material === 'PPR') color = '#22c55e';
-    
-    ctx.fillStyle = color;
-    ctx.fillRect(p.x - r, p.y - h, r * 2, h);
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y - h, r, r * 0.5, 0, 0, 2 * Math.PI);
-    ctx.fill();
-    
-    if (selectedElement && selectedElement.obj === eq) {
-        ctx.strokeStyle = '#00d4ff';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(p.x - r - 5, p.y - h - 5, r * 2 + 10, h + 10);
-    }
-    
-    ctx.fillStyle = 'white';
-    ctx.font = `bold ${12 * cam.scale}px 'Segoe UI'`;
-    ctx.textAlign = 'center';
-    ctx.fillText(eq.tag, p.x, p.y - h - 10);
-    
-    if (eq.tipo === 'bomba') {
-        ctx.fillStyle = '#ffaa00';
-        ctx.font = `10px 'Segoe UI'`;
-        ctx.fillText(`${eq.potencia} HP`, p.x, p.y - h - 25);
-    }
-}
-
-function drawPipe(line) {
-    if (!line.points3D || line.points3D.length < 2) return;
-    ctx.beginPath();
-    const start = project(line.points3D[0]);
-    ctx.moveTo(start.x, start.y);
-    for (let i = 1; i < line.points3D.length; i++) {
-        const p = project(line.points3D[i]);
-        ctx.lineTo(p.x, p.y);
-    }
-    
-    let color = '#94a3b8';
-    if (line.material === 'PPR') color = '#22c55e';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(3, (line.diameter || 4) * 1.5);
-    ctx.stroke();
-    
-    if (selectedElement && selectedElement.obj === line) {
-        ctx.strokeStyle = '#00d4ff';
-        ctx.lineWidth = Math.max(3, (line.diameter || 4) * 1.5) + 2;
-        ctx.stroke();
-    }
-    
-    if (line.components) {
-        line.components.forEach(comp => {
-            if (comp.type === 'VALVE' && line.points3D) {
-                const idx = Math.floor(comp.param * (line.points3D.length - 1));
-                if (idx < line.points3D.length) {
-                    const pos = project(line.points3D[idx]);
-                    ctx.fillStyle = '#ffaa00';
-                    ctx.beginPath();
-                    ctx.rect(pos.x - 8, pos.y - 4, 16, 8);
-                    ctx.fill();
-                    ctx.fillStyle = 'white';
-                    ctx.font = '8px monospace';
-                    ctx.fillText(comp.skey || 'VLV', pos.x - 6, pos.y - 6);
-                }
-            }
-        });
-    }
-}
-
-function render() {
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawGrid();
-    for (let line of db.lines) drawPipe(line);
-    for (let eq of db.equipos) drawTank(eq);
-    if (currentCursor) {
-        document.getElementById('coords').innerHTML = `X: ${currentCursor.x.toFixed(0)} | Z: ${currentCursor.z.toFixed(0)}`;
-    }
-}
-
-// ==================== CONSTANTES DE UNIDADES ====================
-const PULGADA_A_MM = 25.4;
-const MM_A_PULGADA = 1 / 25.4;
-
-function pulgadasToMM(pulgadas) {
-    return pulgadas * PULGADA_A_MM;
-}
-
-// ==================== CREACIÓN DE ELEMENTOS ====================
-function crearTanque(diametro, altura, material) {
-    saveState();
-    const tag = generarTagAutomatico('tanque');
-    let x = 0, z = 0;
-    if (db.equipos.length > 0) {
-        const ultimo = db.equipos[db.equipos.length - 1];
-        x = ultimo.x + 4000;
-    }
-    db.equipos.push({ 
-        type: 'equipment', 
-        tag, x, y: 0, z, 
-        tipo: 'tanque_v', 
-        diametro: parseFloat(diametro), 
-        altura: parseFloat(altura), 
-        material 
-    });
-    notify(`Tanque ${tag} creado. Diámetro ${diametro} mm, altura ${altura} mm, material ${material}`);
-    render();
-    autoCenter();
-}
-
-function crearBomba(potencia) {
-    saveState();
-    const tag = generarTagAutomatico('bomba');
-    let x = 2000, z = 2000;
-    if (db.equipos.length > 0) {
-        const ultimo = db.equipos[db.equipos.length - 1];
-        x = ultimo.x + 3000;
-        z = ultimo.z;
-    }
-    db.equipos.push({ 
-        type: 'equipment', 
-        tag, x, y: 0, z, 
-        tipo: 'bomba', 
-        diametro: 500,
-        altura: 800,
-        potencia: parseFloat(potencia), 
-        material: 'Hierro Fundido' 
-    });
-    notify(`Bomba ${tag} de ${potencia} HP creada`);
-    render();
-}
-
-function addPipe(tag, diam, material, points) {
-    const newLine = { 
-        tag: tag || generarTagLinea(), 
-        diameter: diam, 
-        material, 
-        points3D: points, 
-        components: [] 
-    };
-    db.lines.push(newLine);
-    saveState();
-    render();
-    return newLine;
-}
-
-function conectarEquipos(diamPulgadas, mat, tag1, tag2) {
-    const eq1 = db.equipos.find(e => e.tag === tag1);
-    const eq2 = db.equipos.find(e => e.tag === tag2);
-    if (!eq1 || !eq2) return notify(`No se encontró ${tag1} o ${tag2}`, true);
-    
-    const diamMM = pulgadasToMM(diamPulgadas);
-    const distanciaConexion = 1000; // 1 metro en mm
-    const alturaTuberia = 500;       // 0.5 metros en mm
-    
-    const p1 = { x: eq1.x + distanciaConexion, y: alturaTuberia, z: eq1.z };
-    const p2 = { x: eq2.x - distanciaConexion, y: alturaTuberia, z: eq2.z };
-    const puntos = [p1, p2];
-    
-    const line = addPipe(null, diamPulgadas, mat, puntos);
-    notify(`Conexión creada entre ${tag1} y ${tag2}. Tubería de ${diamPulgadas}" (${diamMM.toFixed(0)} mm), material ${mat}, longitud ${(calcularLongitud(line)/1000).toFixed(1)} metros`);
-}
-
-function agregarValvula(tagLinea, tipo) {
-    const line = db.lines.find(l => l.tag === tagLinea);
-    if (!line) return notify(`Tubería ${tagLinea} no encontrada`, true);
-    if (!line.components) line.components = [];
-    const skey = tipo === 'bola' ? 'VBAL' : (tipo === 'check' ? 'VCHK' : 'VGATE');
-    line.components.push({ 
-        type: 'VALVE', 
-        tag: `VLV-${line.components.length+1}`, 
-        skey: skey, 
-        param: 0.5,
-        descripcion: `Válvula de ${tipo}`
-    });
-    notify(`Válvula de ${tipo} agregada en tubería ${tagLinea}`);
-    render();
-}
-
-function generarResumen() {
-    let msg = `Proyecto: ${proyectoData.nombre}. Ingeniero: ${proyectoData.autor}. `;
-    msg += `Total equipos: ${db.equipos.length}. `;
-    db.equipos.forEach(e => {
-        if (e.tipo === 'tanque_v') msg += `${e.tag} de ${e.diametro}mm diámetro y ${e.altura}mm altura. `;
-        if (e.tipo === 'bomba') msg += `${e.tag} de ${e.potencia} HP. `;
-    });
-    msg += `Total tuberías: ${db.lines.length}. `;
-    let totalValvulas = db.lines.reduce((acc, l) => acc + (l.components?.length || 0), 0);
-    msg += `Componentes instalados: ${totalValvulas}.`;
-    notify(msg);
+// ==================== FUNCIONES AVANZADAS ====================
+function getPositionOnLine(line, t) { let pts = line.points3D; if (!pts || pts.length < 2) return null; if (t <= 0) return pts[0]; if (t >= 1) return pts[pts.length - 1]; let idx = Math.floor(t * (pts.length - 1)); let seg = t * (pts.length - 1) - idx; let p1 = pts[idx], p2 = pts[idx + 1]; return { x: p1.x + seg * (p2.x - p1.x), y: p1.y + seg * (p2.y - p1.y), z: p1.z + seg * (p2.z - p1.z) }; }
+function mapearMaterial(m) { let mm = m.toLowerCase(); if (mm.includes('inox') || mm.includes('ss')) return 'SS'; if (mm.includes('ppr')) return 'PPR'; return 'CS'; }
+function detectAndAddElbows(line) { let pts = line.points3D; if (!pts || pts.length < 3) return; for (let i = 1; i < pts.length - 1; i++) { let p1 = pts[i - 1], p2 = pts[i], p3 = pts[i + 1]; let v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z }; let v2 = { x: p3.x - p2.x, y: p3.y - p2.y, z: p3.z - p2.z }; let dot = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z; let m1 = Math.hypot(v1.x, v1.y, v1.z), m2 = Math.hypot(v2.x, v2.y, v2.z); if (m1 > 0 && m2 > 0) { let ang = Math.acos(Math.min(1, Math.max(-1, dot / (m1 * m2)))) * 180 / Math.PI; if (ang > 15 && ang < 175) { let param = i / (pts.length - 1); let skey = ang > 80 ? 'EL90' : 'EL45'; if (!line.components?.some(c => c.type === 'ELBOW' && Math.abs(c.param - param) < 0.05)) { if (!line.components) line.components = []; line.components.push({ type: 'ELBOW', tag: `EL-${line.tag}-${i}`, skey: skey, param: param, angle: ang }); } } } } }
+function addPipe(tag, diam, mat, points) { let nl = { tag: tag || generarTagLinea(), diameter: diam, material: mat, points3D: points, components: [] }; db.lines.push(nl); detectAndAddElbows(nl); saveState(); render(); return nl; }
+function crearTanque(diam, alt, mat) { saveState(); let tag = generarTag('tanque'); let x = 0, z = 0; if (db.equipos.length > 0) { let u = db.equipos[db.equipos.length - 1]; x = u.x + 4000; z = u.z; } db.equipos.push({ type: 'equipment', tag, x, y: 0, z, tipo: 'tanque_v', diametro: diam, altura: alt, material: mat }); notify(`Tanque ${tag}: ${diam}mm x ${alt}mm ${mat}`); render(); autoCenter(); }
+function crearBomba(pot) { saveState(); let tag = generarTag('bomba'); let x = 2000, z = 2000; if (db.equipos.length > 0) { let u = db.equipos[db.equipos.length - 1]; x = u.x + 3000; z = u.z; } db.equipos.push({ type: 'equipment', tag, x, y: 0, z, tipo: 'bomba', diametro: 500, altura: 800, potencia: pot, material: 'Hierro Fundido' }); notify(`Bomba ${tag} de ${pot} HP`); render(); }
+function conectarEquipos(diam, mat, t1, t2) { let e1 = db.equipos.find(e => e.tag === t1), e2 = db.equipos.find(e => e.tag === t2); if (!e1 || !e2) return notify(`No se encontro ${t1} o ${t2}`, true); let p1 = { x: e1.x + 1000, y: 500, z: e1.z }; let p2 = { x: e2.x - 1000, y: 500, z: e2.z }; let line = addPipe(null, diam, mat, [p1, p2]); notify(`Conexion ${t1}-${t2}: ${diam}" ${mat}`); }
+function agregarValvula(tl, tipo) { let line = db.lines.find(l => l.tag === tl); if (!line) return notify(`Linea ${tl} no existe`, true); if (!line.components) line.components = []; let skey = tipo === 'bola' ? 'VBAL' : (tipo === 'check' ? 'VCHK' : 'VGATE'); line.components.push({ type: 'VALVE', tag: `VLV-${line.components.length + 1}`, skey: skey, param: 0.5 }); notify(`Valvula ${tipo} en ${tl}`); render(); }
+function generarResumen() { let m = `Proyecto: ${proyectoData.nombre}. Ingeniero: ${proyectoData.autor}. `; m += `Equipos: ${db.equipos.length}. `; db.equipos.forEach(e => { if (e.tipo === 'tanque_v') m += `${e.tag} ${e.diametro}mm x ${e.altura}mm. `; if (e.tipo === 'bomba') m += `${e.tag} ${e.potencia}HP. `; }); m += `Tuberias: ${db.lines.length}. `;
+    let tv = db.lines.reduce((a, l) => a + (l.components?.length || 0), 0);
+    m += `Componentes: ${tv}.`;
+    notify(m);
 }
 
 function aplicarNormas() {
-    let cambios = 0;
-    let soportes = 0;
-    for (let line of db.lines) {
-        const diamMM = (line.diameter || 4) * 25.4;
-        if (diamMM >= 110) {
-            const long = calcularLongitud(line) || 0;
-            const necesarios = Math.max(1, Math.floor(long / 1500));
-            const actuales = line.components?.filter(c => c.type === 'SOPORTE').length || 0;
-            for (let i = actuales; i < necesarios; i++) {
-                if (!line.components) line.components = [];
-                line.components.push({ type: 'SOPORTE', tag: `SUP-${line.tag}-${i+1}`, param: (i+1)/(necesarios+1) });
+    let cambios = 0, soportes = 0;
+    for (let l of db.lines) {
+        let dmm = (l.diameter || 4) * 25.4;
+        if (dmm >= 110) {
+            let long = calcLongitud(l) || 0;
+            let nec = Math.max(1, Math.floor(long / 1500));
+            let act = l.components?.filter(c => c.type === 'SOPORTE').length || 0;
+            for (let i = act; i < nec; i++) {
+                if (!l.components) l.components = [];
+                l.components.push({ type: 'SOPORTE', tag: `SUP-${l.tag}-${i + 1}`, param: (i + 1) / (nec + 1) });
                 soportes++;
                 cambios++;
             }
         }
     }
-    if (cambios > 0) notify(`Normas aplicadas: ${soportes} soportes agregados a tuberías de ≥4"`);
-    else notify("El diseño cumple normas Acquablue");
-    render();
+    if (cambios > 0) notify(`Normas: ${soportes} soportes agregados`);
+    else notify("Cumple normas");
 }
 
-// ==================== PARSER DE COMANDOS ====================
-function parseCommand(input) {
-    const cmd = input.toLowerCase().trim();
-    saveState();
-    
-    if (cmd.includes('tanque')) {
-        const diam = parseInt(cmd.match(/(\d+)\s*mm\s*diametro/)?.[1]) || 2000;
-        const alt = parseInt(cmd.match(/(\d+)\s*mm\s*altura/)?.[1]) || 2500;
-        let mat = "Acero al Carbono";
-        if (cmd.includes('inox')) mat = "Acero Inoxidable";
-        if (cmd.includes('ppr')) mat = "PPR";
-        crearTanque(diam, alt, mat);
+function toggleMeasureMode() {
+    measuringMode = !measuringMode;
+    tempMeasurePoint = null;
+    let btn = document.getElementById('btnMeasure');
+    if (btn) {
+        btn.style.background = measuringMode ? 'var(--primary)' : '';
+        btn.textContent = measuringMode ? "Medir ACTIVO" : "Medir";
     }
-    else if (cmd.includes('bomba')) {
-        const pot = parseInt(cmd.match(/(\d+)\s*hp/)?.[1]) || 5;
-        crearBomba(pot);
-    }
-    else if (cmd.includes('conectar')) {
-        const diam = parseInt(cmd.match(/(\d+)\s*pulgadas/)?.[1]) || 4;
-        let mat = cmd.includes('ppr') ? "PPR" : "CS";
-        const tags = cmd.match(/[A-Z]{2,3}-\d{2}/g);
-        if (tags && tags.length >= 2) conectarEquipos(diam, mat, tags[0], tags[1]);
-        else notify("Formato: conectar 4 pulgadas desde TK-01 hasta B-01", true);
-    }
-    else if (cmd.includes('valvula') || cmd.includes('válvula')) {
-        const tagLinea = cmd.match(/[L]-\d{3}/i)?.[0]?.toUpperCase();
-        let tipo = 'bola';
-        if (cmd.includes('compuerta')) tipo = 'compuerta';
-        if (cmd.includes('check')) tipo = 'check';
-        if (tagLinea) agregarValvula(tagLinea, tipo);
-        else notify("Especifique tubería L-XXX", true);
-    }
-    else if (cmd.includes('resumen')) {
-        generarResumen();
-    }
-    else if (cmd.includes('normas')) {
-        aplicarNormas();
-    }
-    else if (cmd.includes('eliminar') || cmd.includes('borrar')) {
-        const tag = cmd.match(/[A-Z]{2,3}-\d{2}/i)?.[0]?.toUpperCase();
-        if (tag) {
-            const beforeEq = db.equipos.length;
-            const beforeLn = db.lines.length;
-            db.equipos = db.equipos.filter(e => e.tag !== tag);
-            db.lines = db.lines.filter(l => l.tag !== tag);
-            if (beforeEq !== db.equipos.length) notify(`Equipo ${tag} eliminado`);
-            else if (beforeLn !== db.lines.length) notify(`Tubería ${tag} eliminada`);
-            else notify(`No se encontró ${tag}`, true);
-            render();
-        }
-    }
-    else {
-        notify("Comando no reconocido. Use: crear tanque, crear bomba, conectar, resumen, normas", true);
-    }
+    notify(measuringMode ? "Modo medicion activado - Click dos puntos" : "Modo medicion desactivado");
 }
 
-// ==================== FUNCIONES ADICIONALES PARA UI ====================
+function toggleSnap() {
+    snapEnabled = !snapEnabled;
+    let btn = document.getElementById('btnSnap');
+    btn.textContent = snapEnabled ? "Snap ON" : "Snap OFF";
+    notify(`Snap ${snapEnabled ? 'activado' : 'desactivado'}`);
+}
+
 function eliminarSeleccionado() {
-    if (!selectedElement) return;
+    if (!selectedElement) return notify("No hay elemento seleccionado", true);
     saveState();
     if (selectedElement.type === 'equipment') {
         db.equipos = db.equipos.filter(e => e !== selectedElement.obj);
         notify(`Equipo ${selectedElement.obj.tag} eliminado`);
     } else if (selectedElement.type === 'line') {
         db.lines = db.lines.filter(l => l !== selectedElement.obj);
-        notify(`Tubería ${selectedElement.obj.tag} eliminada`);
+        notify(`Tuberia ${selectedElement.obj.tag} eliminada`);
     }
     selectedElement = null;
-    document.getElementById('property-panel').style.display = 'none';
+    document.getElementById('propertyPanel').style.display = 'none';
     render();
 }
 
-function setTool(tool) {
-    currentTool = tool;
-    notify(`Herramienta: ${tool}`);
+function toggleAccessoryMode(t, s) {
+    addAccessoryMode = true;
+    accessoryType = t;
+    accessorySkey = s;
+    notify(`Modo insercion ${t} - Click en tuberia`);
 }
 
-function toggleMeasureMode() {
-    measuringMode = !measuringMode;
-    notify(measuringMode ? "Modo medición activado - Haga clic en dos puntos" : "Modo medición desactivado");
+function getDirectionFromWord(w) {
+    let dw = w.toLowerCase();
+    if (dw === 'frente' || dw === 'adelante') return 'frente';
+    if (dw === 'atras' || dw === 'detras') return 'atras';
+    if (dw === 'derecha') return 'derecha';
+    if (dw === 'izquierda') return 'izquierda';
+    if (dw === 'subir' || dw === 'arriba') return 'subir';
+    if (dw === 'bajar' || dw === 'abajo') return 'bajar';
+    return null;
 }
 
-function toggleSnap() {
-    snapEnabled = !snapEnabled;
-    const btn = document.getElementById('btnSnap');
-    btn.textContent = snapEnabled ? "🧲 Snap ON" : "🧲 Snap OFF";
-    notify(`Ajuste a rejilla ${snapEnabled ? 'activado' : 'desactivado'}`);
+function comenzarTuberia(diam, mat, origenTag, origenPunto, movimientos, destinoFinal) {
+    let puntos = [];
+    let posActual = { x: 0, y: 500, z: 0 };
+    let eq = db.equipos.find(e => e.tag === origenTag);
+    if (eq) {
+        if (origenPunto === 'salida') posActual = { x: eq.x + 800, y: eq.y + 300, z: eq.z };
+        else posActual = { x: eq.x - 800, y: eq.y + 300, z: eq.z };
+    }
+    puntos.push({ ...posActual });
+    for (let mov of movimientos) {
+        let np = { ...posActual };
+        let dist = mov.distancia;
+        if (mov.direccion === 'frente') np.z += dist;
+        else if (mov.direccion === 'atras') np.z -= dist;
+        else if (mov.direccion === 'derecha') np.x += dist;
+        else if (mov.direccion === 'izquierda') np.x -= dist;
+        else if (mov.direccion === 'subir') np.y += dist;
+        else if (mov.direccion === 'bajar') np.y -= dist;
+        puntos.push(np);
+        posActual = np;
+    }
+    if (destinoFinal) {
+        let eqDest = db.equipos.find(e => e.tag === destinoFinal.tag);
+        if (eqDest) {
+            let pDest = { x: eqDest.x - 800, y: eqDest.y + 300, z: eqDest.z };
+            puntos.push(pDest);
+        }
+    }
+    let tag = generarTagLinea();
+    let line = addPipe(tag, diam, mat, puntos);
+    if (!destinoFinal) {
+        let puntoLibre = { tag: `P-${origenTag}-${Date.now()}`, x: posActual.x, y: posActual.y, z: posActual.z };
+        db.puntosLibres.push(puntoLibre);
+        notify(`Punto libre ${puntoLibre.tag} creado en (${posActual.x / 1000},${posActual.y / 1000},${posActual.z / 1000})`);
+    }
+    return line;
 }
 
-function obtenerPuntoEquipo(tag, punto) {
-    const e = db.equipos.find(eq => eq.tag === tag);
-    return e ? { x: e.x, y: 500, z: e.z } : null;
+function instalarColector(diam, mat, origenTag, origenPunto, destinoTag, destinoPunto, distancia, salidaEspecificada) {
+    let e1 = db.equipos.find(e => e.tag === origenTag);
+    let e2 = db.equipos.find(e => e.tag === destinoTag);
+    if (!e1 || !e2) { notify("Equipo no encontrado", true); return null; }
+    let pA = { x: e1.x, y: e1.y, z: e1.z };
+    let pB = { x: e2.x, y: e2.y, z: e2.z };
+    let dx = pB.x - pA.x, dz = pB.z - pA.z;
+    let len = Math.hypot(dx, dz);
+    let ux = dx / len, uz = dz / len;
+    let px = -uz, pz = ux;
+    let pCA = { x: pA.x + px * distancia, y: pA.y + 300, z: pA.z + pz * distancia };
+    let pCB = { x: pB.x + px * distancia, y: pB.y + 300, z: pB.z + pz * distancia };
+    let puntos = [pCA, pCB];
+    let tagColector = `COL-${Date.now()}`;
+    addPipe(tagColector, diam, mat, puntos);
+    let puntoSalida = null;
+    if (salidaEspecificada) {
+        let eqSal = db.equipos.find(e => e.tag === salidaEspecificada.tag);
+        if (eqSal) {
+            let t = ((eqSal.x - pA.x) * dx + (eqSal.z - pA.z) * dz) / (dx * dx + dz * dz);
+            let tc = Math.max(0, Math.min(1, t));
+            puntoSalida = { x: pCA.x + tc * (pCB.x - pCA.x), y: pCA.y + 500, z: pCA.z + tc * (pCB.z - pCA.z) };
+        }
+    } else {
+        puntoSalida = { x: (pCA.x + pCB.x) / 2, y: pCA.y + 500, z: (pCA.z + pCB.z) / 2 };
+    }
+    notify(`Colector ${tagColector}: ${diam}" ${mat}, salida en ${salidaEspecificada ? salidaEspecificada.tag : 'centro'}`);
+    return tagColector;
 }
 
-// ==================== UTILIDAD PARA SELECCIÓN PRECISA (RAYCASTING ISOMÉTRICO) ====================
-function puntoDentroDeElipse(x, y, cx, cy, rx, ry) {
-    const dx = (x - cx) / rx;
-    const dy = (y - cy) / ry;
-    return (dx * dx + dy * dy) <= 1;
+function exportarPCF() {
+    let pcf = `!PCF VERSION 8.0\n!PROJECT "${proyectoData.nombre || 'SmartFlow'}"\n!AUTHOR "${proyectoData.autor || 'Acquablue'}"\n!UNITS MM\n!DATE ${new Date().toISOString().slice(0, 10)}\n!STANDARD ISOGEN\n\n`;
+    for (let line of db.lines) {
+        if (!line.points3D || line.points3D.length < 2) continue;
+        pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n    DIAMETER ${(line.diameter * 25.4).toFixed(2)} MM\n    MATERIAL ${mapearMaterial(line.material)}\n    SCHEDULE 40\n`;
+        for (let p of line.points3D) pcf += `    POINT ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${p.z.toFixed(2)}\n`;
+        if (line.components) {
+            for (let comp of line.components) {
+                let pos = getPositionOnLine(line, comp.param);
+                if (pos) {
+                    let ct = 'VALVE', sk = 'VBAL';
+                    if (comp.type === 'VALVE') { ct = 'VALVE'; sk = comp.skey === 'VCHK' ? 'VCHK' : 'VBAL'; }
+                    else if (comp.type === 'ELBOW') { ct = 'ELBOW'; sk = comp.skey || 'EL90'; }
+                    else if (comp.type === 'FLANGE') { ct = 'FLANGE'; sk = 'FLWN'; }
+                    pcf += `    ${ct}\n        COMPONENT-IDENTIFIER ${comp.tag}\n        SKEY ${sk}\n        END-POINT ${pos.x.toFixed(2)} ${pos.y.toFixed(2)} ${pos.z.toFixed(2)}\n    END${ct}\n`;
+                }
+            }
+        }
+        pcf += `ENDPIPE\n\n`;
+    }
+    for (let eq of db.equipos) {
+        if (eq.tipo === 'tanque_v') {
+            pcf += `NOZZLE\n    COMPONENT-IDENTIFIER ${eq.tag}\n    EQUIPMENT-TYPE TANK\n    END-POINT ${eq.x.toFixed(2)} ${(eq.y || eq.altura / 2).toFixed(2)} ${eq.z.toFixed(2)}\n    DIAMETER ${(eq.diametro || 2400).toFixed(2)} MM\n    HEIGHT ${(eq.altura || 2900).toFixed(2)} MM\n    MATERIAL ${mapearMaterial(eq.material)}\nENDNOZZLE\n\n`;
+        } else if (eq.tipo === 'bomba') {
+            pcf += `NOZZLE\n    COMPONENT-IDENTIFIER ${eq.tag}\n    EQUIPMENT-TYPE PUMP\n    END-POINT ${eq.x.toFixed(2)} ${(eq.y || 600).toFixed(2)} ${eq.z.toFixed(2)}\n    POWER ${eq.potencia || 5} HP\n    MATERIAL CS\nENDNOZZLE\n\n`;
+        }
+    }
+    let blob = new Blob([pcf], { type: 'text/plain' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${proyectoData.nombre.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pcf`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify(`PCF exportado: ${db.lines.length} tuberias, ${db.equipos.length} equipos`);
 }
 
-// ==================== EVENTOS DEL CANVAS ====================
+function importarPCF() {
+    let inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.pcf';
+    inp.onchange = (e) => {
+        let file = e.target.files[0];
+        let reader = new FileReader();
+        reader.onload = (ev) => {
+            let text = ev.target.result;
+            let linesTemp = [];
+            let curPipe = null, curPoints = [], dentroComp = false, curComp = null;
+            let todas = text.split('\n');
+            for (let linea of todas) {
+                let l = linea.trim();
+                if (l === '' || l.startsWith('!')) continue;
+                if (l === 'PIPE') {
+                    if (curPipe) { curPipe.points3D = curPoints; linesTemp.push(curPipe); }
+                    curPipe = { components: [], points3D: [], tag: '', diameter: 4, material: 'CS' };
+                    curPoints = []; dentroComp = false;
+                } else if (l === 'ENDPIPE') {
+                    if (curPipe) { curPipe.points3D = curPoints; linesTemp.push(curPipe); }
+                    curPipe = null;
+                } else if (l === 'VALVE' || l === 'ELBOW' || l === 'FLANGE') {
+                    dentroComp = true;
+                    curComp = { type: l, tag: '', skey: '', param: 0.5 };
+                } else if (l.startsWith('END') && dentroComp) {
+                    if (curComp && curComp.tag && curPipe) curPipe.components.push(curComp);
+                    dentroComp = false;
+                    curComp = null;
+                } else if (!dentroComp && curPipe) {
+                    if (l.startsWith('COMPONENT-IDENTIFIER')) curPipe.tag = l.split(/\s+/)[1];
+                    else if (l.startsWith('DIAMETER')) curPipe.diameter = parseFloat(l.split(/\s+/)[1]) / 25.4;
+                    else if (l.startsWith('MATERIAL')) curPipe.material = l.split(/\s+/)[1];
+                    else if (l.startsWith('POINT')) {
+                        let m = l.match(/POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i);
+                        if (m) curPoints.push({ x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) });
+                    }
+                } else if (dentroComp && curComp) {
+                    if (l.startsWith('COMPONENT-IDENTIFIER')) curComp.tag = l.split(/\s+/)[1];
+                    else if (l.startsWith('SKEY')) curComp.skey = l.split(/\s+/)[1];
+                    else if (l.startsWith('END-POINT')) {
+                        let m = l.match(/END-POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i);
+                        if (m && curPipe && curPipe.points3D.length >= 2) {
+                            let ep = { x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) };
+                            let bestP = 0.5, bestD = Infinity;
+                            for (let i = 0; i < curPipe.points3D.length - 1; i++) {
+                                let p1 = curPipe.points3D[i], p2 = curPipe.points3D[i + 1];
+                                let dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z;
+                                let l2 = dx * dx + dy * dy + dz * dz;
+                                if (l2 === 0) continue;
+                                let t = ((ep.x - p1.x) * dx + (ep.y - p1.y) * dy + (ep.z - p1.z) * dz) / l2;
+                                t = Math.max(0, Math.min(1, t));
+                                let px = p1.x + t * dx, py = p1.y + t * dy, pz = p1.z + t * dz;
+                                let d = Math.hypot(ep.x - px, ep.y - py, ep.z - pz);
+                                if (d < bestD) { bestD = d; bestP = (i + t) / (curPipe.points3D.length - 1); }
+                            }
+                            curComp.param = bestP;
+                        }
+                    }
+                }
+            }
+            db.lines = linesTemp;
+            render();
+            autoCenter();
+            notify(`PCF importado: ${linesTemp.length} tuberias`);
+            saveState();
+        };
+        reader.readAsText(file);
+    };
+    inp.click();
+}
+
+function exportarMTO() {
+    let items = [];
+    for (let eq of db.equipos) {
+        let desc = eq.tipo === 'tanque_v' ? `Tanque ${eq.diametro / 1000}m x ${eq.altura / 1000}m ${eq.material || 'CS'}` : `Bomba ${eq.potencia || 5}HP`;
+        items.push([eq.tag, desc, "Und", 1]);
+    }
+    for (let line of db.lines) {
+        let long = (calcLongitud(line) / 1000).toFixed(2);
+        items.push([line.tag, `Tuberia ${line.material} ${line.diameter}"`, "m", parseFloat(long)]);
+        if (line.components) {
+            for (let comp of line.components) {
+                items.push([comp.tag, `${comp.type} ${comp.skey || ''}`, "Und", 1]);
+            }
+        }
+    }
+    if (items.length === 0) { notify("No hay elementos", true); return; }
+    let ws = XLSX.utils.aoa_to_sheet([["Tag", "Descripcion", "Unidad", "Cantidad"], ...items]);
+    let wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MTO");
+    XLSX.writeFile(wb, `MTO_${Date.now()}.xlsx`);
+    notify("MTO exportado");
+}
+
+function exportPDF() {
+    let { jsPDF } = window.jspdf;
+    let doc = new jsPDF({ orientation: 'landscape' });
+    let imgData = canvas.toDataURL('image/png');
+    doc.addImage(imgData, 'PNG', 10, 10, 277, 150);
+    doc.setFontSize(16);
+    doc.text("SmartFlow Pro - Reporte Isometrico", 10, 175);
+    doc.text(`Proyecto: ${proyectoData.nombre}`, 10, 185);
+    doc.text(`Ingeniero: ${proyectoData.autor}`, 10, 192);
+    doc.text(`Fecha: ${new Date().toLocaleString()}`, 10, 199);
+    doc.save(`isometrico_${Date.now()}.pdf`);
+    notify("PDF generado");
+}
+
+function guardarLocal() { localStorage.setItem('acquablue_save', JSON.stringify(db)); notify("Proyecto guardado"); }
+function cargarLocal() { let data = localStorage.getItem('acquablue_save'); if (data) { db = JSON.parse(data); selectedElement = null; render(); autoCenter(); notify("Proyecto cargado"); } else notify("No hay proyecto guardado", true); }
+function nuevoProyecto() { if (confirm("Borrar todo?")) { db = { equipos: [], lines: [], puntosLibres: [] }; selectedElement = null; render(); autoCenter(); notify("Nuevo proyecto"); saveState(); } }
+
+function initHotkeys() {
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' && selectedElement) { eliminarSeleccionado(); e.preventDefault(); }
+        if (e.ctrlKey && e.key === 'z') { undo(); e.preventDefault(); }
+        if (e.ctrlKey && e.key === 'y') { redo(); e.preventDefault(); }
+        if (e.ctrlKey && e.key === 's') { guardarLocal(); e.preventDefault(); }
+        if (e.ctrlKey && e.key === 'e') { autoCenter(); e.preventDefault(); }
+        if (e.key === '+' || e.key === '=') { cam.scale = Math.min(cam.scale * 1.1, 1.5); render(); e.preventDefault(); }
+        if (e.key === '-' || e.key === '_') { cam.scale = Math.max(cam.scale * 0.9, 0.2); render(); e.preventDefault(); }
+        if (selectedElement && editMode && selectedElement.type === 'equipment') {
+            let step = e.shiftKey ? 100 : 500;
+            if (e.key === 'ArrowLeft') selectedElement.obj.x -= step;
+            if (e.key === 'ArrowRight') selectedElement.obj.x += step;
+            if (e.key === 'ArrowUp') selectedElement.obj.z -= step;
+            if (e.key === 'ArrowDown') selectedElement.obj.z += step;
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                if (snapEnabled) { selectedElement.obj.x = Math.round(selectedElement.obj.x / 500) * 500; selectedElement.obj.z = Math.round(selectedElement.obj.z / 500) * 500; }
+                render(); saveState(); e.preventDefault();
+            }
+        }
+    });
+}
+
+function parseCommand(cmd) {
+    let low = cmd.toLowerCase();
+    if (low.includes('crear') && low.includes('tanque')) {
+        let d = parseInt(cmd.match(/diametro\s+de\s+(\d+)/i)?.[1]) || 2400;
+        let a = parseInt(cmd.match(/altura\s+de\s+(\d+)/i)?.[1]) || 2900;
+        let m = "Acero al Carbono";
+        if (low.includes('inox')) m = "Acero Inoxidable";
+        if (low.includes('ppr')) m = "PPR";
+        crearTanque(d, a, m);
+    } else if (low.includes('crear') && low.includes('bomba')) {
+        let p = parseInt(cmd.match(/(\d+)\s*hp/i)?.[1]) || 5;
+        crearBomba(p);
+    } else if (low.includes('conectar')) {
+        let d = parseInt(cmd.match(/(\d+)\s*pulgadas/i)?.[1]) || 4;
+        let m = low.includes('ppr') ? "PPR" : "CS";
+        let tags = cmd.match(/[A-Z]{2,3}-\d{2}/g);
+        if (tags && tags.length >= 2) conectarEquipos(d, m, tags[0], tags[1]);
+        else notify("Formato: conectar 4 pulgadas CS desde TK-01 hasta B-01", true);
+    } else if (low.includes('comenzar tuberia') || low.includes('comenzar tubería')) {
+        let d = parseInt(cmd.match(/(\d+)\s*pulgadas/i)?.[1]) || 4;
+        let m = low.includes('ppr') ? "PPR" : "CS";
+        let orgMatch = cmd.match(/desde\s+(?:salida|entrada)?\s*de\s*([A-Z0-9-]+)/i);
+        if (!orgMatch) { notify("Formato: comenzar tuberia desde TK-01", true); return; }
+        let movs = [];
+        let avances = cmd.matchAll(/avanzar\s+(\d+)\s*cm\s+([a-záéíóú]+)/gi);
+        for (let av of avances) movs.push({ distancia: parseInt(av[1]) * 10, direccion: av[2].toLowerCase() });
+        let destFinal = null;
+        let conMatch = cmd.match(/conectar con\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
+        if (conMatch) destFinal = { tag: conMatch[1].toUpperCase(), punto: 'entrada' };
+        comenzarTuberia(d, m, orgMatch[1].toUpperCase(), 'salida', movs, destFinal);
+    } else if (low.includes('instalar colector') || low.includes('instalar distribuidor')) {
+        let d = parseInt(cmd.match(/(\d+)\s*pulgadas/i)?.[1]) || 4;
+        let m = low.includes('ppr') ? "PPR" : "CS";
+        let desde = cmd.match(/desde\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
+        let hasta = cmd.match(/hasta\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
+        if (!desde || !hasta) { notify("Formato: instalar distribuidor desde TK-01 hasta TK-06", true); return; }
+        let dist = parseInt(cmd.match(/a\s+(\d+)\s*cm/i)?.[1]) || 80;
+        let salida = null;
+        let salMatch = cmd.match(/con salida en\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
+        if (salMatch) salida = { tag: salMatch[1].toUpperCase(), punto: 'salida' };
+        instalarColector(d, m, desde[1].toUpperCase(), 'salida', hasta[1].toUpperCase(), 'entrada', dist * 10, salida);
+    } else if (low.includes('agregar') && low.includes('valvula')) {
+        let tl = cmd.match(/L-\d{3}/i)?.[0]?.toUpperCase();
+        let tipo = 'bola';
+        if (low.includes('check')) tipo = 'check';
+        if (tl) agregarValvula(tl, tipo);
+        else notify("Especifique tuberia L-XXX", true);
+    } else if (low.includes('resumen')) { generarResumen();
+    } else if (low.includes('normas')) { aplicarNormas();
+    } else if (low.includes('eliminar') || low.includes('borrar')) {
+        let tag = cmd.match(/[A-Z]{2,3}-\d{2}/i)?.[0]?.toUpperCase();
+        if (tag) {
+            let be = db.equipos.length, bl = db.lines.length;
+            db.equipos = db.equipos.filter(e => e.tag !== tag);
+            db.lines = db.lines.filter(l => l.tag !== tag);
+            if (be !== db.equipos.length) notify(`Equipo ${tag} eliminado`);
+            else if (bl !== db.lines.length) notify(`Tuberia ${tag} eliminada`);
+            else notify(`No se encontro ${tag}`, true);
+            render();
+        }
+    } else { notify("Comando no reconocido", true); }
+}
+
 function initCanvasEvents() {
+    canvas.addEventListener('mousemove', (e) => {
+        let rect = canvas.getBoundingClientRect();
+        let mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        let c30 = 0.866, s30 = 0.5;
+        let xc = (mx - cam.panX) / cam.scale, yc = (my - cam.panY) / cam.scale;
+        let z = (xc / c30 - yc / s30) / 2;
+        let xw = (xc / c30 + yc / s30) / 2;
+        currentCursor = { x: xw, y: 0, z: z };
+        render();
+    });
     canvas.addEventListener('mousedown', (e) => {
+        let rect = canvas.getBoundingClientRect();
+        let mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        let c30 = 0.866, s30 = 0.5;
+        let xc = (mx - cam.panX) / cam.scale, yc = (my - cam.panY) / cam.scale;
+        let z = (xc / c30 - yc / s30) / 2;
+        let xw = (xc / c30 + yc / s30) / 2;
+        let cp = { x: xw, y: 0, z: z };
+        if (measuringMode) {
+            if (!tempMeasurePoint) { tempMeasurePoint = cp; notify("Punto A"); render(); }
+            else { let d = Math.hypot(cp.x - tempMeasurePoint.x, cp.z - tempMeasurePoint.z); notify(`Distancia: ${d >= 1000 ? (d / 1000).toFixed(2) + 'm' : d.toFixed(0) + 'mm'}`); tempMeasurePoint = null; render(); }
+            return;
+        }
+        if (addAccessoryMode) {
+            for (let line of db.lines) {
+                if (!line.points3D || line.points3D.length < 2) continue;
+                let minD = Infinity, bestP = 0;
+                for (let i = 0; i < line.points3D.length - 1; i++) {
+                    let p1 = project(line.points3D[i]), p2 = project(line.points3D[i + 1]);
+                    let d = pointToSegmentDistance({ x: mx, y: my }, p1, p2);
+                    if (d < minD && d < 15) {
+                        minD = d;
+                        let p1w = line.points3D[i], p2w = line.points3D[i + 1];
+                        let p1p = project(p1w), p2p = project(p2w);
+                        let segLen = Math.hypot(p2p.x - p1p.x, p2p.y - p1p.y);
+                        let t = segLen > 0 ? Math.hypot(mx - p1p.x, my - p1p.y) / segLen : 0.5;
+                        bestP = (i + Math.max(0, Math.min(1, t))) / (line.points3D.length - 1);
+                    }
+                }
+                if (minD < 15) {
+                    if (!line.components) line.components = [];
+                    line.components.push({ type: accessoryType, tag: `${accessoryType}-${line.components.length + 1}`, skey: accessorySkey, param: bestP, material: 'CS' });
+                    notify(`${accessoryType} insertado en ${line.tag} pos ${(bestP * 100).toFixed(1)}%`);
+                    addAccessoryMode = false;
+                    render(); saveState();
+                    return;
+                }
+            }
+            notify("Click sobre tuberia", true);
+            return;
+        }
         dragging = true;
         lastPos = { x: e.clientX, y: e.clientY };
-        
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        
+        canvas.style.cursor = 'grabbing';
+        let hit = false;
         for (let eq of db.equipos) {
-            const p = project(eq);
-            const r = (eq.diametro / 2) * cam.scale;
-            const h = eq.altura * cam.scale;
-            
-            const dentroCuerpo = (mx > p.x - r && mx < p.x + r && my > p.y - h && my < p.y);
-            const dentroTapaSup = puntoDentroDeElipse(mx, my, p.x, p.y - h, r, r * 0.5);
-            const dentroTapaInf = puntoDentroDeElipse(mx, my, p.x, p.y, r, r * 0.5);
-            
-            if (dentroCuerpo || dentroTapaSup || dentroTapaInf) {
+            let p = project(eq);
+            let r = (eq.diametro / 2) * cam.scale;
+            let h = eq.altura * cam.scale;
+            if (mx > p.x - r && mx < p.x + r && my > p.y - h && my < p.y) {
                 selectedElement = { type: 'equipment', obj: eq };
+                hit = true;
                 if (editMode) {
-                    document.getElementById('property-panel').style.display = 'block';
+                    document.getElementById('propertyPanel').style.display = 'block';
                     document.getElementById('prop-tag').innerHTML = `Equipo: ${eq.tag}`;
                     document.getElementById('prop-diam-slider').value = eq.diametro;
                     document.getElementById('prop-diam-num').value = eq.diametro;
                     document.getElementById('prop-alt-slider').value = eq.altura;
                     document.getElementById('prop-alt-num').value = eq.altura;
-                    let matVal = 'CS';
-                    if (eq.material === 'Acero Inoxidable') matVal = 'SS';
-                    if (eq.material === 'PPR') matVal = 'PPR';
-                    document.getElementById('prop-mat').value = matVal;
-                    
-                    const updateProp = () => {
+                    let mv = 'CS';
+                    if (eq.material === 'Acero Inoxidable') mv = 'SS';
+                    if (eq.material === 'PPR') mv = 'PPR';
+                    document.getElementById('prop-mat').value = mv;
+                    document.getElementById('prop-elevacion-row').style.display = 'none';
+                    let up = () => {
                         eq.diametro = parseFloat(document.getElementById('prop-diam-num').value);
                         eq.altura = parseFloat(document.getElementById('prop-alt-num').value);
-                        const matSelect = document.getElementById('prop-mat');
-                        const matText = matSelect.options[matSelect.selectedIndex].text;
-                        eq.material = matText;
-                        render();
-                        saveState();
+                        let ms = document.getElementById('prop-mat');
+                        eq.material = ms.options[ms.selectedIndex].text;
+                        render(); saveState();
                     };
-                    document.getElementById('prop-diam-slider').oninput = (e) => {
-                        document.getElementById('prop-diam-num').value = e.target.value;
-                        updateProp();
-                    };
-                    document.getElementById('prop-diam-num').onchange = updateProp;
-                    document.getElementById('prop-alt-slider').oninput = (e) => {
-                        document.getElementById('prop-alt-num').value = e.target.value;
-                        updateProp();
-                    };
-                    document.getElementById('prop-alt-num').onchange = updateProp;
-                    document.getElementById('prop-mat').onchange = updateProp;
+                    document.getElementById('prop-diam-slider').oninput = (e) => { document.getElementById('prop-diam-num').value = e.target.value; up(); };
+                    document.getElementById('prop-diam-num').onchange = up;
+                    document.getElementById('prop-alt-slider').oninput = (e) => { document.getElementById('prop-alt-num').value = e.target.value; up(); };
+                    document.getElementById('prop-alt-num').onchange = up;
+                    document.getElementById('prop-mat').onchange = up;
                 }
                 render();
-                return;
+                break;
             }
         }
-        if (!editMode) selectedElement = null;
-        render();
-    });
-    
-    window.addEventListener('mousemove', (e) => {
-        if (!dragging) {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-            const cos30 = 0.866, sin30 = 0.5;
-            const x = (mx - cam.panX) / cam.scale;
-            const y = (my - cam.panY) / cam.scale;
-            const z = (x / cos30 - y / sin30) / 2;
-            const xw = (x / cos30 + y / sin30) / 2;
-            currentCursor = { x: xw, y: 0, z: z };
+        if (!hit) {
+            for (let line of db.lines) {
+                if (!line.points3D) continue;
+                let minD = Infinity;
+                for (let i = 0; i < line.points3D.length - 1; i++) {
+                    let p1 = project(line.points3D[i]), p2 = project(line.points3D[i + 1]);
+                    let d = pointToSegmentDistance({ x: mx, y: my }, p1, p2);
+                    if (d < minD) minD = d;
+                }
+                if (minD < 10) {
+                    selectedElement = { type: 'line', obj: line };
+                    if (editMode) {
+                        document.getElementById('propertyPanel').style.display = 'block';
+                        document.getElementById('prop-tag').innerHTML = `Tuberia: ${line.tag}`;
+                        document.getElementById('prop-elevacion-row').style.display = 'flex';
+                        document.getElementById('prop-elevacion').value = line.points3D[0]?.y || 500;
+                        document.getElementById('prop-elevacion').onchange = (e) => {
+                            let ny = parseFloat(e.target.value);
+                            for (let p of line.points3D) p.y = ny;
+                            render(); saveState();
+                        };
+                    }
+                    render();
+                    return;
+                }
+            }
+            selectedElement = null;
             render();
-            return;
         }
-        
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
         if (selectedElement && editMode && selectedElement.type === 'equipment') {
-            const dx = (e.clientX - lastPos.x) / cam.scale;
-            const dy = (e.clientY - lastPos.y) / cam.scale;
+            let dx = (e.clientX - lastPos.x) / cam.scale;
+            let dy = (e.clientY - lastPos.y) / cam.scale;
             selectedElement.obj.x += dx;
             selectedElement.obj.z += dy;
-            if (snapEnabled) {
-                selectedElement.obj.x = Math.round(selectedElement.obj.x / 500) * 500;
-                selectedElement.obj.z = Math.round(selectedElement.obj.z / 500) * 500;
-            }
+            if (snapEnabled) { selectedElement.obj.x = Math.round(selectedElement.obj.x / 500) * 500; selectedElement.obj.z = Math.round(selectedElement.obj.z / 500) * 500; }
             render();
         } else if (!selectedElement || !editMode) {
             cam.panX += e.clientX - lastPos.x;
@@ -744,123 +675,45 @@ function initCanvasEvents() {
         }
         lastPos = { x: e.clientX, y: e.clientY };
     });
-    
-    window.addEventListener('mouseup', () => {
-        if (dragging && selectedElement) saveState();
-        dragging = false;
-    });
-    
-    canvas.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        cam.scale = Math.min(Math.max(cam.scale * (e.deltaY > 0 ? 0.9 : 1.1), 0.2), 1.5);
-        render();
-    }, { passive: false });
+    window.addEventListener('mouseup', () => { if (dragging && selectedElement) saveState(); dragging = false; canvas.style.cursor = 'grab'; });
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.scale = Math.min(Math.max(cam.scale * (e.deltaY > 0 ? 0.9 : 1.1), 0.2), 1.5); render(); }, { passive: false });
 }
 
-// ==================== FUNCIÓN PARA EJEMPLOS INICIALES (SIN LLENAR HISTORIAL) ====================
-function crearEjemplosIniciales() {
-    const originalSaveState = saveState;
-    saveState = () => {};
-    
-    crearTanque(2500, 3000, "Acero Inoxidable");
-    crearBomba(7.5);
-    conectarEquipos(4, "CS", "TK-01", "B-01");
-    
-    saveState = originalSaveState;
-    history.past = [];
-    history.future = [];
-}
-
-// ==================== INICIALIZACIÓN PRINCIPAL ====================
 function init() {
     canvas.width = canvas.parentElement.clientWidth;
     canvas.height = canvas.parentElement.clientHeight;
     initCanvasEvents();
-    
-    document.getElementById('btnNew').onclick = () => { 
-        db = { equipos: [], lines: [], puntosLibres: [] }; 
-        selectedElement = null;
-        render(); 
-        notify("Nuevo proyecto creado"); 
-    };
-    document.getElementById('btnOpen').onclick = () => { 
-        const data = localStorage.getItem('acquablue_save'); 
-        if(data){ 
-            db = JSON.parse(data); 
-            render(); 
-            notify("Proyecto cargado exitosamente"); 
-        } else {
-            notify("No hay proyecto guardado", true);
-        }
-    };
-    document.getElementById('btnSave').onclick = () => { 
-        localStorage.setItem('acquablue_save', JSON.stringify(db)); 
-        notify(`Proyecto "${proyectoData.nombre}" guardado`); 
-    };
+    initHotkeys();
+    document.getElementById('btnNew').onclick = nuevoProyecto;
+    document.getElementById('btnOpen').onclick = cargarLocal;
+    document.getElementById('btnSave').onclick = guardarLocal;
     document.getElementById('btnReset').onclick = autoCenter;
     document.getElementById('btnUndo').onclick = undo;
     document.getElementById('btnRedo').onclick = redo;
-    document.getElementById('btnMTO').onclick = () => notify("Reporte MTO generado - Versión completa en desarrollo");
-    document.getElementById('btnPDF').onclick = () => notify("Documento PDF generado");
+    document.getElementById('btnMTO').onclick = exportarMTO;
+    document.getElementById('btnPDF').onclick = exportPDF;
+    document.getElementById('btnExportPCF').onclick = exportarPCF;
+    document.getElementById('btnImportPCF').onclick = importarPCF;
     document.getElementById('btnApplyNorm').onclick = aplicarNormas;
-    document.getElementById('btnVoice').onclick = () => { 
-        voiceEnabled = !voiceEnabled; 
-        notify(voiceEnabled ? "Voz activada" : "Voz desactivada"); 
-    };
+    document.getElementById('btnVoice').onclick = () => { voiceEnabled = !voiceEnabled; notify(voiceEnabled ? "Voz activada" : "Voz desactivada"); };
     document.getElementById('btnEditProyecto').onclick = editarProyecto;
-    
-    document.getElementById('btnCommand').onclick = () => {
-        document.getElementById('commandPanel').style.display = 'block';
-        document.getElementById('commandText').focus();
-        speakText("Panel de comandos abierto. Puede escribir o dictar comandos.");
-    };
-    document.getElementById('closeCommand').onclick = () => {
-        document.getElementById('commandPanel').style.display = 'none';
-        speakText("Panel de comandos cerrado");
-    };
-    document.getElementById('runCommands').onclick = () => {
-        const text = document.getElementById('commandText').value;
-        if (text.trim()) {
-            const lines = text.split('\n');
-            lines.forEach(line => { if(line.trim()) parseCommand(line.trim()); });
-            document.getElementById('commandText').value = '';
-            speakText(`${lines.length} comandos ejecutados. El panel permanece abierto.`);
-        } else {
-            speakText("No hay comandos para ejecutar");
-        }
-    };
-    document.getElementById('clearCommand').onclick = () => {
-        document.getElementById('commandText').value = '';
-        speakText("Texto limpiado");
-    };
-    
-    document.getElementById('guardarProyectoBtn').onclick = guardarProyecto;
-    
-    document.getElementById('btnManual').onclick = () => {
-        editMode = !editMode;
-        const bar = document.getElementById('edit-toolbar');
-        bar.style.display = editMode ? 'flex' : 'none';
-        if (!editMode) document.getElementById('property-panel').style.display = 'none';
-        notify(editMode ? "Modo manual activado - Puede mover equipos" : "Modo manual desactivado");
-    };
-    
-    crearEjemplosIniciales();
-    
+    document.getElementById('btnEditProyectoBadge').onclick = editarProyecto;
+    document.getElementById('btnManual').onclick = () => { editMode = !editMode; document.getElementById('edit-toolbar').style.display = editMode ? 'flex' : 'none'; if (!editMode) document.getElementById('propertyPanel').style.display = 'none'; notify(editMode ? "Modo manual activado" : "Modo manual desactivado"); };
+    document.getElementById('btnMeasure').onclick = toggleMeasureMode;
+    document.getElementById('btnSnap').onclick = toggleSnap;
+    document.getElementById('btnEliminar').onclick = eliminarSeleccionado;
+    document.getElementById('btnAddValve').onclick = () => toggleAccessoryMode('VALVE', 'VBAL');
+    document.getElementById('btnCommand').onclick = () => { document.getElementById('commandPanel').style.display = 'block'; document.getElementById('commandText').focus(); };
+    document.getElementById('closeCommand').onclick = () => { document.getElementById('commandPanel').style.display = 'none'; };
+    document.getElementById('clearCommand').onclick = () => { document.getElementById('commandText').value = ''; };
+    document.getElementById('runCommands').onclick = () => { let t = document.getElementById('commandText').value; let ls = t.split('\n'); for (let l of ls) if (l.trim()) parseCommand(l.trim()); };
+    window.addEventListener('resize', () => { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; autoCenter(); render(); });
     autoCenter();
     render();
-    mostrarModalProyecto(true);
+    saveState();
+    notify("SmartFlow Pro v8.0 - Listo");
 }
-
-// ==================== CIERRE DE LA APLICACIÓN ====================
-window.onload = init;
-window.onresize = () => { 
-    canvas.width = canvas.parentElement.clientWidth; 
-    canvas.height = canvas.parentElement.clientHeight; 
-    autoCenter(); 
-    render(); 
-};
-
-// ==================== CIERRE DE ETIQUETAS HTML ====================
+init();
 </script>
 </body>
 </html>
