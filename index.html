@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -103,7 +102,10 @@ eliminar TK-01"></textarea>
 <label>Ingeniero Responsable</label><input type="text" id="proyectoAutor" value="Ing. Osnay Romero">
 <label>Fecha</label><input type="date" id="proyectoFecha" value="2025-01-15">
 <label>Version</label><input type="text" id="proyectoVersion" value="1.0">
-<div class="modal-buttons"><button id="guardarProyectoBtn" class="btn-primary">Iniciar Proyecto</button></div></div></div>
+<div class="modal-buttons">
+<button id="saltarProyectoBtn" style="background:rgba(255,255,255,0.1);">Saltar</button>
+<button id="guardarProyectoBtn" class="btn-primary">Iniciar Proyecto</button>
+</div></div></div>
 <script>
 // ==================== CONFIGURACION GLOBAL ====================
 let db = { equipos: [], lines: [], puntosLibres: [] };
@@ -126,8 +128,46 @@ function notify(m, e) { let n = document.getElementById('notification'); n.textC
 
 // ==================== PROYECTO ====================
 let proyectoData = { nombre: '', autor: '', fecha: '', version: '' };
-function guardarProyectoModal() { let n = document.getElementById('proyectoNombre').value.trim(); let a = document.getElementById('proyectoAutor').value.trim(); let f = document.getElementById('proyectoFecha').value; let v = document.getElementById('proyectoVersion').value.trim(); if (!n || !a) { notify("Complete nombre e ingeniero", true); return; } proyectoData.nombre = n; proyectoData.autor = a; proyectoData.fecha = f; proyectoData.version = v; document.getElementById('modalProyecto').style.display = 'none'; document.getElementById('badgeProjectName').innerHTML = n; document.getElementById('badgeAuthor').innerHTML = a; document.getElementById('projectBadge').style.display = 'flex'; document.getElementById('btnEditProyecto').style.display = 'inline-flex'; notify(`Proyecto: ${n} | Ingeniero: ${a}`); }
-function editarProyecto() { document.getElementById('proyectoNombre').value = proyectoData.nombre; document.getElementById('proyectoAutor').value = proyectoData.autor; document.getElementById('proyectoFecha').value = proyectoData.fecha; document.getElementById('proyectoVersion').value = proyectoData.version; document.getElementById('modalProyecto').style.display = 'flex'; }
+
+function guardarProyectoModal() {
+    let n = document.getElementById('proyectoNombre').value.trim();
+    let a = document.getElementById('proyectoAutor').value.trim();
+    let f = document.getElementById('proyectoFecha').value;
+    let v = document.getElementById('proyectoVersion').value.trim();
+    if (!n || !a) { notify("Complete nombre e ingeniero", true); return; }
+    proyectoData.nombre = n;
+    proyectoData.autor = a;
+    proyectoData.fecha = f;
+    proyectoData.version = v;
+    // CERRAR MODAL
+    document.getElementById('modalProyecto').style.display = 'none';
+    document.getElementById('badgeProjectName').innerHTML = n;
+    document.getElementById('badgeAuthor').innerHTML = a;
+    document.getElementById('projectBadge').style.display = 'flex';
+    document.getElementById('btnEditProyecto').style.display = 'inline-flex';
+    notify(`Proyecto: ${n} | Ingeniero: ${a} | Version: ${v}`);
+}
+
+function saltarProyecto() {
+    proyectoData.nombre = "Proyecto Temporal";
+    proyectoData.autor = "Usuario";
+    proyectoData.fecha = new Date().toISOString().slice(0,10);
+    proyectoData.version = "1.0";
+    document.getElementById('modalProyecto').style.display = 'none';
+    document.getElementById('badgeProjectName').innerHTML = proyectoData.nombre;
+    document.getElementById('badgeAuthor').innerHTML = proyectoData.autor;
+    document.getElementById('projectBadge').style.display = 'flex';
+    document.getElementById('btnEditProyecto').style.display = 'inline-flex';
+    notify("Proyecto temporal iniciado. Use Editar para configurar.");
+}
+
+function editarProyecto() {
+    document.getElementById('proyectoNombre').value = proyectoData.nombre;
+    document.getElementById('proyectoAutor').value = proyectoData.autor;
+    document.getElementById('proyectoFecha').value = proyectoData.fecha;
+    document.getElementById('proyectoVersion').value = proyectoData.version;
+    document.getElementById('modalProyecto').style.display = 'flex';
+}
 
 // ==================== FUNCIONES BASE ====================
 function saveState() { let s = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines })); history.past.push(s); if (history.past.length > history.maxSize) history.past.shift(); history.future = []; }
@@ -156,8 +196,25 @@ function addPipe(tag, diam, mat, points) { let nl = { tag: tag || generarTagLine
 function crearTanque(diam, alt, mat) { saveState(); let tag = generarTag('tanque'); let x = 0, z = 0; if (db.equipos.length > 0) { let u = db.equipos[db.equipos.length - 1]; x = u.x + 4000; z = u.z; } db.equipos.push({ type: 'equipment', tag, x, y: 0, z, tipo: 'tanque_v', diametro: diam, altura: alt, material: mat }); notify(`Tanque ${tag}: ${diam}mm x ${alt}mm ${mat}`); render(); autoCenter(); }
 function crearBomba(pot) { saveState(); let tag = generarTag('bomba'); let x = 2000, z = 2000; if (db.equipos.length > 0) { let u = db.equipos[db.equipos.length - 1]; x = u.x + 3000; z = u.z; } db.equipos.push({ type: 'equipment', tag, x, y: 0, z, tipo: 'bomba', diametro: 500, altura: 800, potencia: pot, material: 'Hierro Fundido' }); notify(`Bomba ${tag} de ${pot} HP`); render(); }
 function conectarEquipos(diam, mat, t1, t2) { let e1 = db.equipos.find(e => e.tag === t1), e2 = db.equipos.find(e => e.tag === t2); if (!e1 || !e2) return notify(`No se encontro ${t1} o ${t2}`, true); let p1 = { x: e1.x + 1000, y: 500, z: e1.z }; let p2 = { x: e2.x - 1000, y: 500, z: e2.z }; let line = addPipe(null, diam, mat, [p1, p2]); notify(`Conexion ${t1}-${t2}: ${diam}" ${mat}`); }
-function agregarValvula(tl, tipo) { let line = db.lines.find(l => l.tag === tl); if (!line) return notify(`Linea ${tl} no existe`, true); if (!line.components) line.components = []; let skey = tipo === 'bola' ? 'VBAL' : (tipo === 'check' ? 'VCHK' : 'VGATE'); line.components.push({ type: 'VALVE', tag: `VLV-${line.components.length + 1}`, skey: skey, param: 0.5 }); notify(`Valvula ${tipo} en ${tl}`); render(); }
-function generarResumen() { let m = `Proyecto: ${proyectoData.nombre}. Ingeniero: ${proyectoData.autor}. `; m += `Equipos: ${db.equipos.length}. `; db.equipos.forEach(e => { if (e.tipo === 'tanque_v') m += `${e.tag} ${e.diametro}mm x ${e.altura}mm. `; if (e.tipo === 'bomba') m += `${e.tag} ${e.potencia}HP. `; }); m += `Tuberias: ${db.lines.length}. `;
+
+function agregarValvula(tl, tipo) {
+    let line = db.lines.find(l => l.tag === tl);
+    if (!line) return notify(`Linea ${tl} no existe`, true);
+    if (!line.components) line.components = [];
+    let skey = tipo === 'bola' ? 'VBAL' : (tipo === 'check' ? 'VCHK' : 'VGATE');
+    line.components.push({ type: 'VALVE', tag: `VLV-${line.components.length + 1}`, skey: skey, param: 0.5 });
+    notify(`Valvula ${tipo} en ${tl}`);
+    render();
+}
+
+function generarResumen() {
+    let m = `Proyecto: ${proyectoData.nombre}. Ingeniero: ${proyectoData.autor}. `;
+    m += `Equipos: ${db.equipos.length}. `;
+    db.equipos.forEach(e => {
+        if (e.tipo === 'tanque_v') m += `${e.tag} ${e.diametro}mm x ${e.altura}mm. `;
+        if (e.tipo === 'bomba') m += `${e.tag} ${e.potencia}HP. `;
+    });
+    m += `Tuberias: ${db.lines.length}. `;
     let tv = db.lines.reduce((a, l) => a + (l.components?.length || 0), 0);
     m += `Componentes: ${tv}.`;
     notify(m);
@@ -647,6 +704,7 @@ function initCanvasEvents() {
                         document.getElementById('prop-elevacion').value = line.points3D[0]?.y || 500;
                         document.getElementById('prop-elevacion').onchange = (e) => {
                             let ny = parseFloat(e.target.value);
+
                             for (let p of line.points3D) p.y = ny;
                             render(); saveState();
                         };
@@ -666,7 +724,10 @@ function initCanvasEvents() {
             let dy = (e.clientY - lastPos.y) / cam.scale;
             selectedElement.obj.x += dx;
             selectedElement.obj.z += dy;
-            if (snapEnabled) { selectedElement.obj.x = Math.round(selectedElement.obj.x / 500) * 500; selectedElement.obj.z = Math.round(selectedElement.obj.z / 500) * 500; }
+            if (snapEnabled) {
+                selectedElement.obj.x = Math.round(selectedElement.obj.x / 500) * 500;
+                selectedElement.obj.z = Math.round(selectedElement.obj.z / 500) * 500;
+            }
             render();
         } else if (!selectedElement || !editMode) {
             cam.panX += e.clientX - lastPos.x;
@@ -675,8 +736,16 @@ function initCanvasEvents() {
         }
         lastPos = { x: e.clientX, y: e.clientY };
     });
-    window.addEventListener('mouseup', () => { if (dragging && selectedElement) saveState(); dragging = false; canvas.style.cursor = 'grab'; });
-    canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.scale = Math.min(Math.max(cam.scale * (e.deltaY > 0 ? 0.9 : 1.1), 0.2), 1.5); render(); }, { passive: false });
+    window.addEventListener('mouseup', () => {
+        if (dragging && selectedElement) saveState();
+        dragging = false;
+        canvas.style.cursor = 'grab';
+    });
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        cam.scale = Math.min(Math.max(cam.scale * (e.deltaY > 0 ? 0.9 : 1.1), 0.2), 1.5);
+        render();
+    }, { passive: false });
 }
 
 function init() {
@@ -684,6 +753,7 @@ function init() {
     canvas.height = canvas.parentElement.clientHeight;
     initCanvasEvents();
     initHotkeys();
+    
     document.getElementById('btnNew').onclick = nuevoProyecto;
     document.getElementById('btnOpen').onclick = cargarLocal;
     document.getElementById('btnSave').onclick = guardarLocal;
@@ -695,24 +765,53 @@ function init() {
     document.getElementById('btnExportPCF').onclick = exportarPCF;
     document.getElementById('btnImportPCF').onclick = importarPCF;
     document.getElementById('btnApplyNorm').onclick = aplicarNormas;
-    document.getElementById('btnVoice').onclick = () => { voiceEnabled = !voiceEnabled; notify(voiceEnabled ? "Voz activada" : "Voz desactivada"); };
+    document.getElementById('btnVoice').onclick = () => {
+        voiceEnabled = !voiceEnabled;
+        notify(voiceEnabled ? "Voz activada" : "Voz desactivada");
+    };
     document.getElementById('btnEditProyecto').onclick = editarProyecto;
     document.getElementById('btnEditProyectoBadge').onclick = editarProyecto;
-    document.getElementById('btnManual').onclick = () => { editMode = !editMode; document.getElementById('edit-toolbar').style.display = editMode ? 'flex' : 'none'; if (!editMode) document.getElementById('propertyPanel').style.display = 'none'; notify(editMode ? "Modo manual activado" : "Modo manual desactivado"); };
+    document.getElementById('btnManual').onclick = () => {
+        editMode = !editMode;
+        document.getElementById('edit-toolbar').style.display = editMode ? 'flex' : 'none';
+        if (!editMode) document.getElementById('propertyPanel').style.display = 'none';
+        notify(editMode ? "Modo manual activado" : "Modo manual desactivado");
+    };
     document.getElementById('btnMeasure').onclick = toggleMeasureMode;
     document.getElementById('btnSnap').onclick = toggleSnap;
     document.getElementById('btnEliminar').onclick = eliminarSeleccionado;
     document.getElementById('btnAddValve').onclick = () => toggleAccessoryMode('VALVE', 'VBAL');
-    document.getElementById('btnCommand').onclick = () => { document.getElementById('commandPanel').style.display = 'block'; document.getElementById('commandText').focus(); };
-    document.getElementById('closeCommand').onclick = () => { document.getElementById('commandPanel').style.display = 'none'; };
-    document.getElementById('clearCommand').onclick = () => { document.getElementById('commandText').value = ''; };
-    document.getElementById('runCommands').onclick = () => { let t = document.getElementById('commandText').value; let ls = t.split('\n'); for (let l of ls) if (l.trim()) parseCommand(l.trim()); };
-    window.addEventListener('resize', () => { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; autoCenter(); render(); });
+    document.getElementById('btnCommand').onclick = () => {
+        document.getElementById('commandPanel').style.display = 'block';
+        document.getElementById('commandText').focus();
+    };
+    document.getElementById('closeCommand').onclick = () => {
+        document.getElementById('commandPanel').style.display = 'none';
+    };
+    document.getElementById('clearCommand').onclick = () => {
+        document.getElementById('commandText').value = '';
+    };
+    document.getElementById('runCommands').onclick = () => {
+        let t = document.getElementById('commandText').value;
+        let ls = t.split('\n');
+        for (let l of ls) if (l.trim()) parseCommand(l.trim());
+    };
+    document.getElementById('saltarProyectoBtn').onclick = saltarProyecto;
+    document.getElementById('guardarProyectoBtn').onclick = guardarProyectoModal;
+    
+    window.addEventListener('resize', () => {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+        autoCenter();
+        render();
+    });
+    
     autoCenter();
     render();
     saveState();
     notify("SmartFlow Pro v8.0 - Listo");
 }
+
 init();
 </script>
 </body>
