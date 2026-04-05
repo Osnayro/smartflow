@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -81,7 +82,7 @@ textarea:focus{outline:none;border-color:var(--primary)}
 <div id="edit-toolbar" class="edit-toolbar"><span style="font-size:11px;color:var(--primary)">Modo Edicion Activo</span><button id="btnEliminar">Eliminar</button></div>
 <div id="commandPanel" class="command-panel"><div class="command-header"><strong>Comando de voz o texto</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">X</button></div>
 <textarea id="commandText" rows="5" placeholder="Ejemplos:
-crear tanque de 2380 mm diametro y 2900 mm altura material acero carbono
+crear tanque de 2400 mm diametro y 2900 mm altura material acero carbono
 crear bomba de 5 HP
 conectar 4 pulgadas CS desde TK-01 hasta B-01
 comenzar tuberia 4 pulgadas PPR desde salida de TK-01 avanzar 50 cm frente avanzar 30 cm derecha conectar con entrada de B-01
@@ -122,61 +123,9 @@ const canvas = document.getElementById('isoCanvas');
 const ctx = canvas.getContext('2d');
 
 // ==================== SISTEMA DE VOZ ====================
-function speakText(text, isUrgent) {
-    if (!voiceEnabled) return;
-    if (!text) return;
-    if (!window.speechSynthesis) return;
-    
-    if (isUrgent) {
-        window.speechSynthesis.cancel();
-        speechQueue = [];
-        isSpeaking = false;
-    }
-    
-    speechQueue.push(text);
-    processSpeechQueue();
-}
-
-function processSpeechQueue() {
-    if (isSpeaking || speechQueue.length === 0) return;
-    if (!window.speechSynthesis) return;
-    
-    isSpeaking = true;
-    let text = speechQueue.shift();
-    let utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    utterance.onend = function() {
-        isSpeaking = false;
-        processSpeechQueue();
-    };
-    utterance.onerror = function() {
-        isSpeaking = false;
-        processSpeechQueue();
-    };
-    window.speechSynthesis.speak(utterance);
-}
-
-function notify(msg, isErr) {
-    let n = document.getElementById('notification');
-    n.textContent = msg;
-    n.style.backgroundColor = isErr ? 'var(--danger)' : 'var(--success)';
-    n.style.display = 'block';
-    document.getElementById('statusMsg').innerHTML = msg;
-    
-    if (voiceEnabled && window.speechSynthesis) {
-        try {
-            speakText(msg, isErr);
-        } catch(e) {
-            console.warn("Error al hablar:", e);
-        }
-    }
-    
-    setTimeout(() => {
-        if (n.style.display === 'block') n.style.display = 'none';
-    }, 5000);
-}
+function speakText(t, u) { if (!voiceEnabled || !t) return; if (u && window.speechSynthesis) { window.speechSynthesis.cancel(); speechQueue = []; isSpeaking = false; } speechQueue.push(t); processSpeechQueue(); }
+function processSpeechQueue() { if (isSpeaking || speechQueue.length === 0) return; if (!window.speechSynthesis) return; isSpeaking = true; let t = speechQueue.shift(); let u = new SpeechSynthesisUtterance(t); u.lang = 'es-ES'; u.rate = 0.9; u.pitch = 1; u.onend = () => { isSpeaking = false; processSpeechQueue(); }; u.onerror = () => { isSpeaking = false; processSpeechQueue(); }; window.speechSynthesis.speak(u); }
+function notify(m, e) { let n = document.getElementById('notification'); n.textContent = m; n.style.backgroundColor = e ? 'var(--danger)' : 'var(--success)'; n.style.display = 'block'; document.getElementById('statusMsg').innerHTML = m; speakText(m, e); setTimeout(() => { if (n.style.display === 'block') n.style.display = 'none'; }, 5000); }
 
 // ==================== PROYECTO ====================
 let proyectoData = { nombre: '', autor: '', fecha: '', version: '' };
@@ -191,6 +140,7 @@ function guardarProyectoModal() {
     proyectoData.autor = a;
     proyectoData.fecha = f;
     proyectoData.version = v;
+    // CERRAR MODAL
     document.getElementById('modalProyecto').style.display = 'none';
     document.getElementById('badgeProjectName').innerHTML = n;
     document.getElementById('badgeAuthor').innerHTML = a;
@@ -246,15 +196,7 @@ function detectAndAddElbows(line) { let pts = line.points3D; if (!pts || pts.len
 function addPipe(tag, diam, mat, points) { let nl = { tag: tag || generarTagLinea(), diameter: diam, material: mat, points3D: points, components: [] }; db.lines.push(nl); detectAndAddElbows(nl); saveState(); render(); return nl; }
 function crearTanque(diam, alt, mat) { saveState(); let tag = generarTag('tanque'); let x = 0, z = 0; if (db.equipos.length > 0) { let u = db.equipos[db.equipos.length - 1]; x = u.x + 4000; z = u.z; } db.equipos.push({ type: 'equipment', tag, x, y: 0, z, tipo: 'tanque_v', diametro: diam, altura: alt, material: mat }); notify(`Tanque ${tag}: ${diam}mm x ${alt}mm ${mat}`); render(); autoCenter(); }
 function crearBomba(pot) { saveState(); let tag = generarTag('bomba'); let x = 2000, z = 2000; if (db.equipos.length > 0) { let u = db.equipos[db.equipos.length - 1]; x = u.x + 3000; z = u.z; } db.equipos.push({ type: 'equipment', tag, x, y: 0, z, tipo: 'bomba', diametro: 500, altura: 800, potencia: pot, material: 'Hierro Fundido' }); notify(`Bomba ${tag} de ${pot} HP`); render(); }
-
-function conectarEquipos(diam, mat, t1, t2) {
-    let e1 = db.equipos.find(e => e.tag === t1), e2 = db.equipos.find(e => e.tag === t2);
-    if (!e1 || !e2) return notify(`No se encontro ${t1} o ${t2}`, true);
-    let p1 = { x: e1.x + 1000, y: 500, z: e1.z };
-    let p2 = { x: e2.x - 1000, y: 500, z: e2.z };
-    let line = addPipe(null, diam, mat, [p1, p2]);
-    notify(`Conexion ${t1}-${t2}: ${diam}" ${mat}`);
-}
+function conectarEquipos(diam, mat, t1, t2) { let e1 = db.equipos.find(e => e.tag === t1), e2 = db.equipos.find(e => e.tag === t2); if (!e1 || !e2) return notify(`No se encontro ${t1} o ${t2}`, true); let p1 = { x: e1.x + 1000, y: 500, z: e1.z }; let p2 = { x: e2.x - 1000, y: 500, z: e2.z }; let line = addPipe(null, diam, mat, [p1, p2]); notify(`Conexion ${t1}-${t2}: ${diam}" ${mat}`); }
 
 function agregarValvula(tl, tipo) {
     let line = db.lines.find(l => l.tag === tl);
@@ -592,55 +534,27 @@ function initHotkeys() {
 
 function parseCommand(cmd) {
     let low = cmd.toLowerCase();
-    
     if (low.includes('crear') && low.includes('tanque')) {
-        let diam = 2400;
-        let alt = 2900;
-        let material = "Acero al Carbono";
-        
-        let diamMatch = cmd.match(/(\d+)\s*mm\s+di[áa]metro/i) ||
-                        cmd.match(/di[áa]metro\s+de\s+(\d+)\s*mm/i) ||
-                        cmd.match(/di[áa]metro\s+(\d+)\s*mm/i) ||
-                        cmd.match(/de\s+(\d+)\s*mm\s+di[áa]metro/i);
-        if (diamMatch) diam = parseInt(diamMatch[1]);
-        
-        let altMatch = cmd.match(/(\d+)\s*mm\s+altura/i) ||
-                       cmd.match(/altura\s+de\s+(\d+)\s*mm/i) ||
-                       cmd.match(/altura\s+(\d+)\s*mm/i) ||
-                       cmd.match(/de\s+(\d+)\s*mm\s+altura/i);
-        if (altMatch) alt = parseInt(altMatch[1]);
-        
-        if (low.includes('inox')) material = "Acero Inoxidable";
-        if (low.includes('ppr')) material = "PPR";
-        
-        crearTanque(diam, alt, material);
-        notify(`Tanque creado: ${diam}mm diametro x ${alt}mm altura, material ${material}`);
-        return true;
-    }
-    
-    if (low.includes('crear') && low.includes('bomba')) {
+        let d = parseInt(cmd.match(/diametro\s+de\s+(\d+)/i)?.[1]) || 2400;
+        let a = parseInt(cmd.match(/altura\s+de\s+(\d+)/i)?.[1]) || 2900;
+        let m = "Acero al Carbono";
+        if (low.includes('inox')) m = "Acero Inoxidable";
+        if (low.includes('ppr')) m = "PPR";
+        crearTanque(d, a, m);
+    } else if (low.includes('crear') && low.includes('bomba')) {
         let p = parseInt(cmd.match(/(\d+)\s*hp/i)?.[1]) || 5;
         crearBomba(p);
-        return true;
-    }
-    
-    if (low.includes('conectar')) {
+    } else if (low.includes('conectar')) {
         let d = parseInt(cmd.match(/(\d+)\s*pulgadas/i)?.[1]) || 4;
         let m = low.includes('ppr') ? "PPR" : "CS";
         let tags = cmd.match(/[A-Z]{2,3}-\d{2}/g);
-        if (tags && tags.length >= 2) {
-            conectarEquipos(d, m, tags[0], tags[1]);
-        } else {
-            notify("Formato: conectar 4 pulgadas CS desde TK-01 hasta B-01", true);
-        }
-        return true;
-    }
-    
-    if (low.includes('comenzar tuberia') || low.includes('comenzar tubería')) {
+        if (tags && tags.length >= 2) conectarEquipos(d, m, tags[0], tags[1]);
+        else notify("Formato: conectar 4 pulgadas CS desde TK-01 hasta B-01", true);
+    } else if (low.includes('comenzar tuberia') || low.includes('comenzar tubería')) {
         let d = parseInt(cmd.match(/(\d+)\s*pulgadas/i)?.[1]) || 4;
         let m = low.includes('ppr') ? "PPR" : "CS";
         let orgMatch = cmd.match(/desde\s+(?:salida|entrada)?\s*de\s*([A-Z0-9-]+)/i);
-        if (!orgMatch) { notify("Formato: comenzar tuberia desde TK-01", true); return true; }
+        if (!orgMatch) { notify("Formato: comenzar tuberia desde TK-01", true); return; }
         let movs = [];
         let avances = cmd.matchAll(/avanzar\s+(\d+)\s*cm\s+([a-záéíóú]+)/gi);
         for (let av of avances) movs.push({ distancia: parseInt(av[1]) * 10, direccion: av[2].toLowerCase() });
@@ -648,46 +562,26 @@ function parseCommand(cmd) {
         let conMatch = cmd.match(/conectar con\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
         if (conMatch) destFinal = { tag: conMatch[1].toUpperCase(), punto: 'entrada' };
         comenzarTuberia(d, m, orgMatch[1].toUpperCase(), 'salida', movs, destFinal);
-        return true;
-    }
-    
-    if (low.includes('instalar colector') || low.includes('instalar distribuidor')) {
+    } else if (low.includes('instalar colector') || low.includes('instalar distribuidor')) {
         let d = parseInt(cmd.match(/(\d+)\s*pulgadas/i)?.[1]) || 4;
         let m = low.includes('ppr') ? "PPR" : "CS";
         let desde = cmd.match(/desde\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
         let hasta = cmd.match(/hasta\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
-        if (!desde || !hasta) { notify("Formato: instalar distribuidor desde TK-01 hasta TK-06", true); return true; }
+        if (!desde || !hasta) { notify("Formato: instalar distribuidor desde TK-01 hasta TK-06", true); return; }
         let dist = parseInt(cmd.match(/a\s+(\d+)\s*cm/i)?.[1]) || 80;
         let salida = null;
         let salMatch = cmd.match(/con salida en\s+(?:entrada|salida)?\s*de\s*([A-Z0-9-]+)/i);
         if (salMatch) salida = { tag: salMatch[1].toUpperCase(), punto: 'salida' };
         instalarColector(d, m, desde[1].toUpperCase(), 'salida', hasta[1].toUpperCase(), 'entrada', dist * 10, salida);
-        return true;
-    }
-    
-    if (low.includes('agregar') && low.includes('valvula')) {
+    } else if (low.includes('agregar') && low.includes('valvula')) {
         let tl = cmd.match(/L-\d{3}/i)?.[0]?.toUpperCase();
         let tipo = 'bola';
         if (low.includes('check')) tipo = 'check';
-        if (tl) {
-            agregarValvula(tl, tipo);
-        } else {
-            notify("Especifique tuberia L-XXX", true);
-        }
-        return true;
-    }
-    
-    if (low.includes('resumen')) {
-        generarResumen();
-        return true;
-    }
-    
-    if (low.includes('normas')) {
-        aplicarNormas();
-        return true;
-    }
-    
-    if (low.includes('eliminar') || low.includes('borrar')) {
+        if (tl) agregarValvula(tl, tipo);
+        else notify("Especifique tuberia L-XXX", true);
+    } else if (low.includes('resumen')) { generarResumen();
+    } else if (low.includes('normas')) { aplicarNormas();
+    } else if (low.includes('eliminar') || low.includes('borrar')) {
         let tag = cmd.match(/[A-Z]{2,3}-\d{2}/i)?.[0]?.toUpperCase();
         if (tag) {
             let be = db.equipos.length, bl = db.lines.length;
@@ -697,14 +591,8 @@ function parseCommand(cmd) {
             else if (bl !== db.lines.length) notify(`Tuberia ${tag} eliminada`);
             else notify(`No se encontro ${tag}`, true);
             render();
-        } else {
-            notify("Especifique tag a eliminar (ej: eliminar TK-01)", true);
         }
-        return true;
-    }
-    
-    notify("Comando no reconocido", true);
-    return false;
+    } else { notify("Comando no reconocido", true); }
 }
 
 function initCanvasEvents() {
@@ -718,7 +606,6 @@ function initCanvasEvents() {
         currentCursor = { x: xw, y: 0, z: z };
         render();
     });
-    
     canvas.addEventListener('mousedown', (e) => {
         let rect = canvas.getBoundingClientRect();
         let mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -727,13 +614,11 @@ function initCanvasEvents() {
         let z = (xc / c30 - yc / s30) / 2;
         let xw = (xc / c30 + yc / s30) / 2;
         let cp = { x: xw, y: 0, z: z };
-        
         if (measuringMode) {
             if (!tempMeasurePoint) { tempMeasurePoint = cp; notify("Punto A"); render(); }
             else { let d = Math.hypot(cp.x - tempMeasurePoint.x, cp.z - tempMeasurePoint.z); notify(`Distancia: ${d >= 1000 ? (d / 1000).toFixed(2) + 'm' : d.toFixed(0) + 'mm'}`); tempMeasurePoint = null; render(); }
             return;
         }
-        
         if (addAccessoryMode) {
             for (let line of db.lines) {
                 if (!line.points3D || line.points3D.length < 2) continue;
@@ -762,12 +647,10 @@ function initCanvasEvents() {
             notify("Click sobre tuberia", true);
             return;
         }
-        
         dragging = true;
         lastPos = { x: e.clientX, y: e.clientY };
         canvas.style.cursor = 'grabbing';
         let hit = false;
-        
         for (let eq of db.equipos) {
             let p = project(eq);
             let r = (eq.diametro / 2) * cam.scale;
@@ -804,7 +687,6 @@ function initCanvasEvents() {
                 break;
             }
         }
-        
         if (!hit) {
             for (let line of db.lines) {
                 if (!line.points3D) continue;
@@ -823,6 +705,7 @@ function initCanvasEvents() {
                         document.getElementById('prop-elevacion').value = line.points3D[0]?.y || 500;
                         document.getElementById('prop-elevacion').onchange = (e) => {
                             let ny = parseFloat(e.target.value);
+
                             for (let p of line.points3D) p.y = ny;
                             render(); saveState();
                         };
@@ -835,7 +718,6 @@ function initCanvasEvents() {
             render();
         }
     });
-    
     window.addEventListener('mousemove', (e) => {
         if (!dragging) return;
         if (selectedElement && editMode && selectedElement.type === 'equipment') {
@@ -855,13 +737,11 @@ function initCanvasEvents() {
         }
         lastPos = { x: e.clientX, y: e.clientY };
     });
-    
     window.addEventListener('mouseup', () => {
         if (dragging && selectedElement) saveState();
         dragging = false;
         canvas.style.cursor = 'grab';
     });
-    
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         cam.scale = Math.min(Math.max(cam.scale * (e.deltaY > 0 ? 0.9 : 1.1), 0.2), 1.5);
@@ -888,15 +768,7 @@ function init() {
     document.getElementById('btnApplyNorm').onclick = aplicarNormas;
     document.getElementById('btnVoice').onclick = () => {
         voiceEnabled = !voiceEnabled;
-        const btn = document.getElementById('btnVoice');
-        btn.textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF";
-        btn.style.background = voiceEnabled ? "var(--secondary)" : "rgba(255,255,255,0.1)";
         notify(voiceEnabled ? "Voz activada" : "Voz desactivada");
-        if (voiceEnabled && window.speechSynthesis) {
-            let testMsg = new SpeechSynthesisUtterance("Prueba de voz");
-            testMsg.lang = 'es-ES';
-            window.speechSynthesis.speak(testMsg);
-        }
     };
     document.getElementById('btnEditProyecto').onclick = editarProyecto;
     document.getElementById('btnEditProyectoBadge').onclick = editarProyecto;
