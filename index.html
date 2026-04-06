@@ -289,18 +289,15 @@ textarea{
         <strong>🎤 Comando Industrial</strong><button id="closeCommand" style="background:none;border:none;font-size:20px;">✕</button>
     </div>
     <textarea id="commandText" rows="5" placeholder="EJEMPLOS:
-crear tanque de 3000mm diametro y 5000mm altura material acero inoxidable
-crear bomba centrifuga de 150 HP caudal 800 m3/h
-crear 6 tanques de 2400mm diametro 4000mm altura en serie separados 5 metros
-crear linea de 6 pulgadas material acero carbono servicio vapor
-conectar 4 pulgadas acero inoxidable desde TK-01 hasta B-01
-insertar valvula de bola en L-001 posicion 0.5
-insertar codo 90 grados en L-001 posicion 0.3
-añadir instrumento presion tag PT-101 en L-001
-generar accesorios automaticos en L-001
-resumen completo
-verificar normas asme
-exportar pcf"></textarea>
+crear 6 tanques de 2380mm diametro y 2900mm altura material ppr en paralelo separados 3 metros
+crear tanque de 2.5m diametro y 4m altura
+crear bomba de 150 HP
+crear linea de 6 pulgadas acero inoxidable
+conectar TK-01 con B-01
+insertar valvula en L-001
+insertar codo 90 grados en L-001
+resumen
+ayuda"></textarea>
     <div style="display:flex;gap:12px;padding:12px"><button id="runCommands" class="btn-primary">▶️ Ejecutar</button><button id="clearCommand">🗑️ Limpiar</button></div>
 </div>
 
@@ -321,15 +318,74 @@ exportar pcf"></textarea>
 </div>
 
 <script>
-// ==================== SISTEMA DE VOZ ====================
+// ==================== SISTEMA DE VOZ (COMPATIBLE CON IPHONE) ====================
 class VoiceManager {
-    constructor() { this.enabled = true; this.queue = []; this.speaking = false; }
+    constructor() { 
+        this.enabled = true; 
+        this.queue = []; 
+        this.speaking = false;
+        this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        this.initialized = false;
+    }
+    
+    initVoice() {
+        if (this.initialized) return;
+        if (!window.speechSynthesis) return;
+        const dummy = new SpeechSynthesisUtterance(' ');
+        dummy.lang = 'es-ES';
+        window.speechSynthesis.speak(dummy);
+        window.speechSynthesis.cancel();
+        this.initialized = true;
+    }
+    
     speak(text, isError = false) {
         if (!this.enabled || !text || !window.speechSynthesis) return;
-        if (isError && window.speechSynthesis) window.speechSynthesis.cancel();
+        
+        if (this.isIOS) {
+            window.speechSynthesis.cancel();
+            this.speaking = false;
+            this.queue = [];
+        }
+        
+        if (isError && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            this.queue = [];
+            this.speaking = false;
+        }
+        
         this.queue.push(text);
-        this.process();
+        
+        if (this.isIOS) {
+            this.processImmediate();
+        } else {
+            this.process();
+        }
     }
+    
+    processImmediate() {
+        if (this.queue.length === 0) return;
+        const text = this.queue.shift();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-ES';
+        utterance.rate = 0.9;
+        if (this.isIOS) utterance.volume = 1;
+        
+        const indicator = document.getElementById('voiceIndicator');
+        if (indicator) indicator.classList.add('active');
+        
+        utterance.onend = () => {
+            if (indicator) indicator.classList.remove('active');
+            if (this.queue.length > 0) this.processImmediate();
+        };
+        
+        utterance.onerror = (e) => {
+            console.error("Error en síntesis de voz:", e);
+            if (indicator) indicator.classList.remove('active');
+        };
+        
+        window.speechSynthesis.speak(utterance);
+    }
+    
     process() {
         if (this.speaking || this.queue.length === 0) return;
         this.speaking = true;
@@ -337,12 +393,49 @@ class VoiceManager {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'es-ES';
         utterance.rate = 0.9;
-        utterance.onend = () => { this.speaking = false; this.process(); };
+        
+        const indicator = document.getElementById('voiceIndicator');
+        if (indicator) indicator.classList.add('active');
+        
+        utterance.onend = () => {
+            this.speaking = false;
+            if (indicator) indicator.classList.remove('active');
+            this.process();
+        };
+        
+        utterance.onerror = () => {
+            this.speaking = false;
+            if (indicator) indicator.classList.remove('active');
+            this.process();
+        };
+        
         window.speechSynthesis.speak(utterance);
     }
-    toggle() { this.enabled = !this.enabled; this.speak(this.enabled ? "Voz activada" : "Voz desactivada"); return this.enabled; }
+    
+    toggle() { 
+        this.enabled = !this.enabled; 
+        if (!this.enabled && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            this.queue = [];
+            this.speaking = false;
+        }
+        this.speak(this.enabled ? "Voz activada" : "Voz desactivada");
+        return this.enabled;
+    }
 }
+
 const voice = new VoiceManager();
+
+// Inicializar voz en el primer toque (necesario para iPhone)
+function initVoiceOnFirstTouch() {
+    const initVoice = () => {
+        voice.initVoice();
+        document.removeEventListener('touchstart', initVoice);
+        document.removeEventListener('click', initVoice);
+    };
+    document.addEventListener('touchstart', initVoice);
+    document.addEventListener('click', initVoice);
+}
 
 function notify(msg, isError = false) {
     const container = document.getElementById('notificationContainer');
@@ -787,7 +880,6 @@ function exportarPCF() {
         l.points3D.forEach(p => pcf += `    POINT ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${p.z.toFixed(2)}\n`);
         if (l.componentes) {
             l.componentes.forEach(c => {
-                const pos = c.posicion || 0.5;
                 pcf += `    ${c.type === 'VALVE' ? 'VALVE' : (c.type === 'ELBOW' ? 'ELBOW' : 'COMPONENT')}\n        COMPONENT-IDENTIFIER ${c.tag}\n        SKEY ${c.skey || 'GEN'}\n        END-POINT 0 0 0\n    END${c.type === 'VALVE' ? 'VALVE' : (c.type === 'ELBOW' ? 'ELBOW' : 'COMPONENT')}\n`;
             });
         }
@@ -845,124 +937,217 @@ function importarPCF() {
     inp.click();
 }
 
-// ==================== PARSER DE COMANDOS ====================
+// ==================== PARSER DE COMANDOS FLEXIBLE ====================
 function procesarComando(comando) {
     const c = comando.toLowerCase();
-    // Tanque
-    if (c.includes('tanque') && !c.includes('crear')) {
-        const diam = comando.match(/(\d+)\s*mm/i)?.[1];
-        const alt = comando.match(/y\s*(\d+)\s*mm/i)?.[1];
-        const mat = comando.includes('inox') ? 'Acero Inoxidable' : (comando.includes('ppr') ? 'PPR' : 'Acero Carbono');
-        const serv = comando.match(/servicio\s+(\w+)/i)?.[1] || 'Almacenamiento';
-        if (!diam || !alt) { notify("⚠️ Especifique diámetro y altura. Ej: 'crear tanque de 3000mm diametro y 5000mm altura'", true); return; }
-        crearTanque(parseInt(diam), parseInt(alt), mat, serv);
+    
+    // Crear tanque (simple o múltiple)
+    if ((c.includes('tanque') || c.includes('tanques')) && (c.includes('crear') || comando.includes('crear'))) {
+        let diametro = null, altura = null;
+        let diamMatch = comando.match(/(\d+(?:\.\d+)?)\s*(mm|cm|m|metros?)/i);
+        if (diamMatch) {
+            diametro = parseFloat(diamMatch[1]);
+            if (diamMatch[2]?.toLowerCase() === 'm' || diamMatch[2]?.toLowerCase() === 'metros') diametro *= 1000;
+            if (diamMatch[2]?.toLowerCase() === 'cm') diametro *= 10;
+        }
+        let altMatch = comando.match(/y\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|metros?)/i);
+        if (altMatch) {
+            altura = parseFloat(altMatch[1]);
+            if (altMatch[2]?.toLowerCase() === 'm' || altMatch[2]?.toLowerCase() === 'metros') altura *= 1000;
+            if (altMatch[2]?.toLowerCase() === 'cm') altura *= 10;
+        }
+        let material = 'Acero Carbono';
+        if (c.includes('inox')) material = 'Acero Inoxidable';
+        else if (c.includes('ppr')) material = 'PPR';
+        else if (c.includes('hdpe')) material = 'HDPE';
+        let cantidad = 1;
+        let cantMatch = comando.match(/(\d+)\s+(tanques?)/i);
+        if (cantMatch) cantidad = parseInt(cantMatch[1]);
+        let configuracion = 'serie';
+        if (c.includes('paralelo')) configuracion = 'paralelo';
+        let separacion = 5000;
+        let sepMatch = comando.match(/separados?\s+(\d+(?:\.\d+)?)\s*(m|metros?|cm)/i);
+        if (sepMatch) {
+            separacion = parseFloat(sepMatch[1]);
+            if (sepMatch[2]?.toLowerCase() === 'm' || sepMatch[2]?.toLowerCase() === 'metros') separacion *= 1000;
+            if (sepMatch[2]?.toLowerCase() === 'cm') separacion *= 10;
+        }
+        if (!diametro || !altura) {
+            notify("⚠️ Ejemplo: 'crear tanque de 2380mm diametro y 2900mm altura'", true);
+            return;
+        }
+        if (cantidad === 1) {
+            crearTanque(diametro, altura, material, 'Almacenamiento');
+        } else {
+            crearEquiposMasivos('tanque', cantidad, { diametro, altura, material }, configuracion, separacion);
+        }
+        return;
     }
-    // Bomba
-    else if (c.includes('bomba') && !c.includes('crear')) {
-        const pot = comando.match(/(\d+)\s*HP/i)?.[1];
-        const caudal = comando.match(/caudal\s+(\d+)/i)?.[1];
-        const serv = comando.match(/servicio\s+(\w+)/i)?.[1] || 'Bombeo';
-        if (!pot) { notify("⚠️ Especifique la potencia. Ej: 'crear bomba de 150 HP'", true); return; }
-        crearBomba(parseInt(pot), caudal ? parseInt(caudal) : 500, 'Acero Carbono', serv);
+    
+    // Crear bomba
+    if ((c.includes('bomba') || c.includes('bombas')) && (c.includes('crear') || comando.includes('crear'))) {
+        let potencia = null;
+        let potMatch = comando.match(/(\d+(?:\.\d+)?)\s*(HP|hp|Hp)/i);
+        if (potMatch) potencia = parseFloat(potMatch[1]);
+        if (!potencia) {
+            notify("⚠️ Ejemplo: 'crear bomba de 150 HP'", true);
+            return;
+        }
+        crearBomba(potencia, 500, 'Acero Carbono', 'Bombeo');
+        return;
     }
-    // Línea
-    else if ((c.includes('linea') || c.includes('tuberia')) && !c.includes('crear')) {
-        const diam = comando.match(/(\d+)\s*pulgadas?/i)?.[1];
-        const mat = comando.includes('inox') ? 'Acero Inoxidable' : (comando.includes('ppr') ? 'PPR' : 'Acero Carbono');
-        const serv = comando.match(/servicio\s+(\w+)/i)?.[1] || 'Proceso';
-        if (!diam) { notify("⚠️ Especifique el diámetro. Ej: 'crear linea de 6 pulgadas'", true); return; }
-        crearLinea(parseInt(diam), mat, serv);
+    
+    // Crear línea
+    if ((c.includes('linea') || c.includes('tuberia')) && (c.includes('crear') || comando.includes('crear'))) {
+        let diametro = null;
+        let diamMatch = comando.match(/(\d+(?:\.\d+)?)\s*(pulgadas?|mm)/i);
+        if (diamMatch) {
+            diametro = parseFloat(diamMatch[1]);
+            if (diamMatch[2]?.toLowerCase().includes('mm')) diametro = diametro / 25.4;
+        }
+        let material = 'Acero Carbono';
+        if (c.includes('inox')) material = 'Acero Inoxidable';
+        else if (c.includes('ppr')) material = 'PPR';
+        if (!diametro) {
+            notify("⚠️ Ejemplo: 'crear linea de 6 pulgadas'", true);
+            return;
+        }
+        crearLinea(diametro, material, 'Proceso');
+        return;
     }
-    // Creación masiva
-    else if (c.includes('crear') && (c.includes('tanques') || c.includes('bombas'))) {
-        const cantidad = parseInt(comando.match(/crear\s+(\d+)/i)?.[1]);
-        const tipo = c.includes('tanques') ? 'tanque' : 'bomba';
-        const config = c.includes('paralelo') ? 'paralelo' : (c.includes('serie') ? 'serie' : 'serie');
-        const sepMatch = comando.match(/separados?\s+(\d+(?:\.\d+)?)\s*(m|metros)/i);
-        const separacion = sepMatch ? parseFloat(sepMatch[1]) * 1000 : 5000;
-        if (!cantidad) { notify("⚠️ Especifique cantidad. Ej: 'crear 6 tanques en serie'", true); return; }
-        const diam = parseInt(comando.match(/(\d+)\s*mm/i)?.[1]) || 2400;
-        const alt = parseInt(comando.match(/y\s*(\d+)\s*mm/i)?.[1]) || 4000;
-        crearEquiposMasivos(tipo, cantidad, { diametro: diam, altura: alt, material: 'Acero Carbono' }, config, separacion);
+    
+    // Conectar equipos
+    if (c.includes('conectar')) {
+        let tags = comando.match(/[A-Z]{2,3}-\d{2,3}/gi);
+        if (!tags || tags.length < 2) {
+            notify("⚠️ Ejemplo: 'conectar TK-01 con B-01'", true);
+            return;
+        }
+        conectarEquipos(4, 'Acero Carbono', tags[0], tags[1]);
+        return;
     }
-    // Conectar
-    else if (c.includes('conectar')) {
-        const tags = comando.match(/[A-Z]{2,3}-\d{2,3}/gi);
-        const diam = comando.match(/(\d+)\s*pulgadas?/i)?.[1];
-        const mat = comando.includes('inox') ? 'Acero Inoxidable' : 'Acero Carbono';
-        if (!tags || tags.length < 2) { notify("⚠️ Especifique dos equipos. Ej: 'conectar TK-01 con B-01'", true); return; }
-        conectarEquipos(diam ? parseInt(diam) : 4, mat, tags[0], tags[1]);
+    
+    // Insertar válvula
+    if ((c.includes('valvula') || c.includes('válvula')) && (c.includes('insertar') || c.includes('poner') || c.includes('agregar'))) {
+        let linea = comando.match(/L-\d{3}/i);
+        if (!linea) {
+            notify("⚠️ Ejemplo: 'insertar valvula en L-001'", true);
+            return;
+        }
+        agregarValvula(linea[0].toUpperCase(), 'bola', 0.5);
+        return;
     }
-    // Válvula
-    else if ((c.includes('valvula') || c.includes('válvula')) && c.includes('insertar')) {
-        const linea = comando.match(/L-\d{3}/i)?.[0];
-        const tipo = c.includes('bola') ? 'bola' : (c.includes('check') ? 'check' : (c.includes('compuerta') ? 'compuerta' : 'bola'));
-        const pos = comando.match(/posicion\s+([0-9.]+)/i)?.[1];
-        if (!linea) { notify("⚠️ Especifique la línea. Ej: 'insertar valvula de bola en L-001'", true); return; }
-        agregarValvula(linea.toUpperCase(), tipo, pos ? parseFloat(pos) : 0.5);
+    
+    // Insertar codo
+    if ((c.includes('codo') || c.includes('elbow')) && (c.includes('insertar') || c.includes('poner') || c.includes('agregar'))) {
+        let linea = comando.match(/L-\d{3}/i);
+        if (!linea) {
+            notify("⚠️ Ejemplo: 'insertar codo 90 grados en L-001'", true);
+            return;
+        }
+        let grados = 90;
+        let gradosMatch = comando.match(/(\d+)\s*(grados|°)/i);
+        if (gradosMatch) grados = parseInt(gradosMatch[1]);
+        insertarCodo(linea[0].toUpperCase(), grados, 0.5);
+        return;
     }
-    // Codo
-    else if (c.includes('codo') && c.includes('insertar')) {
-        const linea = comando.match(/L-\d{3}/i)?.[0];
-        const grados = comando.match(/(\d+)\s*grados/i)?.[1];
-        const pos = comando.match(/posicion\s+([0-9.]+)/i)?.[1];
-        if (!linea) { notify("⚠️ Especifique la línea. Ej: 'insertar codo 90 grados en L-001'", true); return; }
-        insertarCodo(linea.toUpperCase(), grados ? parseInt(grados) : 90, pos ? parseFloat(pos) : 0.5);
+    
+    // Añadir instrumento
+    if ((c.includes('instrumento') || c.includes('sensor')) && (c.includes('añadir') || c.includes('agregar') || c.includes('poner'))) {
+        let linea = comando.match(/L-\d{3}/i);
+        if (!linea) {
+            notify("⚠️ Ejemplo: 'añadir instrumento presion en L-001'", true);
+            return;
+        }
+        agregarInstrumento(linea[0].toUpperCase(), 'presion', null, 0.5);
+        return;
     }
-    // Instrumento
-    else if (c.includes('instrumento') && c.includes('añadir')) {
-        const linea = comando.match(/L-\d{3}/i)?.[0];
-        const tipo = c.includes('presion') ? 'presion' : (c.includes('temperatura') ? 'temperatura' : (c.includes('caudal') ? 'caudal' : 'presion'));
-        const tagInst = comando.match(/tag\s+([A-Z]{2,3}-\d{2,3})/i)?.[1];
-        const pos = comando.match(/posicion\s+([0-9.]+)/i)?.[1];
-        if (!linea) { notify("⚠️ Especifique la línea. Ej: 'añadir instrumento presion tag PT-101 en L-001'", true); return; }
-        agregarInstrumento(linea.toUpperCase(), tipo, tagInst, pos ? parseFloat(pos) : 0.5);
-    }
+    
     // Generar accesorios automáticos
-    else if (c.includes('generar accesorios automaticos')) {
-        const linea = comando.match(/L-\d{3}/i)?.[0];
-        if (!linea) { notify("⚠️ Especifique la línea. Ej: 'generar accesorios automaticos en L-001'", true); return; }
-        generarAccesoriosAutomaticos(linea.toUpperCase());
+    if (c.includes('accesorios') && c.includes('generar')) {
+        let linea = comando.match(/L-\d{3}/i);
+        if (!linea) {
+            notify("⚠️ Ejemplo: 'generar accesorios automaticos en L-001'", true);
+            return;
+        }
+        generarAccesoriosAutomaticos(linea[0].toUpperCase());
+        return;
     }
+    
     // Verificar normas
-    else if (c.includes('verificar normas') || c.includes('asme')) {
+    if ((c.includes('normas') || c.includes('asme')) && (c.includes('verificar') || c.includes('revisar'))) {
         verificarNormasASME();
+        return;
     }
-    // Resumen completo
-    else if (c.includes('resumen completo') || c.includes('reporte completo')) {
-        generarResumenCompleto();
+    
+    // Resumen
+    if (c.includes('resumen')) {
+        if (c.includes('completo') || c.includes('detallado')) {
+            generarResumenCompleto();
+        } else {
+            notify(`Proyecto: ${proyectoData.nombre || 'Sin nombre'}. Equipos: ${db.equipos.length}. Líneas: ${db.lines.length}.`);
+        }
+        return;
     }
-    // Resumen simple
-    else if (c.includes('resumen')) {
-        let msg = `Proyecto: ${proyectoData.nombre || 'Sin nombre'}. Equipos: ${db.equipos.length}. Líneas: ${db.lines.length}.`;
-        notify(msg);
+    
+    // Exportar
+    if (c.includes('exportar')) {
+        if (c.includes('pcf')) exportarPCF();
+        else if (c.includes('mto') || c.includes('excel')) exportarMTO();
+        else if (c.includes('pdf')) exportarPDF();
+        else notify("Opciones: exportar pcf, mto o pdf");
+        return;
     }
-    // Exportar PCF
-    else if (c.includes('exportar pcf') || c.includes('exportar')) {
-        exportarPCF();
+    
+    // Importar
+    if (c.includes('importar') && c.includes('pcf')) {
+        importarPCF();
+        return;
     }
+    
     // Guardar
-    else if (c.includes('guardar')) {
+    if (c.includes('guardar') || c.includes('salvar')) {
         localStorage.setItem('acquablue_save', JSON.stringify(db));
         notify("Proyecto guardado");
+        return;
     }
+    
     // Abrir
-    else if (c.includes('abrir')) {
+    if (c.includes('abrir') || c.includes('cargar')) {
         const data = localStorage.getItem('acquablue_save');
         if (data) { db = JSON.parse(data); requestRender(); autoCenter(); notify("Proyecto cargado"); }
         else notify("No hay guardado", true);
+        return;
     }
+    
     // Nuevo
-    else if (c.includes('nuevo')) {
+    if (c.includes('nuevo') || c.includes('limpiar')) {
         if (confirm("¿Borrar todo?")) { db = { equipos: [], lines: [] }; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); }
+        return;
     }
+    
+    // Eliminar
+    if (c.includes('eliminar') || c.includes('borrar')) {
+        let tag = comando.match(/[A-Z]{2,3}-\d{2,3}/i);
+        if (tag) {
+            const equipo = db.equipos.find(e => e.tag === tag[0].toUpperCase());
+            const linea = db.lines.find(l => l.tag === tag[0].toUpperCase());
+            if (equipo) { db.equipos = db.equipos.filter(e => e !== equipo); notify(`${tag[0]} eliminado`); requestRender(); saveState(); }
+            else if (linea) { db.lines = db.lines.filter(l => l !== linea); notify(`${tag[0]} eliminado`); requestRender(); saveState(); }
+            else notify(`No se encontró ${tag[0]}`, true);
+        } else {
+            notify("Ejemplo: 'eliminar TK-01'", true);
+        }
+        return;
+    }
+    
     // Ayuda
-    else if (c.includes('ayuda')) {
-        notify("COMANDOS: crear tanque de Xmm diametro y Ymm altura, crear bomba de X HP, crear linea de X pulgadas, conectar X pulgadas desde TK-01 hasta B-01, insertar valvula de bola en L-001, insertar codo 90 grados en L-001, añadir instrumento presion tag PT-101 en L-001, generar accesorios automaticos en L-001, verificar normas asme, resumen completo, exportar pcf, guardar, abrir, nuevo");
+    if (c.includes('ayuda') || c.includes('help') || c === '?') {
+        notify("📋 COMANDOS:\n• crear 6 tanques de 2380mm diametro y 2900mm altura en paralelo separados 3 metros\n• crear tanque de 2.5m diametro y 4m altura\n• crear bomba de 150 HP\n• crear linea de 6 pulgadas\n• conectar TK-01 con B-01\n• insertar valvula en L-001\n• insertar codo 90 grados en L-001\n• generar accesorios en L-001\n• resumen\n• exportar pcf\n• guardar");
+        return;
     }
-    else {
-        notify(`Comando no reconocido: "${comando}". Escriba "ayuda"`, true);
-    }
+    
+    notify(`❌ No entendí: "${comando}". Escriba "ayuda"`, true);
 }
 
 // ==================== EVENTOS DEL CANVAS ====================
@@ -1353,6 +1538,10 @@ function init() {
     initCanvasEvents();
     initHotkeys();
     initToolbar();
+    
+    // Inicializar voz para iPhone
+    initVoiceOnFirstTouch();
+    
     window.addEventListener('resize', () => {
         canvas.width = canvas.parentElement.clientWidth;
         canvas.height = canvas.parentElement.clientHeight;
@@ -1367,6 +1556,7 @@ function init() {
     voice.speak("Aplicación lista. Use el botón comandos para empezar.", false);
 }
 
+// Iniciar aplicación
 init();
 </script>
 </body>
