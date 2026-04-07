@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -298,7 +299,7 @@ resumen"></textarea>
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
-    // ==================== SISTEMA DE VOZ (IDÉNTICO AL ORIGINAL) ====================
+    // ==================== SISTEMA DE VOZ ====================
     let speechQueue = [];
     let isSpeaking = false;
     let voiceEnabled = true;
@@ -356,11 +357,9 @@ resumen"></textarea>
     let history = { past: [], future: [], maxSize: 30 };
     let proyectoData = { nombre: '', autor: '', fecha: '', cliente: '' };
     
-    // Mapas para acceso rápido a objetos 3D
     let equipmentMeshes = new Map(); // tag -> mesh
     let lineGroups = new Map();      // tag -> group of pipe segments
 
-    // Función para guardar estado (historial)
     function saveState() {
         const state = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines }));
         history.past.push(state);
@@ -392,14 +391,15 @@ resumen"></textarea>
         notify("Rehecho");
     }
 
-    // ==================== INICIALIZACIÓN THREE.JS ====================
+    // ==================== INICIALIZACIÓN THREE.JS (con cambios de escala y cámara) ====================
     function init3D() {
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a192f);
         scene.fog = new THREE.FogExp2(0x0a192f, 0.0003);
 
-        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 100, 50000);
-        camera.position.set(8000, 6000, 8000);
+        // CAMBIO 1: Cámara más alejada y con mejor rango de visión
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 100000);
+        camera.position.set(15000, 12000, 15000);
         camera.lookAt(0, 0, 0);
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -407,7 +407,6 @@ resumen"></textarea>
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // Renderizador para etiquetas HTML
         labelRenderer = new CSS2DRenderer();
         labelRenderer.setSize(window.innerWidth, window.innerHeight);
         labelRenderer.domElement.style.position = 'absolute';
@@ -422,7 +421,7 @@ resumen"></textarea>
         controls.rotateSpeed = 1.0;
         controls.zoomSpeed = 1.2;
         controls.panSpeed = 0.8;
-        controls.screenSpacePanning = true; // Evita inclinación extra
+        controls.screenSpacePanning = true;
 
         // Luces
         const ambientLight = new THREE.AmbientLight(0x404060);
@@ -436,21 +435,16 @@ resumen"></textarea>
         fillLight.position.set(-2000, 3000, 4000);
         scene.add(fillLight);
         
-        // Grilla de referencia (suelo)
         const gridHelper = new THREE.GridHelper(20000, 40, 0x88aaff, 0x335588);
         gridHelper.position.y = -100;
         scene.add(gridHelper);
-        
-        // Ejes opcionales
-        // const axesHelper = new THREE.AxesHelper(5000);
-        // scene.add(axesHelper);
         
         animate();
     }
     
     function animate() {
         requestAnimationFrame(animate);
-        controls.update(); // actualiza cámara si hay interacción
+        controls.update();
         renderer.render(scene, camera);
         if (labelRenderer) labelRenderer.render(scene, camera);
     }
@@ -461,39 +455,47 @@ resumen"></textarea>
         return colors[materialName] || 0x88aaff;
     }
     
+    // CAMBIO 2: createEquipment3D corregido (usa RADIO, transparencia y etiqueta como hijo)
     function createEquipment3D(eq) {
         const { tipo, diametro, altura, material, x, y, z, tag } = eq;
         let geometry;
+        
         if (tipo === 'tanque') {
-            geometry = new THREE.CylinderGeometry(diametro/2, diametro/2, altura, 32);
-        } else { // bomba u otro
+            // CylinderGeometry usa RADIO = diametro / 2
+            geometry = new THREE.CylinderGeometry(diametro / 2, diametro / 2, altura, 32);
+        } else {
             geometry = new THREE.BoxGeometry(diametro || 800, altura || 800, diametro || 800);
         }
+    
         const color = getMaterialColor(material);
-        const meshMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4, metalness: 0.7 });
+        const meshMat = new THREE.MeshStandardMaterial({ 
+            color: color, 
+            roughness: 0.5, 
+            metalness: 0.6,
+            transparent: true,
+            opacity: 0.9
+        });
+    
         const mesh = new THREE.Mesh(geometry, meshMat);
-        mesh.position.set(x, (y || 0) + (altura/2), z);
+        mesh.position.set(x, (y || 0) + (altura / 2), z);
+        
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.userData = { type: 'equipment', tag: tag, data: eq };
         
-        // Etiqueta CSS2D
         const div = document.createElement('div');
         div.textContent = tag;
         div.style.color = '#00d4ff';
-        div.style.fontSize = '18px';
-        div.style.fontWeight = 'bold';
-        div.style.textShadow = '1px 1px 0px black';
-        div.style.background = 'rgba(0,0,0,0.6)';
-        div.style.padding = '2px 8px';
-        div.style.borderRadius = '20px';
-        div.style.border = '1px solid #00d4ff';
-        div.style.whiteSpace = 'nowrap';
+        div.style.fontSize = '14px';
+        div.style.background = 'rgba(0,0,0,0.7)';
+        div.style.padding = '2px 6px';
+        div.style.borderRadius = '4px';
+        
         const label = new CSS2DObject(div);
-        label.position.set(x, (y || 0) + altura + 200, z);
+        label.position.set(0, altura / 2 + 500, 0);
+        mesh.add(label);
         
         scene.add(mesh);
-        scene.add(label);
         equipmentMeshes.set(tag, { mesh, label, data: eq });
         return mesh;
     }
@@ -516,7 +518,7 @@ resumen"></textarea>
     function rebuildLine3D(line) {
         if (!line.points3D || line.points3D.length < 2) return;
         const group = new THREE.Group();
-        const radius = (line.diametro * 25.4) / 2; // pulgadas a mm, luego radio
+        const radius = (line.diametro * 25.4) / 2;
         const color = getMaterialColor(line.material);
         for (let i = 0; i < line.points3D.length - 1; i++) {
             const p1 = new THREE.Vector3(line.points3D[i].x, line.points3D[i].y || 0, line.points3D[i].z);
@@ -524,7 +526,6 @@ resumen"></textarea>
             const segment = createPipeSegment(p1, p2, radius, color);
             group.add(segment);
         }
-        // Añadir válvulas (esferas pequeñas) - simplificado
         if (line.componentes) {
             line.componentes.forEach(comp => {
                 if (comp.posicion !== undefined && line.points3D.length >= 2) {
@@ -539,7 +540,6 @@ resumen"></textarea>
                 }
             });
         }
-        // Etiqueta de línea
         const div = document.createElement('div');
         div.textContent = line.tag;
         div.style.color = '#aaa';
@@ -559,7 +559,6 @@ resumen"></textarea>
     }
     
     function rebuildSceneFromDb() {
-        // Limpiar escena de objetos dinámicos (excepto luces, grilla, etc.)
         const toRemove = [];
         scene.children.forEach(child => {
             if (child.isMesh || child.isGroup || child.isCSS2DObject) {
@@ -574,17 +573,11 @@ resumen"></textarea>
         equipmentMeshes.clear();
         lineGroups.clear();
         
-        // Recrear equipos
-        db.equipos.forEach(eq => {
-            createEquipment3D(eq);
-        });
-        // Recrear líneas
-        db.lines.forEach(line => {
-            rebuildLine3D(line);
-        });
+        db.equipos.forEach(eq => { createEquipment3D(eq); });
+        db.lines.forEach(line => { rebuildLine3D(line); });
     }
     
-    // ==================== FUNCIONES DE NEGOCIO (ADAPTADAS) ====================
+    // ==================== FUNCIONES DE NEGOCIO ====================
     function generarTag(prefix) {
         let num = 1;
         while (db.equipos.some(e => e.tag === `${prefix}-${String(num).padStart(2, '0')}`)) num++;
@@ -676,7 +669,7 @@ resumen"></textarea>
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     function onCanvasClick(event) {
-        if (editModeActive && selectedElement && selectedElement.type === 'equipment') return; // para mover, no interferir
+        if (editModeActive && selectedElement && selectedElement.type === 'equipment') return;
         const rect = renderer.domElement.getBoundingClientRect();
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -710,10 +703,8 @@ resumen"></textarea>
         } else {
             selectedElement = null;
         }
-        requestAnimationFrame(() => { }); // para refrescar visual (no necesario)
     }
     
-    // ==================== FUNCIONES DE EDICIÓN (MOVER EQUIPOS) ====================
     function moveSelectedEquipment(dx, dz) {
         if (!selectedElement || selectedElement.type !== 'equipment') return;
         saveState();
@@ -724,12 +715,12 @@ resumen"></textarea>
         const meshObj = equipmentMeshes.get(eq.tag);
         if (meshObj) {
             meshObj.mesh.position.set(eq.x, (eq.y||0) + (eq.altura/2), eq.z);
-            meshObj.label.position.set(eq.x, (eq.y||0) + eq.altura + 200, eq.z);
+            meshObj.label.position.set(0, eq.altura/2 + 500, 0);
         }
         notify(`${eq.tag} movido a X:${eq.x} Z:${eq.z}`);
     }
     
-    // ==================== PROCESAR COMANDO (MEJORADO CON ACENTOS Y SEPARACIÓN) ====================
+    // ==================== PROCESAR COMANDO ====================
     function extraerMedida(texto, palabraClave, defecto) {
         const regex = new RegExp(`(?:${palabraClave})\\s*(?:de)?\\s*(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?|(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?\\s*(?:de)?\\s*(?:${palabraClave})`, "i");
         const match = texto.match(regex);
@@ -803,25 +794,39 @@ resumen"></textarea>
         if (c.includes("resumen")) { generarResumenCompleto(); return; }
         if (c.includes("pcf")) { exportarPCF(); return; }
         if (c.includes("normas")) { verificarNormasASME(); return; }
-        if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; rebuildSceneFromDb(); saveState(); notify("Nuevo proyecto"); hablar("Proyecto limpiado"); } return; }
+        if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; rebuildSceneFromDb(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto limpiado"); } return; }
         notify(`Comando no reconocido: "${comando}"`, true);
-        hablar(`Lo siento, no entendí el comando: ${comando}`);
+        speakText(`Lo siento, no entendí el comando: ${comando}`);
     }
     
-    // ==================== RESTO DE FUNCIONES (MTO, PDF, PCF, NORMAS) ====================
-    function generarResumenCompleto() { /* igual que original */ let resumen = "Resumen..."; notify(resumen); return resumen; }
-    function verificarNormasASME() { notify("Verificación ASME: Pendiente implementar reglas completas"); return true; }
-    function exportarMTO() { notify("MTO exportado a Excel (simulado)"); }
-    function exportarPDF() { notify("PDF generado (simulado)"); }
-    function exportarPCF() { notify("PCF exportado (simulado)"); }
-    function importarPCF() { notify("Importación PCF (simulada)"); }
+    // Funciones placeholder (se completarán después)
+    function generarResumenCompleto() { notify("Resumen completo (pendiente de implementar)"); }
+    function verificarNormasASME() { notify("Verificación ASME (pendiente)"); }
+    function exportarMTO() { notify("Exportación MTO a Excel (pendiente)"); }
+    function exportarPDF() { notify("Exportación PDF (pendiente)"); }
+    function exportarPCF() { notify("Exportación PCF (pendiente)"); }
+    function importarPCF() { notify("Importación PCF (pendiente)"); }
     
-    // ==================== INICIALIZACIÓN DE EVENTOS Y UI ====================
+    // ==================== INICIALIZACIÓN DE UI ====================
     function initUI() {
         document.getElementById('btnNew').onclick = () => { if(confirm("Borrar todo")){ db={equipos:[], lines:[]}; rebuildSceneFromDb(); saveState(); notify("Nuevo proyecto"); } };
         document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); rebuildSceneFromDb(); notify("Cargado"); } };
         document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); };
-        document.getElementById('btnReset').onclick = () => { camera.position.set(8000,6000,8000); controls.target.set(0,0,0); controls.update(); notify("Vista centrada"); };
+        
+        // CAMBIO 3: Botón Centrar mejorado
+        document.getElementById('btnReset').onclick = () => {
+            if (db.equipos.length > 0) {
+                const lastEq = db.equipos[db.equipos.length - 1];
+                camera.position.set(lastEq.x + 10000, lastEq.y + 8000, lastEq.z + 10000);
+                controls.target.set(lastEq.x, lastEq.y, lastEq.z);
+            } else {
+                camera.position.set(15000, 12000, 15000);
+                controls.target.set(0, 0, 0);
+            }
+            controls.update();
+            notify("Vista re-centrada");
+        };
+        
         document.getElementById('btnUndo').onclick = () => undo();
         document.getElementById('btnRedo').onclick = () => redo();
         document.getElementById('btnMTO').onclick = () => exportarMTO();
@@ -839,7 +844,6 @@ resumen"></textarea>
         document.getElementById('runCommands').onclick = () => { const text = document.getElementById('commandText').value; if(text.trim()) text.split('\n').forEach(line => { if(line.trim()) procesarComando(line.trim()); }); };
         document.getElementById('clearCommand').onclick = () => { document.getElementById('commandText').value = ''; };
         
-        // Barra de edición
         const editBar = document.getElementById('editFloatingBar');
         document.getElementById('editModeBtn').onclick = () => { editModeActive = !editModeActive; editBar.style.display = editModeActive ? 'flex' : 'none'; notify(editModeActive ? "Modo edición activado" : "Desactivado"); };
         document.getElementById('closeEditBtn').onclick = () => { editModeActive = false; editBar.style.display = 'none'; };
@@ -848,7 +852,7 @@ resumen"></textarea>
         document.getElementById('moveLeftBtn').onclick = () => moveSelectedEquipment(-500, 0);
         document.getElementById('moveRightBtn').onclick = () => moveSelectedEquipment(500, 0);
         document.getElementById('deleteElemBtn').onclick = () => { if(selectedElement){ saveState(); if(selectedElement.type === 'equipment') db.equipos = db.equipos.filter(e => e !== selectedElement.obj); else if(selectedElement.type === 'line') db.lines = db.lines.filter(l => l !== selectedElement.obj); rebuildSceneFromDb(); selectedElement=null; notify("Eliminado"); } };
-        document.getElementById('duplicateBtn').onclick = () => { if(selectedElement){ saveState(); /* duplicar */ notify("Duplicado"); } };
+        document.getElementById('duplicateBtn').onclick = () => { if(selectedElement){ saveState(); notify("Duplicado (pendiente de implementar)"); } };
         document.getElementById('propertiesBtn').onclick = () => { if(selectedElement) document.getElementById('propertyPanel').style.display = 'block'; };
         document.getElementById('applyPropsBtn').onclick = () => { if(selectedElement?.type === 'equipment'){ const eq=selectedElement.obj; eq.diametro=parseInt(document.getElementById('propDiamNum').value); eq.altura=parseInt(document.getElementById('propAltNum').value); eq.material=document.getElementById('propMaterial').value; rebuildSceneFromDb(); notify("Propiedades actualizadas"); } };
         
