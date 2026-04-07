@@ -290,14 +290,12 @@ textarea{
     </div>
     <textarea id="commandText" rows="5" placeholder="EJEMPLOS:
 crear 6 tanques de 2380mm diametro y 2900mm altura material ppr en paralelo separados 3 metros
+crear 3 bombas de 150 hp en paralelo separacion 2m
 crear tanque de 2.5m diametro y 4m altura
 crear bomba de 150 HP
 crear linea de 6 pulgadas acero inoxidable
 conectar TK-01 con B-01
-insertar valvula en L-001
-insertar codo 90 grados en L-001
-resumen
-ayuda"></textarea>
+resumen"></textarea>
     <div style="display:flex;gap:12px;padding:12px"><button id="runCommands" class="btn-primary">▶️ Ejecutar</button><button id="clearCommand">🗑️ Limpiar</button></div>
 </div>
 
@@ -318,139 +316,65 @@ ayuda"></textarea>
 </div>
 
 <script>
-// ==================== SISTEMA DE VOZ (COMPATIBLE CON IPHONE) ====================
-class VoiceManager {
-    constructor() { 
-        this.enabled = true; 
-        this.queue = []; 
-        this.speaking = false;
-        this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        this.initialized = false;
-    }
-    
-    initVoice() {
-        if (this.initialized) return;
-        if (!window.speechSynthesis) return;
-        const dummy = new SpeechSynthesisUtterance(' ');
-        dummy.lang = 'es-ES';
-        window.speechSynthesis.speak(dummy);
-        window.speechSynthesis.cancel();
-        this.initialized = true;
-    }
-    
-    speak(text, isError = false) {
-        if (!this.enabled || !text || !window.speechSynthesis) return;
-        
-        if (this.isIOS) {
-            window.speechSynthesis.cancel();
-            this.speaking = false;
-            this.queue = [];
-        }
-        
-        if (isError && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            this.queue = [];
-            this.speaking = false;
-        }
-        
-        this.queue.push(text);
-        
-        if (this.isIOS) {
-            this.processImmediate();
-        } else {
-            this.process();
-        }
-    }
-    
-    processImmediate() {
-        if (this.queue.length === 0) return;
-        const text = this.queue.shift();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 0.9;
-        if (this.isIOS) utterance.volume = 1;
-        
-        const indicator = document.getElementById('voiceIndicator');
-        if (indicator) indicator.classList.add('active');
-        
-        utterance.onend = () => {
-            if (indicator) indicator.classList.remove('active');
-            if (this.queue.length > 0) this.processImmediate();
-        };
-        
-        utterance.onerror = (e) => {
-            console.error("Error en síntesis de voz:", e);
-            if (indicator) indicator.classList.remove('active');
-        };
-        
-        window.speechSynthesis.speak(utterance);
-    }
-    
-    process() {
-        if (this.speaking || this.queue.length === 0) return;
-        this.speaking = true;
-        const text = this.queue.shift();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 0.9;
-        
-        const indicator = document.getElementById('voiceIndicator');
-        if (indicator) indicator.classList.add('active');
-        
-        utterance.onend = () => {
-            this.speaking = false;
-            if (indicator) indicator.classList.remove('active');
-            this.process();
-        };
-        
-        utterance.onerror = () => {
-            this.speaking = false;
-            if (indicator) indicator.classList.remove('active');
-            this.process();
-        };
-        
-        window.speechSynthesis.speak(utterance);
-    }
-    
-    toggle() { 
-        this.enabled = !this.enabled; 
-        if (!this.enabled && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            this.queue = [];
-            this.speaking = false;
-        }
-        this.speak(this.enabled ? "Voz activada" : "Voz desactivada");
-        return this.enabled;
-    }
-}
+// ==================== SISTEMA DE VOZ SIMPLIFICADO (FUNCIONAL EN IPHONE) ====================
+let speechQueue = [];
+let isSpeaking = false;
+let voiceEnabled = true;
 
-const voice = new VoiceManager();
-
-// Desbloqueo de audio para iPhone - LLAMAR EN CADA INTERACCIÓN
-function unlockAudioForiPhone() {
+function speakText(text, isUrgent) {
+    if (!voiceEnabled) return;
+    if (!text) return;
     if (!window.speechSynthesis) return;
     
-    // Crear utterance silencioso para "despertar" el motor de voz
-    const silent = new SpeechSynthesisUtterance("");
-    silent.volume = 0;
-    window.speechSynthesis.speak(silent);
+    if (isUrgent) {
+        try {
+            window.speechSynthesis.cancel();
+        } catch(e) {}
+        speechQueue = [];
+        isSpeaking = false;
+    }
     
-    // También forzar la carga de voces
-    window.speechSynthesis.getVoices();
+    speechQueue.push(text);
+    processSpeechQueue();
 }
 
-// Inicializar voz en el primer toque (necesario para iPhone)
-function initVoiceOnFirstTouch() {
-    const initVoice = () => {
-        voice.initVoice();
-        document.removeEventListener('touchstart', initVoice);
-        document.removeEventListener('click', initVoice);
+function processSpeechQueue() {
+    if (isSpeaking || speechQueue.length === 0) return;
+    if (!window.speechSynthesis) return;
+    
+    isSpeaking = true;
+    let text = speechQueue.shift();
+    let utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    
+    const indicator = document.getElementById('voiceIndicator');
+    if (indicator) indicator.classList.add('active');
+    
+    utterance.onend = function() {
+        isSpeaking = false;
+        if (indicator) indicator.classList.remove('active');
+        processSpeechQueue();
     };
-    document.addEventListener('touchstart', initVoice);
-    document.addEventListener('click', initVoice);
+    
+    utterance.onerror = function() {
+        isSpeaking = false;
+        if (indicator) indicator.classList.remove('active');
+        processSpeechQueue();
+    };
+    
+    try {
+        window.speechSynthesis.speak(utterance);
+    } catch(e) {
+        console.warn("Error en speak:", e);
+        isSpeaking = false;
+        if (indicator) indicator.classList.remove('active');
+        processSpeechQueue();
+    }
 }
 
-// ==================== NOTIFY MEJORADA CON VOZ PARA IPHONE ====================
+// ==================== NOTIFY MEJORADA CON VOZ SIMPLIFICADA ====================
 function notify(msg, isError = false) {
     const container = document.getElementById('notificationContainer');
     const notif = document.createElement('div');
@@ -459,31 +383,18 @@ function notify(msg, isError = false) {
     container.appendChild(notif);
     document.getElementById('statusMsg').textContent = msg;
     
-    // --- VOZ MEJORADA PARA IPHONE ---
-    if (voice && voice.enabled && window.speechSynthesis) {
-        // Cancelar cualquier locución previa
-        window.speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(msg);
-        utterance.lang = 'es-ES';
-        utterance.rate = 0.9;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        
-        // Intentar usar voz en español del sistema
-        const voces = window.speechSynthesis.getVoices();
-        const vozEspanol = voces.find(v => v.lang.includes('es-ES') || v.lang.includes('es'));
-        if (vozEspanol) utterance.voice = vozEspanol;
-        
-        // Pequeño retraso para iOS (necesario a veces)
-        setTimeout(() => {
-            window.speechSynthesis.speak(utterance);
-        }, 10);
+    if (voiceEnabled && window.speechSynthesis) {
+        try {
+            speakText(msg, isError);
+        } catch(e) {
+            console.warn("Error al hablar:", e);
+        }
     }
-    // --- FIN VOZ MEJORADA ---
     
-    // Notificación visual
-    setTimeout(() => { notif.style.opacity = '1'; notif.style.transform = 'translateY(0)'; }, 10);
+    setTimeout(() => { 
+        notif.style.opacity = '1'; 
+        notif.style.transform = 'translateY(0)'; 
+    }, 10);
     setTimeout(() => { 
         notif.style.opacity = '0'; 
         notif.style.transform = 'translateY(-10px)'; 
@@ -508,6 +419,11 @@ let proyectoData = { nombre: '', autor: '', fecha: '', cliente: '' };
 
 const canvas = document.getElementById('isoCanvas');
 const ctx = canvas.getContext('2d');
+
+// ==================== FUNCIONES AUXILIARES ====================
+function hablar(msg) {
+    speakText(msg, false);
+}
 
 // ==================== HISTORIAL ====================
 function saveState() {
@@ -722,36 +638,24 @@ function crearBomba(potencia, caudal, material, servicio, subTipo) {
     requestRender();
 }
 
-function crearFiltro(tipo, diametro, altura, material) {
+function crearEquiposMasivos(tipo, cantidad, parametros, configuracion, separacion) {
+    if (cantidad < 2) { notify("La creación masiva requiere al menos 2 equipos", true); return; }
     saveState();
-    const tag = generarTag('F');
-    db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 3500, y: 0, z: 0, tipo: 'filtro', subTipo: tipo || 'arena', diametro: diametro || 1600, altura: altura || 2500, material: material || 'Acero Inoxidable', servicio: 'Filtración' });
-    notify(`Filtro ${tag}: ${tipo || 'arena'} ${diametro || 1600}mm x ${altura || 2500}mm`);
-    requestRender();
-}
-
-function crearLinea(diametroPulgadas, material, servicio) {
-    saveState();
-    const tag = generarTagLinea();
-    db.lines.push({ tag, diametro: diametroPulgadas || 4, material: material || 'Acero Carbono', servicio: servicio || 'Proceso', puntos3D: [{ x: 0, y: 500, z: 0 }, { x: 3000, y: 500, z: 0 }], componentes: [], presion: 10, temperatura: 100 });
-    notify(`Línea ${tag}: ${diametroPulgadas || 4}" ${material || 'Acero Carbono'} - ${servicio || 'Proceso'}`);
-    requestRender();
-}
-
-function crearIntercambiador(tipo, diametro, largo, material) {
-    saveState();
-    const tag = generarTag('E');
-    db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 5000, y: 0, z: 0, tipo: 'intercambiador', subTipo: tipo || 'casco y tubos', diametro: diametro || 800, altura: largo || 3000, material: material || 'Acero Inoxidable', servicio: 'Intercambio térmico' });
-    notify(`Intercambiador ${tag}: ${tipo || 'casco y tubos'} ${diametro || 800}mm x ${largo || 3000}mm`);
-    requestRender();
-}
-
-function crearTorre(diametro, altura, material) {
-    saveState();
-    const tag = generarTag('C');
-    db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 5000, y: 0, z: 0, tipo: 'torre', diametro: diametro || 1200, altura: altura || 8000, material: material || 'Acero Carbono', servicio: 'Destilación', presion: 5, temperatura: 200 });
-    notify(`Torre ${tag}: ${diametro || 1200}mm x ${altura || 8000}mm`);
-    requestRender();
+    const inicioX = db.equipos.length * 4000;
+    const inicioZ = 0;
+    const sep = separacion || 5000;
+    for (let i = 0; i < cantidad; i++) {
+        let x = inicioX, z = inicioZ;
+        if (configuracion === 'serie') { x = inicioX + (i * sep); z = inicioZ; }
+        else if (configuracion === 'paralelo') { x = inicioX; z = inicioZ + (i * sep); }
+        else if (configuracion === 'matriz') { const cols = Math.ceil(Math.sqrt(cantidad)); x = inicioX + ((i % cols) * sep); z = inicioZ + (Math.floor(i / cols) * sep); }
+        const tag = generarTag(tipo === 'tanque' ? 'TK' : (tipo === 'bomba' ? 'P' : 'EQ'));
+        const equipo = { type: 'equipment', tag, x, y: 0, z, tipo: tipo };
+        Object.assign(equipo, parametros);
+        db.equipos.push(equipo);
+    }
+    notify(`Creados ${cantidad} ${tipo}s en configuración ${configuracion}, separación ${sep/1000}m`);
+    requestRender(); autoCenter();
 }
 
 function conectarEquipos(diametroPulgadas, material, tagOrigen, tagDestino) {
@@ -778,102 +682,6 @@ function agregarValvula(lineaTag, tipo, posicion) {
     requestRender();
 }
 
-function insertarCodo(lineaTag, grados, posicion) {
-    const line = db.lines.find(l => l.tag === lineaTag);
-    if (!line) { notify(`Línea ${lineaTag} no encontrada`, true); return; }
-    saveState();
-    if (!line.componentes) line.componentes = [];
-    line.componentes.push({ type: 'ELBOW', tag: `EL-${line.componentes.length+1}`, skey: grados === 45 ? 'EL45' : 'EL90', posicion: posicion || 0.5 });
-    notify(`Codo ${grados}° añadido en ${lineaTag} posición ${Math.round((posicion||0.5)*100)}%`);
-    requestRender();
-}
-
-function agregarInstrumento(lineaTag, tipo, tagPersonalizado, posicion) {
-    const line = db.lines.find(l => l.tag === lineaTag);
-    if (!line) { notify(`Línea ${lineaTag} no encontrada`, true); return; }
-    saveState();
-    if (!line.componentes) line.componentes = [];
-    const skeyMap = { 'presion': 'PI', 'temperatura': 'TI', 'caudal': 'FI', 'nivel': 'LI', 'ph': 'AI' };
-    const tagFinal = tagPersonalizado || `INST-${line.componentes.length+1}`;
-    line.componentes.push({ type: 'INSTRUMENT', tag: tagFinal, skey: skeyMap[tipo] || 'PI', posicion: posicion || 0.5 });
-    notify(`Instrumento ${tagFinal} (${tipo}) añadido en ${lineaTag}`);
-    requestRender();
-}
-
-// ==================== CREACIÓN MASIVA ====================
-function crearEquiposMasivos(tipo, cantidad, parametros, configuracion, separacion) {
-    if (cantidad < 2) { notify("La creación masiva requiere al menos 2 equipos", true); return; }
-    saveState();
-    const inicioX = db.equipos.length * 4000;
-    const inicioZ = 0;
-    const sep = separacion || 5000;
-    for (let i = 0; i < cantidad; i++) {
-        let x = inicioX, z = inicioZ;
-        if (configuracion === 'serie') { x = inicioX + (i * sep); z = inicioZ; }
-        else if (configuracion === 'paralelo') { x = inicioX; z = inicioZ + (i * sep); }
-        else if (configuracion === 'matriz') { const cols = Math.ceil(Math.sqrt(cantidad)); x = inicioX + ((i % cols) * sep); z = inicioZ + (Math.floor(i / cols) * sep); }
-        const tag = generarTag(tipo === 'tanque' ? 'TK' : (tipo === 'bomba' ? 'P' : 'EQ'));
-        const equipo = { type: 'equipment', tag, x, y: 0, z, tipo: tipo };
-        Object.assign(equipo, parametros);
-        db.equipos.push(equipo);
-    }
-    notify(`Creados ${cantidad} ${tipo}s en configuración ${configuracion}, separación ${sep/1000}m`);
-    requestRender(); autoCenter();
-}
-
-// ==================== ACCESORIOS AUTOMÁTICOS ====================
-function generarAccesoriosAutomaticos(lineaTag) {
-    const line = db.lines.find(l => l.tag === lineaTag);
-    if (!line) { notify(`Línea ${lineaTag} no encontrada`, true); return; }
-    saveState();
-    if (!line.componentes) line.componentes = [];
-    let agregados = 0;
-    // Soportes según ASME B31.3 (cada 4 metros)
-    const longitud = calcularLongitudLinea(line);
-    const numSoportes = Math.max(2, Math.floor(longitud / 4000) + 1);
-    for (let i = 0; i < numSoportes; i++) {
-        const pos = i / (numSoportes - 1);
-        const existe = line.componentes.some(c => c.type === 'SUPPORT' && Math.abs(c.posicion - pos) < 0.05);
-        if (!existe) { line.componentes.push({ type: 'SUPPORT', tag: `SUP-${line.tag}-${i+1}`, skey: i === 0 || i === numSoportes-1 ? 'SUPPG' : 'SUPPS', posicion: pos }); agregados++; }
-    }
-    // Purgas en puntos bajos y venteos en puntos altos
-    if (line.points3D) {
-        for (let i = 1; i < line.points3D.length - 1; i++) {
-            const pt = line.points3D[i];
-            const ant = line.points3D[i-1], sig = line.points3D[i+1];
-            const esAlto = pt.y > ant.y && pt.y > sig.y;
-            const esBajo = pt.y < ant.y && pt.y < sig.y;
-            const pos = i / (line.points3D.length - 1);
-            if (esAlto) { const existe = line.componentes.some(c => c.type === 'VENT' && Math.abs(c.posicion - pos) < 0.05); if (!existe) { line.componentes.push({ type: 'VENT', tag: `VENT-${line.tag}-${i}`, skey: 'VENT', posicion: pos }); agregados++; } }
-            if (esBajo) { const existe = line.componentes.some(c => c.type === 'DRAIN' && Math.abs(c.posicion - pos) < 0.05); if (!existe) { line.componentes.push({ type: 'DRAIN', tag: `DRN-${line.tag}-${i}`, skey: 'DRN', posicion: pos }); agregados++; } }
-        }
-    }
-    notify(`Accesorios automáticos generados en ${lineaTag}: ${agregados} elementos añadidos`);
-    requestRender();
-}
-
-// ==================== NORMAS ASME ====================
-function verificarNormasASME() {
-    let resultados = [];
-    let cumple = true;
-    for (const line of db.lines) {
-        const longitud = calcularLongitudLinea(line);
-        const numSoportes = line.componentes?.filter(c => c.type === 'SUPPORT').length || 0;
-        const soportesNecesarios = Math.max(2, Math.floor(longitud / 4000) + 1);
-        if (numSoportes < soportesNecesarios) {
-            resultados.push(`❌ ${line.tag}: Faltan ${soportesNecesarios - numSoportes} soportes (requiere ${soportesNecesarios})`);
-            cumple = false;
-        } else { resultados.push(`✅ ${line.tag}: ${numSoportes} soportes - OK`); }
-        // Verificar temperatura vs material
-        if (line.temperatura > 200 && line.material === 'PPR') { resultados.push(`⚠️ ${line.tag}: PPR no recomendado para ${line.temperatura}°C`); cumple = false; }
-        if (line.temperatura > 400 && line.material === 'Acero Carbono') { resultados.push(`⚠️ ${line.tag}: Acero Carbono límite 400°C`); cumple = false; }
-    }
-    const resumen = `=== VERIFICACIÓN ASME B31.3 ===\n${resultados.join('\n')}\n${cumple ? '✅ El proyecto cumple con los requisitos mínimos' : '❌ Se requieren correcciones'}`;
-    notify(resumen, !cumple);
-    return cumple;
-}
-
-// ==================== RESUMEN COMPLETO ====================
 function generarResumenCompleto() {
     let resumen = `=== RESUMEN COMPLETO DEL PROYECTO ===\n`;
     resumen += `Proyecto: ${proyectoData.nombre || 'Sin nombre'}\n`;
@@ -891,6 +699,25 @@ function generarResumenCompleto() {
     resumen += `\n🔧 COMPONENTES: Válvulas:${totalValvulas}, Codos:${totalCodos}, Instrumentos:${totalInstrumentos}, Soportes:${totalSoportes}\n`;
     notify(resumen);
     return resumen;
+}
+
+function verificarNormasASME() {
+    let resultados = [];
+    let cumple = true;
+    for (const line of db.lines) {
+        const longitud = calcularLongitudLinea(line);
+        const numSoportes = line.componentes?.filter(c => c.type === 'SUPPORT').length || 0;
+        const soportesNecesarios = Math.max(2, Math.floor(longitud / 4000) + 1);
+        if (numSoportes < soportesNecesarios) {
+            resultados.push(`❌ ${line.tag}: Faltan ${soportesNecesarios - numSoportes} soportes (requiere ${soportesNecesarios})`);
+            cumple = false;
+        } else { resultados.push(`✅ ${line.tag}: ${numSoportes} soportes - OK`); }
+        if (line.temperatura > 200 && line.material === 'PPR') { resultados.push(`⚠️ ${line.tag}: PPR no recomendado para ${line.temperatura}°C`); cumple = false; }
+        if (line.temperatura > 400 && line.material === 'Acero Carbono') { resultados.push(`⚠️ ${line.tag}: Acero Carbono límite 400°C`); cumple = false; }
+    }
+    const resumen = `=== VERIFICACIÓN ASME B31.3 ===\n${resultados.join('\n')}\n${cumple ? '✅ El proyecto cumple con los requisitos mínimos' : '❌ Se requieren correcciones'}`;
+    notify(resumen, !cumple);
+    return cumple;
 }
 
 // ==================== EXPORTACIONES ====================
@@ -983,85 +810,100 @@ function importarPCF() {
     inp.click();
 }
 
-// ==================== PROCESAR COMANDO (MEJORADA) ====================
+// ==================== PROCESAR COMANDO (MEJORADA CON PARALELO/SERIE/SEPARACIÓN) ====================
 function procesarComando(comando) {
     const c = comando.toLowerCase();
     notify(`Procesando: "${comando}"...`);
-
-    // 1. EXTRAER NÚMEROS Y UNIDADES (Función auxiliar interna)
-    const extraerMedida = (texto, palabraClave) => {
-        const regex = new RegExp(`(?:${palabraClave})\\s*(?:de)?\\s*(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|metros?)?|(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|metros?)?\\s*(?:de)?\\s*(?:${palabraClave})`, "i");
+    
+    // --- FUNCIÓN DE EXTRACCIÓN MEJORADA ---
+    const extraerMedida = (texto, palabraClave, defecto) => {
+        const regex = new RegExp(`(?:${palabraClave})\\s*(?:de)?\\s*(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?|(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?\\s*(?:de)?\\s*(?:${palabraClave})`, "i");
         const match = texto.match(regex);
         if (match) {
             let valor = parseFloat(match[1] || match[3]);
-            let unidad = (match[2] || match[4] || "mm").toLowerCase();
-            if (unidad.startsWith("m")) valor *= 1000;
+            let unidad = (match[2] || match[4] || "").toLowerCase();
+            if (unidad.startsWith("m") && !unidad.includes("mm")) valor *= 1000;
             if (unidad === "cm") valor *= 10;
             return valor;
         }
-        return null;
+        return defecto;
     };
 
-    // 2. DETECTAR MATERIAL
+    // Detectar cantidad y configuración para cualquier equipo
+    let cantidad = 1;
+    const cantMatch = c.match(/(\d+)\s+(?:tanque|bomba|intercambiador|filtro|torre)/);
+    if (cantMatch) cantidad = parseInt(cantMatch[1]);
+
+    const esParalelo = c.includes("paralelo");
+    const esSerie = c.includes("serie");
+    const configuracion = esSerie ? "serie" : "paralelo";
+
     let material = "Acero Carbono";
     if (c.includes("ppr") || c.includes("polipropileno")) material = "PPR";
     else if (c.includes("inox") || c.includes("inoxidable")) material = "Acero Inoxidable";
-    else if (c.includes("hdpe") || c.includes("polietileno")) material = "HDPE";
+    else if (c.includes("hdpe")) material = "HDPE";
 
-    // 3. LÓGICA DE INTENCIONES
-    
-    // --- INTENCIÓN: CREAR TANQUE ---
+    // --- CASO: TANQUES ---
     if (c.includes("tanque")) {
-        const d = extraerMedida(c, "diametro") || extraerMedida(c, "ancho") || 2400;
-        const h = extraerMedida(c, "altura") || extraerMedida(c, "largo") || 4000;
-        
-        let cantidad = 1;
-        const cantMatch = c.match(/(\d+)\s+tanque/);
-        if (cantMatch) cantidad = parseInt(cantMatch[1]);
+        const d = extraerMedida(c, "diametro", 2400);
+        const h = extraerMedida(c, "altura", 4000);
+        const sep = extraerMedida(c, "separacion", (d + 800));
 
         if (cantidad > 1) {
-            const config = c.includes("paralelo") ? "paralelo" : "serie";
-            crearEquiposMasivos('tanque', cantidad, { diametro: d, altura: h, material }, config, 5000);
+            crearEquiposMasivos('tanque', cantidad, { diametro: d, altura: h, material }, configuracion, sep);
+            hablar(`Instalados ${cantidad} tanques en ${configuracion} con separación de ${sep} milímetros.`);
         } else {
             crearTanque(d, h, material, "Proceso");
+            hablar(`Tanque único de ${d}mm diámetro y ${h}mm altura creado.`);
         }
         return;
     }
 
-    // --- INTENCIÓN: CREAR BOMBA ---
+    // --- CASO: BOMBAS ---
     if (c.includes("bomba")) {
-        const hp = c.match(/(\d+(?:\.\d+)?)\s*hp/i);
-        const potencia = hp ? parseFloat(hp[1]) : 75;
-        crearBomba(potencia, 500, material, "Bombeo");
+        const potencia = extraerMedida(c, "hp", 75);
+        const sepBombas = extraerMedida(c, "separacion", 2000);
+
+        if (cantidad > 1) {
+            crearEquiposMasivos('bomba', cantidad, { potencia: potencia, material: material, diametro: 600, altura: 800 }, configuracion, sepBombas);
+            hablar(`Configuradas ${cantidad} bombas de ${potencia} HP en ${configuracion} con separación de ${sepBombas/1000} metros.`);
+        } else {
+            crearBomba(potencia, 500, material, "Bombeo");
+            hablar(`Bomba de ${potencia} HP creada.`);
+        }
         return;
     }
 
-    // --- INTENCIÓN: CREAR LÍNEA / TUBERÍA ---
+    // --- CASO: LÍNEA / TUBERÍA ---
     if (c.includes("linea") || c.includes("tuberia") || c.includes("cañeria")) {
         const pulg = c.match(/(\d+(?:\.\d+)?)\s*(?:pulgadas?|pulg|")/i);
         const diam = pulg ? parseFloat(pulg[1]) : 4;
         crearLinea(diam, material, "Proceso");
+        hablar(`Línea de ${diam} pulgadas material ${material} creada.`);
         return;
     }
 
-    // --- INTENCIÓN: CONECTAR ---
+    // --- CASO: CONECTAR ---
     if (c.includes("conectar")) {
-        const tags = c.match(/[a-z]{1,3}-\d{2,3}/gi);
+        const tags = c.match(/[A-Z]{2,3}-\d{2,3}/gi);
+        const diam = extraerMedida(c, "pulgadas", 4);
         if (tags && tags.length >= 2) {
-            conectarEquipos(4, material, tags[0].toUpperCase(), tags[1].toUpperCase());
+            conectarEquipos(diam, material, tags[0].toUpperCase(), tags[1].toUpperCase());
+            hablar(`Conexión ${tags[0]} con ${tags[1]} de ${diam}" ${material} creada.`);
         } else {
-            notify("Indica dos tags, ej: 'conectar TK-01 con P-01'", true);
+            notify("Indica dos tags, ej: 'conectar TK-01 con B-01'", true);
         }
         return;
     }
 
-    // --- OTROS COMANDOS ---
+    // --- CASO: RESÚMENES Y OTROS ---
     if (c.includes("resumen")) { generarResumenCompleto(); return; }
     if (c.includes("pcf")) { exportarPCF(); return; }
     if (c.includes("normas")) { verificarNormasASME(); return; }
-    if (c.includes("limpiar") || c.includes("nuevo")) { location.reload(); return; }
+    if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); hablar("Proyecto limpiado"); } return; }
 
     notify(`Comando no reconocido: "${comando}"`, true);
+    hablar(`Lo siento, no entendí el comando: ${comando}`);
 }
 
 // ==================== EVENTOS DEL CANVAS ====================
@@ -1208,7 +1050,6 @@ function updatePointsPanel() {
 function editPointCoordinates(idx) {
     if (!selectedElement || selectedElement.type !== 'line') return;
     const pt = selectedElement.obj.points3D[idx];
-    // Crear modal si no existe
     let modal = document.getElementById('coordModal');
     if (!modal) {
         modal = document.createElement('div');
@@ -1353,13 +1194,13 @@ function readElement() {
         const eq = selectedElement.obj;
         const msg = `${eq.tag}, ${eq.tipo}, diámetro ${eq.diametro || 2000} milímetros, altura ${eq.altura || 3000} milímetros, material ${eq.material || 'Acero Carbono'}, servicio ${eq.servicio || 'Proceso'}`;
         notify(msg);
-        voice.speak(msg);
+        speakText(msg, false);
     } else if (selectedElement.type === 'line') {
         const line = selectedElement.obj;
         const longitud = calcularLongitudLinea(line);
         const msg = `${line.tag}, diámetro ${line.diametro || 4} pulgadas, material ${line.material || 'Acero Carbono'}, servicio ${line.servicio || 'Proceso'}, longitud ${(longitud/1000).toFixed(2)} metros`;
         notify(msg);
-        voice.speak(msg);
+        speakText(msg, false);
     }
 }
 
@@ -1392,11 +1233,13 @@ function mostrarModalProyecto() {
         proyectoData.cliente = document.getElementById('proyectoCliente').value || "Cliente";
         modal.style.display = 'none';
         notify(`Proyecto: ${proyectoData.nombre} | Ingeniero: ${proyectoData.autor} | Cliente: ${proyectoData.cliente}`);
+        hablar(`Proyecto ${proyectoData.nombre} iniciado.`);
     };
     document.getElementById('saltarProyectoBtn').onclick = () => {
         proyectoData = { nombre: "Proyecto Temporal", autor: "Usuario", fecha: new Date().toISOString().slice(0,10), cliente: "Demo" };
         modal.style.display = 'none';
         notify("Proyecto temporal iniciado");
+        hablar("Proyecto temporal iniciado");
     };
 }
 
@@ -1418,9 +1261,9 @@ function initHotkeys() {
 }
 
 function initToolbar() {
-    document.getElementById('btnNew').onclick = () => { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); } };
-    document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); requestRender(); autoCenter(); notify("Cargado"); } else notify("No hay guardado",true); };
-    document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); };
+    document.getElementById('btnNew').onclick = () => { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); hablar("Proyecto nuevo creado"); } };
+    document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); requestRender(); autoCenter(); notify("Cargado"); hablar("Proyecto cargado"); } else notify("No hay guardado",true); };
+    document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); hablar("Proyecto guardado"); };
     document.getElementById('btnReset').onclick = () => { autoCenter(); notify("Vista centrada"); };
     document.getElementById('btnUndo').onclick = () => undo();
     document.getElementById('btnRedo').onclick = () => redo();
@@ -1431,9 +1274,16 @@ function initToolbar() {
     document.getElementById('btnMeasure').onclick = () => { measuringMode = !measuringMode; tempMeasurePoint = null; notify(measuringMode ? "Modo medición activado - Click dos puntos" : "Modo medición desactivado"); };
     document.getElementById('btnSnap').onclick = () => { snapEnabled = !snapEnabled; document.getElementById('btnSnap').textContent = snapEnabled ? "🔲 Snap ON" : "🔲 Snap OFF"; notify(`Snap ${snapEnabled ? 'activado' : 'desactivado'}`); };
     document.getElementById('btnVoice').onclick = () => { 
-        unlockAudioForiPhone();
-        voice.toggle(); 
-        document.getElementById('btnVoice').textContent = voice.enabled ? "🎙️ Voz ON" : "🔇 Voz OFF"; 
+        voiceEnabled = !voiceEnabled; 
+        document.getElementById('btnVoice').textContent = voiceEnabled ? "🎙️ Voz ON" : "🔇 Voz OFF";
+        notify(voiceEnabled ? "Voz activada" : "Voz desactivada");
+        if (voiceEnabled && window.speechSynthesis) {
+            let testMsg = new SpeechSynthesisUtterance("Voz activada");
+            testMsg.lang = 'es-ES';
+            try {
+                window.speechSynthesis.speak(testMsg);
+            } catch(e) {}
+        }
     };
     document.getElementById('btnReadElement').onclick = () => readElement();
     document.getElementById('btnApplyNorm').onclick = () => verificarNormasASME();
@@ -1441,9 +1291,13 @@ function initToolbar() {
     document.getElementById('btnCommand').onclick = () => { document.getElementById('commandPanel').style.display = 'block'; document.getElementById('commandText').focus(); };
     document.getElementById('closeCommand').onclick = () => { document.getElementById('commandPanel').style.display = 'none'; };
     document.getElementById('runCommands').onclick = () => { 
-        unlockAudioForiPhone();
         const text = document.getElementById('commandText').value; 
-        if(text.trim()) procesarComando(text); 
+        if(text.trim()) {
+            const lineas = text.split('\n');
+            for(let linea of lineas) {
+                if(linea.trim()) procesarComando(linea.trim());
+            }
+        }
     };
     document.getElementById('clearCommand').onclick = () => { document.getElementById('commandText').value = ''; };
     
@@ -1482,9 +1336,6 @@ function init() {
     initHotkeys();
     initToolbar();
     
-    // Inicializar voz para iPhone
-    initVoiceOnFirstTouch();
-    
     window.addEventListener('resize', () => {
         canvas.width = canvas.parentElement.clientWidth;
         canvas.height = canvas.parentElement.clientHeight;
@@ -1496,7 +1347,7 @@ function init() {
     saveState();
     mostrarModalProyecto();
     notify("SmartFlow Industrial v10.0 - Listo");
-    voice.speak("Aplicación lista. Use el botón comandos para empezar.", false);
+    speakText("Aplicación lista. Use el botón comandos para empezar.", false);
 }
 
 // Iniciar aplicación
