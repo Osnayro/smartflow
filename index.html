@@ -41,7 +41,6 @@
     .btn-warning{background:rgba(245,158,11,0.2); border-color:#f59e0b; color:#f59e0b}
     .btn-danger{background:rgba(239,68,68,0.2); border-color:#ef4444; color:#ef4444}
     
-    /* Paneles flotantes (igual que antes) */
     #editFloatingBar, #pointsPanel, #propertyPanel, #commandPanel, .notification-container, .status-bar, .voice-indicator, .modal {
         position: fixed;
         z-index: 200;
@@ -194,7 +193,6 @@
         #propertyPanel{width:280px;right:10px}
     }
 </style>
-<!-- Three.js core y extensiones -->
 <script type="importmap">
     {
         "imports": {
@@ -348,7 +346,7 @@ resumen"></textarea>
     // ==================== CONFIGURACIÓN GLOBAL 3D ====================
     let scene, camera, renderer, labelRenderer, controls;
     let db = { equipos: [], lines: [] };
-    let selectedElement = null;      // { type: 'equipment', obj: equipoData, mesh }
+    let selectedElement = null;
     let selectedPointIndex = -1;
     let editModeActive = false;
     let measuringMode = false;
@@ -357,8 +355,8 @@ resumen"></textarea>
     let history = { past: [], future: [], maxSize: 30 };
     let proyectoData = { nombre: '', autor: '', fecha: '', cliente: '' };
     
-    let equipmentMeshes = new Map(); // tag -> mesh
-    let lineGroups = new Map();      // tag -> group of pipe segments
+    let equipmentMeshes = new Map();
+    let lineGroups = new Map();
 
     function saveState() {
         const state = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines }));
@@ -391,13 +389,12 @@ resumen"></textarea>
         notify("Rehecho");
     }
 
-    // ==================== INICIALIZACIÓN THREE.JS (con cambios de escala y cámara) ====================
+    // ==================== INICIALIZACIÓN THREE.JS ====================
     function init3D() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a192f);
-        scene.fog = new THREE.FogExp2(0x0a192f, 0.0003);
+        scene.background = new THREE.Color(0x0a192f); // Azul oscuro profesional
+        scene.fog = new THREE.FogExp2(0x0a192f, 0.0002);
 
-        // CAMBIO 1: Cámara más alejada y con mejor rango de visión
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 100000);
         camera.position.set(15000, 12000, 15000);
         camera.lookAt(0, 0, 0);
@@ -439,6 +436,14 @@ resumen"></textarea>
         gridHelper.position.y = -100;
         scene.add(gridHelper);
         
+        // Opcional: cubo de depuración (descomentar para verificar que la escena se renderiza)
+        // const debugCube = new THREE.Mesh(
+        //     new THREE.BoxGeometry(500, 500, 500),
+        //     new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x441100 })
+        // );
+        // debugCube.position.set(0, 250, 0);
+        // scene.add(debugCube);
+        
         animate();
     }
     
@@ -449,40 +454,56 @@ resumen"></textarea>
         if (labelRenderer) labelRenderer.render(scene, camera);
     }
     
-    // ==================== CONSTRUCCIÓN DE OBJETOS 3D ====================
+    // ==================== COLORES INDUSTRIALES ====================
     function getMaterialColor(materialName) {
-        const colors = { 'Acero Carbono': 0x8899aa, 'CS': 0x8899aa, 'Acero Inoxidable': 0xccddff, 'SS': 0xccddff, 'PPR': 0x44cc88, 'HDPE': 0x33aaff, 'PVC': 0xdddddd, 'FRP': 0x66ccaa };
-        return colors[materialName] || 0x88aaff;
+        const colors = { 
+            'Acero Carbono': 0x7a8c9e,
+            'CS': 0x7a8c9e,
+            'Acero Inoxidable': 0xb8c7dd,
+            'SS': 0xb8c7dd,
+            'PPR': 0x6d8f7c,
+            'HDPE': 0x4a7a9c,
+            'PVC': 0x9aaebf,
+            'FRP': 0x6b8e7b,
+            'Polietileno': 0x4a7a9c,
+            'PE': 0x4a7a9c
+        };
+        return colors[materialName] || 0x8899aa; // gris neutro
     }
     
-    // CAMBIO 2: createEquipment3D corregido (usa RADIO, transparencia y etiqueta como hijo)
+    // ==================== CONSTRUCCIÓN DE OBJETOS 3D CORREGIDA ====================
     function createEquipment3D(eq) {
         const { tipo, diametro, altura, material, x, y, z, tag } = eq;
-        let geometry;
         
+        // Validar tamaños (evitar cero o negativo)
+        const safeDiam = Math.max(diametro, 100);
+        const safeAlt = Math.max(altura, 100);
+        
+        let geometry;
         if (tipo === 'tanque') {
-            // CylinderGeometry usa RADIO = diametro / 2
-            geometry = new THREE.CylinderGeometry(diametro / 2, diametro / 2, altura, 32);
+            // CylinderGeometry usa RADIO = diámetro/2
+            geometry = new THREE.CylinderGeometry(safeDiam / 2, safeDiam / 2, safeAlt, 32);
         } else {
-            geometry = new THREE.BoxGeometry(diametro || 800, altura || 800, diametro || 800);
+            geometry = new THREE.BoxGeometry(safeDiam || 800, safeAlt || 800, safeDiam || 800);
         }
-    
+        
         const color = getMaterialColor(material);
         const meshMat = new THREE.MeshStandardMaterial({ 
             color: color, 
-            roughness: 0.5, 
-            metalness: 0.6,
+            roughness: 0.4,
+            metalness: 0.85,
             transparent: true,
-            opacity: 0.9
+            opacity: 0.95
         });
-    
-        const mesh = new THREE.Mesh(geometry, meshMat);
-        mesh.position.set(x, (y || 0) + (altura / 2), z);
         
+        const mesh = new THREE.Mesh(geometry, meshMat);
+        // Posición: base en y=0, centro del cilindro en y = altura/2
+        mesh.position.set(x, (y || 0) + (safeAlt / 2), z);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.userData = { type: 'equipment', tag: tag, data: eq };
         
+        // Etiqueta CSS2D
         const div = document.createElement('div');
         div.textContent = tag;
         div.style.color = '#00d4ff';
@@ -490,13 +511,15 @@ resumen"></textarea>
         div.style.background = 'rgba(0,0,0,0.7)';
         div.style.padding = '2px 6px';
         div.style.borderRadius = '4px';
-        
+        div.style.pointerEvents = 'none';
         const label = new CSS2DObject(div);
-        label.position.set(0, altura / 2 + 500, 0);
+        label.position.set(0, safeAlt / 2 + 300, 0);
         mesh.add(label);
         
         scene.add(mesh);
         equipmentMeshes.set(tag, { mesh, label, data: eq });
+        
+        console.log(`Creado ${tag}: diam=${safeDiam}mm, alt=${safeAlt}mm, pos=(${x}, ${safeAlt/2}, ${z})`);
         return mesh;
     }
     
@@ -511,7 +534,6 @@ resumen"></textarea>
         cylinder.position.copy(center);
         cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), direction.clone().normalize());
         cylinder.castShadow = true;
-        cylinder.receiveShadow = false;
         return cylinder;
     }
     
@@ -533,7 +555,7 @@ resumen"></textarea>
                     const p = line.points3D[idx];
                     const pos = new THREE.Vector3(p.x, (p.y||0), p.z);
                     const sphereGeo = new THREE.SphereGeometry(radius*1.2, 8, 8);
-                    const sphereMat = new THREE.MeshStandardMaterial({ color: 0xffaa44, emissive: 0x442200 });
+                    const sphereMat = new THREE.MeshStandardMaterial({ color: 0xffaa44 });
                     const marker = new THREE.Mesh(sphereGeo, sphereMat);
                     marker.position.copy(pos);
                     group.add(marker);
@@ -559,12 +581,14 @@ resumen"></textarea>
     }
     
     function rebuildSceneFromDb() {
+        // Limpiar objetos dinámicos
         const toRemove = [];
         scene.children.forEach(child => {
             if (child.isMesh || child.isGroup || child.isCSS2DObject) {
                 if (child.userData && (child.userData.type === 'equipment' || child.userData.type === 'line')) {
                     toRemove.push(child);
-                } else if (child.isCSS2DObject && child.element && child.element.textContent && (child.element.textContent.startsWith('TK') || child.element.textContent.startsWith('P') || child.element.textContent.startsWith('L-'))) {
+                } else if (child.isCSS2DObject && child.element && child.element.textContent && 
+                          (child.element.textContent.startsWith('TK') || child.element.textContent.startsWith('P') || child.element.textContent.startsWith('L-'))) {
                     toRemove.push(child);
                 }
             }
@@ -573,8 +597,8 @@ resumen"></textarea>
         equipmentMeshes.clear();
         lineGroups.clear();
         
-        db.equipos.forEach(eq => { createEquipment3D(eq); });
-        db.lines.forEach(line => { rebuildLine3D(line); });
+        db.equipos.forEach(eq => createEquipment3D(eq));
+        db.lines.forEach(line => rebuildLine3D(line));
     }
     
     // ==================== FUNCIONES DE NEGOCIO ====================
@@ -597,6 +621,18 @@ resumen"></textarea>
         const nuevo = { type: 'equipment', tag, x, y: 0, z, tipo: 'tanque', diametro: diametro || 2400, altura: altura || 4000, material: material || 'Acero Carbono', servicio: servicio || 'Almacenamiento', presion: 1, temperatura: 50 };
         db.equipos.push(nuevo);
         createEquipment3D(nuevo);
+        
+        // Si es el primer equipo, centrar la vista para asegurar visibilidad
+        if (db.equipos.length === 1) {
+            setTimeout(() => {
+                const safeAlt = altura || 4000;
+                camera.position.set(x + 5000, safeAlt + 2000, z + 5000);
+                controls.target.set(x, safeAlt / 2, z);
+                controls.update();
+                notify(`Vista centrada en ${tag}`);
+            }, 100);
+        }
+        
         notify(`Tanque ${tag}: ${diametro || 2400}mm x ${altura || 4000}mm ${material || 'Acero Carbono'} - ${servicio || 'Almacenamiento'}`);
     }
     
@@ -715,12 +751,12 @@ resumen"></textarea>
         const meshObj = equipmentMeshes.get(eq.tag);
         if (meshObj) {
             meshObj.mesh.position.set(eq.x, (eq.y||0) + (eq.altura/2), eq.z);
-            meshObj.label.position.set(0, eq.altura/2 + 500, 0);
+            meshObj.label.position.set(0, eq.altura/2 + 300, 0);
         }
         notify(`${eq.tag} movido a X:${eq.x} Z:${eq.z}`);
     }
     
-    // ==================== PROCESAR COMANDO ====================
+    // ==================== PROCESAR COMANDO (CON LIMITACIÓN DE TAMAÑOS) ====================
     function extraerMedida(texto, palabraClave, defecto) {
         const regex = new RegExp(`(?:${palabraClave})\\s*(?:de)?\\s*(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?|(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?\\s*(?:de)?\\s*(?:${palabraClave})`, "i");
         const match = texto.match(regex);
@@ -743,14 +779,21 @@ resumen"></textarea>
         const esParalelo = c.includes("paralelo");
         const esSerie = c.includes("serie");
         const configuracion = esSerie ? "serie" : "paralelo";
+        
+        // Detección de materiales (incluyendo polietileno)
         let material = "Acero Carbono";
         if (c.includes("ppr") || c.includes("polipropileno")) material = "PPR";
         else if (c.includes("inox") || c.includes("inoxidable")) material = "Acero Inoxidable";
-        else if (c.includes("hdpe")) material = "HDPE";
+        else if (c.includes("hdpe") || c.includes("polietileno") || c.includes("pe")) material = "HDPE";
+        else if (c.includes("pvc")) material = "PVC";
+        else if (c.includes("frp")) material = "FRP";
         
         if (c.includes("tanque")) {
-            const d = extraerMedida(c, "diametro", 2400);
-            const h = extraerMedida(c, "altura", 4000);
+            let d = extraerMedida(c, "diametro", 2400);
+            let h = extraerMedida(c, "altura", 4000);
+            // Limitar tamaños para evitar que tapen la cámara
+            d = Math.min(Math.max(d, 500), 10000);
+            h = Math.min(Math.max(h, 500), 10000);
             const sep = extraerMedida(c, "separacion", d + 800);
             if (cantidad > 1) {
                 crearEquiposMasivos('tanque', cantidad, { diametro: d, altura: h, material }, configuracion, sep);
@@ -762,8 +805,9 @@ resumen"></textarea>
             return;
         }
         if (c.includes("bomba")) {
-            const potencia = extraerMedida(c, "hp", 75);
+            let potencia = extraerMedida(c, "hp", 75);
             const sepBombas = extraerMedida(c, "separacion", 2000);
+            potencia = Math.min(Math.max(potencia, 10), 5000);
             if (cantidad > 1) {
                 crearEquiposMasivos('bomba', cantidad, { potencia: potencia, material: material, diametro: 600, altura: 800 }, configuracion, sepBombas);
                 speakText(`Configuradas ${cantidad} bombas de ${potencia} HP en ${configuracion} con separación de ${sepBombas/1000} metros.`);
@@ -775,14 +819,16 @@ resumen"></textarea>
         }
         if (c.includes("linea") || c.includes("tuberia") || c.includes("cañeria")) {
             const pulg = c.match(/(\d+(?:\.\d+)?)\s*(?:pulgadas?|pulg|")/i);
-            const diam = pulg ? parseFloat(pulg[1]) : 4;
+            let diam = pulg ? parseFloat(pulg[1]) : 4;
+            diam = Math.min(Math.max(diam, 0.5), 48);
             crearLinea(diam, material, "Proceso");
             speakText(`Línea de ${diam} pulgadas material ${material} creada.`);
             return;
         }
         if (c.includes("conectar")) {
             const tags = c.match(/[A-Z]{2,3}-\d{2,3}/gi);
-            const diam = extraerMedida(c, "pulgadas", 4);
+            let diam = extraerMedida(c, "pulgadas", 4);
+            diam = Math.min(Math.max(diam, 0.5), 48);
             if (tags && tags.length >= 2) {
                 conectarEquipos(diam, material, tags[0].toUpperCase(), tags[1].toUpperCase());
                 speakText(`Conexión ${tags[0]} con ${tags[1]} de ${diam}" ${material} creada.`);
@@ -813,12 +859,11 @@ resumen"></textarea>
         document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); rebuildSceneFromDb(); notify("Cargado"); } };
         document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); };
         
-        // CAMBIO 3: Botón Centrar mejorado
         document.getElementById('btnReset').onclick = () => {
             if (db.equipos.length > 0) {
                 const lastEq = db.equipos[db.equipos.length - 1];
                 camera.position.set(lastEq.x + 10000, lastEq.y + 8000, lastEq.z + 10000);
-                controls.target.set(lastEq.x, lastEq.y, lastEq.z);
+                controls.target.set(lastEq.x, lastEq.y + (lastEq.altura/2), lastEq.z);
             } else {
                 camera.position.set(15000, 12000, 15000);
                 controls.target.set(0, 0, 0);
@@ -833,7 +878,7 @@ resumen"></textarea>
         document.getElementById('btnPDF').onclick = () => exportarPDF();
         document.getElementById('btnExportPCF').onclick = () => exportarPCF();
         document.getElementById('btnImportPCF').onclick = () => importarPCF();
-        document.getElementById('btnMeasure').onclick = () => { measuringMode = !measuringMode; notify(measuringMode ? "Modo medición activado (usar raycast)" : "Desactivado"); };
+        document.getElementById('btnMeasure').onclick = () => { measuringMode = !measuringMode; notify(measuringMode ? "Modo medición activado" : "Desactivado"); };
         document.getElementById('btnSnap').onclick = () => { snapEnabled = !snapEnabled; document.getElementById('btnSnap').textContent = snapEnabled ? "🔲 Snap ON" : "🔲 Snap OFF"; notify(`Snap ${snapEnabled ? 'activado' : 'desactivado'}`); };
         document.getElementById('btnVoice').onclick = () => { voiceEnabled = !voiceEnabled; document.getElementById('btnVoice').textContent = voiceEnabled ? "🎙️ Voz ON" : "🔇 Voz OFF"; notify(voiceEnabled ? "Voz activada" : "Voz desactivada"); if(voiceEnabled) speakText("Voz activada"); };
         document.getElementById('btnReadElement').onclick = () => { if(selectedElement) speakText(JSON.stringify(selectedElement.obj)); else notify("Nada seleccionado"); };
