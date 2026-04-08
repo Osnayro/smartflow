@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<title>SmartFlow Industrial v10.0 - Canvas Isométrico Corregido</title>
+<title>SmartFlow Industrial v10.0 - Canvas Isométrico Corregido v2</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -398,7 +399,9 @@ function undo() {
     selectedElement = null; selectedPointIndex = -1;
     document.getElementById('propertyPanel').style.display = 'none';
     document.getElementById('pointsPanel').style.display = 'none';
-    requestRender(); notify("Deshecho");
+    requestRender(); 
+    safeAutoCenter();
+    notify("Deshecho");
 }
 function redo() {
     if (history.future.length === 0) { notify("Nada que rehacer", true); return; }
@@ -408,7 +411,9 @@ function redo() {
     db.equipos = next.equipos || [];
     db.lines = next.lines || [];
     selectedElement = null;
-    requestRender(); notify("Rehecho");
+    requestRender(); 
+    safeAutoCenter();
+    notify("Rehecho");
 }
 
 // ==================== RENDERIZADO ====================
@@ -446,11 +451,10 @@ function drawEquipment(e) {
     const r = ((e.diametro || 2000) / 2) * cam.scale;
     const h = (e.altura || 3000) * cam.scale;
     
-    // Color de relleno
     ctx.fillStyle = getMaterialColor(e.material || 'Acero Carbono');
     ctx.fillRect(p.x - r, p.y - h, r * 2, h);
     
-    // Borde de depuración (blanco semitransparente) - se puede quitar luego
+    // Borde blanco semitransparente para depuración (se puede quitar luego)
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.lineWidth = 2;
     ctx.strokeRect(p.x - r, p.y - h, r * 2, h);
@@ -550,52 +554,109 @@ function render() {
     document.getElementById('coords').innerHTML = `X:${Math.round(currentCursor.x)} Z:${Math.round(currentCursor.z)}`;
 }
 
-// ==================== AUTO CENTER MEJORADO ====================
-function autoCenter() {
+// ==================== AUTO CENTER MEJORADO (con proyección real de bounding box) ====================
+function safeAutoCenter() {
+    // Espera a que el canvas tenga dimensiones
     if (!canvas.width || !canvas.height) {
-        setTimeout(() => autoCenter(), 50);
+        setTimeout(() => safeAutoCenter(), 50);
         return;
     }
-    
-    if (db.equipos.length === 0) {
+    autoCenter();
+}
+
+function autoCenter() {
+    if (db.equipos.length === 0 && db.lines.length === 0) {
         cam.panX = canvas.width / 2;
         cam.panY = canvas.height / 2;
         cam.scale = 0.6;
-    } else {
-        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-        db.equipos.forEach(e => {
-            minX = Math.min(minX, e.x);
-            maxX = Math.max(maxX, e.x);
-            minZ = Math.min(minZ, e.z);
-            maxZ = Math.max(maxZ, e.z);
-        });
-        
-        const margin = Math.max((maxX - minX) * 0.2, (maxZ - minZ) * 0.2, 2000);
-        minX -= margin;
-        maxX += margin;
-        minZ -= margin;
-        maxZ += margin;
-        
-        const centerWorld = { x: (minX + maxX) / 2, y: 0, z: (minZ + maxZ) / 2 };
-        const c30 = 0.866, s30 = 0.5;
-        const screenCenterX = (centerWorld.x - centerWorld.z) * c30;
-        const screenCenterY = (centerWorld.x + centerWorld.z) * s30;
-        
-        const worldWidth = maxX - minX;
-        const worldHeight = maxZ - minZ;
-        const maxWorldDim = Math.max(worldWidth, worldHeight) * 1.1;
-        
-        const scaleX = canvas.width / (maxWorldDim * c30 * 2);
-        const scaleY = canvas.height / (maxWorldDim * s30 * 2);
-        let newScale = Math.min(scaleX, scaleY, 1.2);
-        newScale = Math.max(newScale, 0.15);
-        
-        cam.scale = newScale;
-        cam.panX = canvas.width / 2 - screenCenterX * cam.scale;
-        cam.panY = canvas.height / 2 - screenCenterY * cam.scale;
+        requestRender();
+        return;
     }
     
-    console.log(`AutoCenter: scale=${cam.scale.toFixed(3)}, pan=(${cam.panX.toFixed(0)},${cam.panY.toFixed(0)})`);
+    // Recopilar todos los puntos significativos (equipos y puntos de líneas)
+    let points = [];
+    db.equipos.forEach(e => {
+        // Consideramos las esquinas del bounding box del equipo (simplificado como su posición central)
+        // Para un mejor ajuste, tomamos el centro y los extremos en XZ
+        const w = (e.diametro || 2000) / 2;
+        const d = (e.altura || 3000); // no afecta XZ, pero lo dejamos
+        points.push({ x: e.x - w, y: e.y || 0, z: e.z - w });
+        points.push({ x: e.x + w, y: e.y || 0, z: e.z + w });
+    });
+    db.lines.forEach(l => {
+        if (l.points3D) {
+            l.points3D.forEach(p => points.push({ x: p.x, y: p.y || 0, z: p.z }));
+        }
+    });
+    
+    if (points.length === 0) {
+        cam.panX = canvas.width / 2;
+        cam.panY = canvas.height / 2;
+        cam.scale = 0.6;
+        requestRender();
+        return;
+    }
+    
+    // Encontrar bounding box en coordenadas de mundo
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    points.forEach(p => {
+        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+    });
+    
+    // Agregar margen (20%)
+    const marginX = Math.max((maxX - minX) * 0.2, 2000);
+    const marginZ = Math.max((maxZ - minZ) * 0.2, 2000);
+    minX -= marginX; maxX += marginX;
+    minZ -= marginZ; maxZ += marginZ;
+    
+    // Calcular las 8 esquinas del bounding box 3D
+    const corners = [
+        { x: minX, y: minY, z: minZ }, { x: maxX, y: minY, z: minZ },
+        { x: minX, y: maxY, z: minZ }, { x: maxX, y: maxY, z: minZ },
+        { x: minX, y: minY, z: maxZ }, { x: maxX, y: minY, z: maxZ },
+        { x: minX, y: maxY, z: maxZ }, { x: maxX, y: maxY, z: maxZ }
+    ];
+    
+    // Proyectar las esquinas con escala = 1.0 y pan = 0 para medir extensión en píxeles
+    const proj = corners.map(c => {
+        const c30 = 0.866, s30 = 0.5;
+        const x = (c.x - c.z) * c30;
+        const y = (c.x + c.z) * s30 - c.y;
+        return { x, y };
+    });
+    
+    let minProjX = Infinity, maxProjX = -Infinity, minProjY = Infinity, maxProjY = -Infinity;
+    proj.forEach(p => {
+        minProjX = Math.min(minProjX, p.x); maxProjX = Math.max(maxProjX, p.x);
+        minProjY = Math.min(minProjY, p.y); maxProjY = Math.max(maxProjY, p.y);
+    });
+    
+    const projWidth = maxProjX - minProjX;
+    const projHeight = maxProjY - minProjY;
+    
+    // Calcular escala para que quepa en el canvas con un margen del 5%
+    const scaleX = (canvas.width * 0.9) / projWidth;
+    const scaleY = (canvas.height * 0.9) / projHeight;
+    let newScale = Math.min(scaleX, scaleY, 1.5); // máximo 1.5 para no exagerar zoom in
+    newScale = Math.max(newScale, 0.1); // mínimo 0.1
+    
+    cam.scale = newScale;
+    
+    // Calcular el centro del bounding box en proyección
+    const centerProj = {
+        x: (minProjX + maxProjX) / 2,
+        y: (minProjY + maxProjY) / 2
+    };
+    
+    // Ajustar pan para que el centro proyectado quede en el centro del canvas
+    cam.panX = canvas.width / 2 - centerProj.x * cam.scale;
+    cam.panY = canvas.height / 2 - centerProj.y * cam.scale;
+    
+    console.log(`AutoCenter: bounding world X[${minX.toFixed(0)}, ${maxX.toFixed(0)}] Z[${minZ.toFixed(0)}, ${maxZ.toFixed(0)}]`);
+    console.log(`Proj size: ${projWidth.toFixed(0)} x ${projHeight.toFixed(0)}, scale=${cam.scale.toFixed(4)}`);
+    
     requestRender();
 }
 
@@ -625,7 +686,8 @@ function crearTanque(diametro, altura, material, servicio) {
     const tag = generarTag('TK');
     db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 4000, y: 0, z: 0, tipo: 'tanque', diametro: diametro || 2400, altura: altura || 4000, material: material || 'Acero Carbono', servicio: servicio || 'Almacenamiento', presion: 1, temperatura: 50 });
     notify(`Tanque ${tag}: ${diametro || 2400}mm x ${altura || 4000}mm ${material || 'Acero Carbono'} - ${servicio || 'Almacenamiento'}`);
-    requestRender(); autoCenter();
+    requestRender(); 
+    safeAutoCenter();
 }
 
 function crearBomba(potencia, caudal, material, servicio, subTipo) {
@@ -633,7 +695,8 @@ function crearBomba(potencia, caudal, material, servicio, subTipo) {
     const tag = generarTag('P');
     db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 3500, y: 0, z: 0, tipo: 'bomba', subTipo: subTipo || 'centrifuga', diametro: 600, altura: 800, potencia: potencia || 75, caudal: caudal || 500, material: material || 'Acero Carbono', servicio: servicio || 'Bombeo', presion: 10, temperatura: 60 });
     notify(`Bomba ${tag}: ${potencia || 75}HP, ${caudal || 500}m³/h - ${servicio || 'Bombeo'}`);
-    requestRender(); autoCenter();
+    requestRender(); 
+    safeAutoCenter();
 }
 
 function crearEquiposMasivos(tipo, cantidad, parametros, configuracion, separacion) {
@@ -653,7 +716,19 @@ function crearEquiposMasivos(tipo, cantidad, parametros, configuracion, separaci
         db.equipos.push(equipo);
     }
     notify(`Creados ${cantidad} ${tipo}s en configuración ${configuracion}, separación ${sep/1000}m`);
-    requestRender(); autoCenter();
+    requestRender(); 
+    // Pequeño retraso para asegurar que el canvas esté listo
+    setTimeout(() => safeAutoCenter(), 50);
+}
+
+function crearLinea(diametroPulgadas, material, servicio) {
+    saveState();
+    const tag = generarTagLinea();
+    const puntos = [{ x: 0, y: 500, z: 0 }, { x: 3000, y: 500, z: 2000 }];
+    db.lines.push({ tag, diametro: diametroPulgadas || 4, material: material || 'Acero Carbono', servicio: servicio || 'Proceso', puntos3D: puntos, componentes: [] });
+    notify(`Línea ${tag} creada (${diametroPulgadas || 4}" ${material || 'Acero Carbono'})`);
+    requestRender(); 
+    safeAutoCenter();
 }
 
 function conectarEquipos(diametroPulgadas, material, tagOrigen, tagDestino) {
@@ -666,7 +741,8 @@ function conectarEquipos(diametroPulgadas, material, tagOrigen, tagDestino) {
     const p2 = { x: e2.x - (e2.diametro || 2000)/2 - 500, y: 500, z: e2.z };
     db.lines.push({ tag, diametro: diametroPulgadas || 4, material: material || 'Acero Carbono', servicio: `Conexión ${tagOrigen}-${tagDestino}`, puntos3D: [p1, p2], componentes: [], presion: 10, temperatura: 100 });
     notify(`Conexión ${tagOrigen}-${tagDestino} creada (${diametroPulgadas || 4}" ${material || 'Acero Carbono'})`);
-    requestRender(); autoCenter();
+    requestRender(); 
+    safeAutoCenter();
 }
 
 function agregarValvula(lineaTag, tipo, posicion) {
@@ -799,7 +875,8 @@ function importarPCF() {
                 }
             }
             db.lines = linesTemp;
-            requestRender(); autoCenter();
+            requestRender(); 
+            safeAutoCenter();
             notify(`PCF importado: ${linesTemp.length} tuberías`);
             saveState();
         };
@@ -869,13 +946,7 @@ function procesarComando(comando) {
     if (c.includes("linea") || c.includes("tuberia") || c.includes("cañeria")) {
         const pulg = c.match(/(\d+(?:\.\d+)?)\s*(?:pulgadas?|pulg|")/i);
         const diam = pulg ? parseFloat(pulg[1]) : 4;
-        // función crearLinea simple (no estaba implementada en el original, la añadimos)
-        saveState();
-        const tag = generarTagLinea();
-        const puntos = [{ x: 0, y: 500, z: 0 }, { x: 3000, y: 500, z: 2000 }];
-        db.lines.push({ tag, diametro: diam, material: material, servicio: 'Proceso', puntos3D: puntos, componentes: [] });
-        notify(`Línea ${tag} creada (${diam}" ${material})`);
-        requestRender(); autoCenter();
+        crearLinea(diam, material, "Proceso");
         speakText(`Línea de ${diam} pulgadas material ${material} creada.`);
         return;
     }
@@ -895,13 +966,13 @@ function procesarComando(comando) {
     if (c.includes("resumen")) { generarResumenCompleto(); return; }
     if (c.includes("pcf")) { exportarPCF(); return; }
     if (c.includes("normas")) { verificarNormasASME(); return; }
-    if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto limpiado"); } return; }
+    if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); safeAutoCenter(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto limpiado"); } return; }
 
     notify(`Comando no reconocido: "${comando}"`, true);
     speakText(`Lo siento, no entendí el comando: ${comando}`);
 }
 
-// ==================== EVENTOS DEL CANVAS ====================
+// ==================== EVENTOS DEL CANVAS (sin cambios) ====================
 function pointToSegmentDistance(p, a, b) {
     const ax = p.x - a.x, ay = p.y - a.y;
     const bx = b.x - a.x, by = b.y - a.y;
@@ -1015,7 +1086,7 @@ function initCanvasEvents() {
     });
 }
 
-// ==================== PANEL DE PUNTOS Y PROPIEDADES ====================
+// ==================== PANEL DE PUNTOS Y PROPIEDADES (sin cambios) ====================
 function updatePointsPanel() {
     const panel = document.getElementById('pointsPanel');
     if (!selectedElement || selectedElement.type !== 'line') {
@@ -1178,7 +1249,8 @@ function duplicateElement() {
         db.lines.push(newLine);
         notify(`${orig.tag} duplicada como ${newTag}`);
     }
-    requestRender(); autoCenter();
+    requestRender(); 
+    safeAutoCenter();
 }
 
 function readElement() {
@@ -1211,7 +1283,8 @@ function deleteSelected() {
     selectedPointIndex = -1;
     document.getElementById('propertyPanel').style.display = 'none';
     document.getElementById('pointsPanel').style.display = 'none';
-    requestRender(); autoCenter();
+    requestRender(); 
+    safeAutoCenter();
 }
 
 // ==================== MODAL DEL PROYECTO ====================
@@ -1254,10 +1327,10 @@ function initHotkeys() {
 }
 
 function initToolbar() {
-    document.getElementById('btnNew').onclick = () => { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto nuevo creado"); } };
-    document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); requestRender(); autoCenter(); notify("Cargado"); speakText("Proyecto cargado"); } else notify("No hay guardado",true); };
+    document.getElementById('btnNew').onclick = () => { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); safeAutoCenter(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto nuevo creado"); } };
+    document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); requestRender(); safeAutoCenter(); notify("Cargado"); speakText("Proyecto cargado"); } else notify("No hay guardado",true); };
     document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); speakText("Proyecto guardado"); };
-    document.getElementById('btnReset').onclick = () => { autoCenter(); notify("Vista centrada"); };
+    document.getElementById('btnReset').onclick = () => { safeAutoCenter(); notify("Vista centrada"); };
     document.getElementById('btnUndo').onclick = () => undo();
     document.getElementById('btnRedo').onclick = () => redo();
     document.getElementById('btnMTO').onclick = () => exportarMTO();
@@ -1324,7 +1397,7 @@ function init() {
         if (container.clientWidth > 0 && container.clientHeight > 0) {
             canvas.width = container.clientWidth;
             canvas.height = container.clientHeight;
-            autoCenter();
+            safeAutoCenter();
             requestRender();
         }
     };
@@ -1341,7 +1414,7 @@ function init() {
     
     saveState();
     mostrarModalProyecto();
-    notify("SmartFlow Industrial v10.0 - Listo");
+    notify("SmartFlow Industrial v10.0 - Listo (v2)");
     speakText("Aplicación lista. Use el botón comandos para empezar.", false);
 }
 
