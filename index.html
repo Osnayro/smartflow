@@ -215,7 +215,6 @@ textarea{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
-
 <body>
 
 <div class="toolbar">
@@ -352,7 +351,6 @@ function notify(msg, isError = false) {
 }
 function quitarTildes(texto) { return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
 let cam = { scale: 0.5, panX: 0, panY: 0 };
@@ -482,160 +480,65 @@ function crearLinea(diam,mat,serv){ saveState(); const tag=generarTagLinea(); db
 function conectarEquipos(diam,mat,t1,t2){ const e1=db.equipos.find(e=>e.tag===t1),e2=db.equipos.find(e=>e.tag===t2); if(!e1||!e2){ notify("Equipos no encontrados",true); return; } saveState(); const tag=generarTagLinea(); const p1={x:e1.x+(e1.diametro||2000)/2+500,y:500,z:e1.z},p2={x:e2.x-(e2.diametro||2000)/2-500,y:500,z:e2.z}; db.lines.push({tag,diametro:diam||4,material:mat||'Acero Carbono',servicio:`Conexión ${t1}-${t2}`,puntos3D:[p1,p2],componentes:[]}); notify(`Conexión creada`); requestRender(); safeAutoCenter(); guardarAutoguardado(); }
 function agregarComponente(lineaTag,tipo,subtipo,posicion){ const line=db.lines.find(l=>l.tag===lineaTag); if(!line){ notify(`Línea ${lineaTag} no encontrada`,true); return; } saveState(); if(!line.componentes)line.componentes=[]; const tag=`${tipo.substring(0,3)}-${line.componentes.length+1}`; line.componentes.push({type:tipo,subtipo,tag,posicion:posicion||0.5}); notify(`${tipo} añadido`); requestRender(); guardarAutoguardado(); }
 
-<!-- FIN PARTE 3 -->
-```
-
-Cuando termines, escribe "siguiente" para recibir la Parte 4 con exportaciones, validación ASME, motor NLP y funciones auxiliares.<｜end▁of▁thinking｜>Aquí tienes la Parte 4 de 5 con las funciones de exportación (MTO, PDF, PCF, importación PCF), validación ASME B31.3, motor NLP (contexto, sinónimos, tokenización, procesamiento de comandos) y resumen.
-
-Copia a continuación del final de la Parte 3.
-
----
-
-📁 PARTE 4 de 5: Exportaciones, validación ASME y motor NLP
-
-```javascript
 // ==================== EXPORTACIONES PROFESIONALES ====================
 function exportarMTO(){
-    const items=[];
-    db.equipos.forEach(e=>items.push({Tag:e.tag,Descripcion:`${e.tipo} ${e.diametro||''}mm x ${e.altura||''}mm`,Material:e.material||'CS',Cantidad:1}));
-    db.lines.forEach(l=>{
-        const long=(calcularLongitudLinea(l)/1000).toFixed(2);
-        items.push({Tag:l.tag,Descripcion:`Tubería ${l.diametro||4}"`,Material:l.material||'CS',Cantidad:`${long}m`});
-        if(l.componentes) l.componentes.forEach(c=>items.push({Tag:c.tag||'-',Descripcion:`${c.type} ${c.subtipo||''}`,Material:l.material,Cantidad:1}));
-    });
+    const items=[]; db.equipos.forEach(e=>items.push({Tag:e.tag,Descripcion:`${e.tipo} ${e.diametro||''}mm x ${e.altura||''}mm`,Material:e.material||'CS',Cantidad:1}));
+    db.lines.forEach(l=>{ const long=(calcularLongitudLinea(l)/1000).toFixed(2); items.push({Tag:l.tag,Descripcion:`Tubería ${l.diametro||4}"`,Material:l.material||'CS',Cantidad:`${long}m`}); if(l.componentes) l.componentes.forEach(c=>items.push({Tag:c.tag||'-',Descripcion:`${c.type} ${c.subtipo||''}`,Material:l.material,Cantidad:1})); });
     if(!items.length){ notify("No hay elementos para exportar",true); return; }
-    const ws=XLSX.utils.json_to_sheet(items); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"MTO");
-    XLSX.writeFile(wb,`MTO_${Date.now()}.xlsx`); notify("MTO detallado exportado a Excel");
+    const ws=XLSX.utils.json_to_sheet(items); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"MTO"); XLSX.writeFile(wb,`MTO_${Date.now()}.xlsx`); notify("MTO detallado exportado a Excel");
 }
-
 function exportarPDF(){
-    const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-    const imgData=canvas.toDataURL('image/png');
-    doc.addImage(imgData,'PNG',10,10,277,150);
-    doc.setFontSize(16); doc.text(`PROYECTO: ${proyectoData.nombre||'Industrial'}`,10,175);
-    doc.text(`INGENIERO: ${proyectoData.autor||'No especificado'}`,10,182);
-    doc.text(`FECHA: ${proyectoData.fecha||new Date().toLocaleDateString()}`,10,189);
-    doc.text(`CLIENTE: ${proyectoData.cliente||'No especificado'}`,10,196);
-    doc.setFontSize(10); doc.text(`SmartFlow Industrial Pro v11.0 - Isométrico conforme a ASME B31.3`,10,205);
-    doc.save(`isometrico_${Date.now()}.pdf`); notify("PDF profesional generado");
+    const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'}); const imgData=canvas.toDataURL('image/png');
+    doc.addImage(imgData,'PNG',10,10,277,150); doc.setFontSize(16); doc.text(`PROYECTO: ${proyectoData.nombre||'Industrial'}`,10,175); doc.text(`INGENIERO: ${proyectoData.autor||'No especificado'}`,10,182); doc.text(`FECHA: ${proyectoData.fecha||new Date().toLocaleDateString()}`,10,189); doc.text(`CLIENTE: ${proyectoData.cliente||'No especificado'}`,10,196);
+    doc.setFontSize(10); doc.text(`SmartFlow Industrial Pro v11.0 - Isométrico conforme a ASME B31.3`,10,205); doc.save(`isometrico_${Date.now()}.pdf`); notify("PDF profesional generado");
 }
-
 function exportarPCF(){
     let pcf=`!PCF VERSION 8.0\n!PROJECT "${proyectoData.nombre||'Industrial'}"\n!AUTHOR "${proyectoData.autor||'Ingeniero'}"\n!UNITS MM\n!DATE ${new Date().toISOString().slice(0,10)}\n!STANDARD ISOGEN\n\n`;
-    db.lines.forEach(l=>{
-        if(!l.points3D||l.points3D.length<2)return;
-        pcf+=`PIPE\n    COMPONENT-IDENTIFIER ${l.tag}\n    DIAMETER ${(l.diametro*25.4).toFixed(2)} MM\n    MATERIAL ${l.material==='Acero Carbono'?'CS':(l.material==='Acero Inoxidable'?'SS':l.material)}\n    SCHEDULE ${l.diametro>=6?'80':'40'}\n`;
-        l.points3D.forEach(p=>pcf+=`    POINT ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${p.z.toFixed(2)}\n`);
-        if(l.componentes) l.componentes.forEach(c=>{ pcf+=`    ${c.type} ${c.subtipo||''} ${c.tag}\n`; });
-        pcf+=`ENDPIPE\n\n`;
-    });
-    db.equipos.forEach(e=>{
-        pcf+=`NOZZLE\n    COMPONENT-IDENTIFIER ${e.tag}\n    EQUIPMENT-TYPE ${e.tipo==='tanque'?'TANK':(e.tipo==='bomba'?'PUMP':'VESSEL')}\n    END-POINT ${e.x.toFixed(2)} ${(e.y||500).toFixed(2)} ${e.z.toFixed(2)}\n    DIAMETER ${(e.diametro||2000).toFixed(2)} MM\n    HEIGHT ${(e.altura||3000).toFixed(2)} MM\n    MATERIAL ${e.material==='Acero Carbono'?'CS':'SS'}\nENDNOZZLE\n\n`;
-    });
-    const blob=new Blob([pcf],{type:'text/plain'}); const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download=`${(proyectoData.nombre||'proyecto').replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.pcf`; a.click();
-    notify("PCF exportado con formato ISOGEN");
+    db.lines.forEach(l=>{ if(!l.points3D||l.points3D.length<2)return; pcf+=`PIPE\n    COMPONENT-IDENTIFIER ${l.tag}\n    DIAMETER ${(l.diametro*25.4).toFixed(2)} MM\n    MATERIAL ${l.material==='Acero Carbono'?'CS':(l.material==='Acero Inoxidable'?'SS':l.material)}\n    SCHEDULE ${l.diametro>=6?'80':'40'}\n`; l.points3D.forEach(p=>pcf+=`    POINT ${p.x.toFixed(2)} ${p.y.toFixed(2)} ${p.z.toFixed(2)}\n`); if(l.componentes) l.componentes.forEach(c=>{ pcf+=`    ${c.type} ${c.subtipo||''} ${c.tag}\n`; }); pcf+=`ENDPIPE\n\n`; });
+    db.equipos.forEach(e=>{ pcf+=`NOZZLE\n    COMPONENT-IDENTIFIER ${e.tag}\n    EQUIPMENT-TYPE ${e.tipo==='tanque'?'TANK':(e.tipo==='bomba'?'PUMP':'VESSEL')}\n    END-POINT ${e.x.toFixed(2)} ${(e.y||500).toFixed(2)} ${e.z.toFixed(2)}\n    DIAMETER ${(e.diametro||2000).toFixed(2)} MM\n    HEIGHT ${(e.altura||3000).toFixed(2)} MM\n    MATERIAL ${e.material==='Acero Carbono'?'CS':'SS'}\nENDNOZZLE\n\n`; });
+    const blob=new Blob([pcf],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${(proyectoData.nombre||'proyecto').replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.pcf`; a.click(); notify("PCF exportado con formato ISOGEN");
 }
-
 function importarPCF(){
     const inp=document.createElement('input'); inp.type='file'; inp.accept='.pcf';
-    inp.onchange=(e)=>{
-        const file=e.target.files[0]; const reader=new FileReader();
-        reader.onload=(ev)=>{
-            const text=ev.target.result; const linesTemp=[]; let curPipe=null,curPoints=[];
-            const todas=text.split('\n');
-            for(let linea of todas){
-                const l=linea.trim(); if(l===''||l.startsWith('!'))continue;
-                if(l==='PIPE'){ if(curPipe){ curPipe.points3D=curPoints; linesTemp.push(curPipe); } curPipe={componentes:[],points3D:[],tag:'',diametro:4,material:'Acero Carbono'}; curPoints=[]; }
-                else if(l==='ENDPIPE'){ if(curPipe){ curPipe.points3D=curPoints; linesTemp.push(curPipe); } curPipe=null; }
-                else if(curPipe){
-                    if(l.startsWith('COMPONENT-IDENTIFIER'))curPipe.tag=l.split(/\s+/)[1];
-                    else if(l.startsWith('DIAMETER'))curPipe.diametro=parseFloat(l.split(/\s+/)[1])/25.4;
-                    else if(l.startsWith('MATERIAL'))curPipe.material=l.split(/\s+/)[1]==='CS'?'Acero Carbono':'Acero Inoxidable';
-                    else if(l.startsWith('POINT')){ const m=l.match(/POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i); if(m)curPoints.push({x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])}); }
-                }
-            }
-            db.lines=linesTemp; requestRender(); safeAutoCenter(); notify(`PCF importado: ${linesTemp.length} tuberías`); saveState(); guardarAutoguardado();
-        };
-        reader.readAsText(file);
-    };
-    inp.click();
+    inp.onchange=(e)=>{ const file=e.target.files[0]; const reader=new FileReader(); reader.onload=(ev)=>{ const text=ev.target.result; const linesTemp=[]; let curPipe=null,curPoints=[]; const todas=text.split('\n');
+        for(let linea of todas){ const l=linea.trim(); if(l===''||l.startsWith('!'))continue;
+            if(l==='PIPE'){ if(curPipe){ curPipe.points3D=curPoints; linesTemp.push(curPipe); } curPipe={componentes:[],points3D:[],tag:'',diametro:4,material:'Acero Carbono'}; curPoints=[]; }
+            else if(l==='ENDPIPE'){ if(curPipe){ curPipe.points3D=curPoints; linesTemp.push(curPipe); } curPipe=null; }
+            else if(curPipe){ if(l.startsWith('COMPONENT-IDENTIFIER'))curPipe.tag=l.split(/\s+/)[1]; else if(l.startsWith('DIAMETER'))curPipe.diametro=parseFloat(l.split(/\s+/)[1])/25.4; else if(l.startsWith('MATERIAL'))curPipe.material=l.split(/\s+/)[1]==='CS'?'Acero Carbono':'Acero Inoxidable'; else if(l.startsWith('POINT')){ const m=l.match(/POINT\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i); if(m)curPoints.push({x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])}); } } }
+        db.lines=linesTemp; requestRender(); safeAutoCenter(); notify(`PCF importado: ${linesTemp.length} tuberías`); saveState(); guardarAutoguardado(); }; reader.readAsText(file); }; inp.click();
 }
 
 // ==================== VALIDACIÓN ASME B31.3 ====================
 function verificarNormasASME(){
-    let resultados=[], cumple=true;
-    db.lines.forEach(l=>{
-        const long=calcularLongitudLinea(l); const soportes=l.componentes?.filter(c=>c.type==='SUPPORT').length||0;
-        const necesarios=Math.max(2,Math.floor(long/4000)+1);
-        if(soportes<necesarios){ resultados.push(`❌ ${l.tag}: Faltan ${necesarios-soportes} soportes (requiere ${necesarios})`); cumple=false; }
-        else resultados.push(`✅ ${l.tag}: ${soportes} soportes - OK`);
-        if(l.temperatura>200&&l.material==='PPR'){ resultados.push(`⚠️ ${l.tag}: PPR no recomendado para ${l.temperatura}°C`); cumple=false; }
-        if(l.temperatura>400&&l.material==='Acero Carbono'){ resultados.push(`⚠️ ${l.tag}: Acero Carbono límite 400°C`); cumple=false; }
-    });
-    const resumen=`=== VERIFICACIÓN ASME B31.3 ===\n${resultados.join('\n')}\n${cumple?'✅ El proyecto cumple con los requisitos mínimos':'❌ Se requieren correcciones'}`;
-    notify(resumen,!cumple); return cumple;
+    let resultados=[], cumple=true; db.lines.forEach(l=>{ const long=calcularLongitudLinea(l); const soportes=l.componentes?.filter(c=>c.type==='SUPPORT').length||0; const necesarios=Math.max(2,Math.floor(long/4000)+1);
+        if(soportes<necesarios){ resultados.push(`❌ ${l.tag}: Faltan ${necesarios-soportes} soportes (requiere ${necesarios})`); cumple=false; } else resultados.push(`✅ ${l.tag}: ${soportes} soportes - OK`);
+        if(l.temperatura>200&&l.material==='PPR'){ resultados.push(`⚠️ ${l.tag}: PPR no recomendado para ${l.temperatura}°C`); cumple=false; } if(l.temperatura>400&&l.material==='Acero Carbono'){ resultados.push(`⚠️ ${l.tag}: Acero Carbono límite 400°C`); cumple=false; } });
+    const resumen=`=== VERIFICACIÓN ASME B31.3 ===\n${resultados.join('\n')}\n${cumple?'✅ El proyecto cumple con los requisitos mínimos':'❌ Se requieren correcciones'}`; notify(resumen,!cumple); return cumple;
 }
 
 // ==================== MOTOR NLP ====================
 const contexto={ultimoMaterial:'Acero Carbono',ultimoDiametro:2400,ultimaAltura:4000,ultimaSeparacion:5000,ultimoDiametroLinea:4,ultimaPotencia:75};
-const sinonimos={
-    verbos:{crear:['crear','agregar','generar','nuevo'],conectar:['conectar','unir']},
-    entidades:{tanque:['tanque','tk'],bomba:['bomba','pump'],linea:['linea','tuberia'],intercambiador:['intercambiador','he']},
-    materiales:{ppr:['ppr','polipropileno'],cs:['cs','acero carbono'],ss:['ss','inox','inoxidable'],hdpe:['hdpe'],pvc:['pvc'],frp:['frp']},
-    configuraciones:{serie:['serie'],paralelo:['paralelo']}
-};
-function buscarEnSinonimos(palabra,categoria){
-    const dic=sinonimos[categoria]; if(!dic)return null;
-    for(const [clave,lista] of Object.entries(dic)) if(lista.some(sin=>sin===palabra||sin.startsWith(palabra)))return clave;
-    return null;
-}
-function extraerValorConUnidad(tokens,indice){
-    if(indice>=tokens.length)return null; const token=tokens[indice]; const num=parseFloat(token); if(isNaN(num))return null;
-    let unidad=''; if(indice+1<tokens.length){ const sig=tokens[indice+1].toLowerCase(); if(['mm','cm','m','metros','pulgadas','pulg','"','hp'].includes(sig))unidad=sig; }
-    let valor=num; if(unidad.startsWith('m')&&!unidad.includes('mm'))valor*=1000; else if(unidad==='cm')valor*=10; else if(unidad==='pulgadas'||unidad==='pulg'||unidad==='"')valor*=25.4;
-    return {valor,unidad,tokensConsumidos:unidad?2:1};
-}
+const sinonimos={verbos:{crear:['crear','agregar','generar','nuevo'],conectar:['conectar','unir']},entidades:{tanque:['tanque','tk'],bomba:['bomba','pump'],linea:['linea','tuberia'],intercambiador:['intercambiador','he']},materiales:{ppr:['ppr','polipropileno'],cs:['cs','acero carbono'],ss:['ss','inox','inoxidable'],hdpe:['hdpe'],pvc:['pvc'],frp:['frp']},configuraciones:{serie:['serie'],paralelo:['paralelo']}};
+function buscarEnSinonimos(palabra,categoria){ const dic=sinonimos[categoria]; if(!dic)return null; for(const [clave,lista] of Object.entries(dic)) if(lista.some(sin=>sin===palabra||sin.startsWith(palabra)))return clave; return null; }
+function extraerValorConUnidad(tokens,indice){ if(indice>=tokens.length)return null; const token=tokens[indice]; const num=parseFloat(token); if(isNaN(num))return null; let unidad=''; if(indice+1<tokens.length){ const sig=tokens[indice+1].toLowerCase(); if(['mm','cm','m','metros','pulgadas','pulg','"','hp'].includes(sig))unidad=sig; } let valor=num; if(unidad.startsWith('m')&&!unidad.includes('mm'))valor*=1000; else if(unidad==='cm')valor*=10; else if(unidad==='pulgadas'||unidad==='pulg'||unidad==='"')valor*=25.4; return {valor,unidad,tokensConsumidos:unidad?2:1}; }
 function tokenizar(comando){ return quitarTildes(comando.toLowerCase()).replace(/[.,;:!?]/g,' ').split(/\s+/).filter(t=>t.length>0); }
 function procesarComandoInteligente(comando){
-    const tokens=tokenizar(comando); if(!tokens.length)return; notify(`Procesando: "${comando}"...`);
-    let entidad=null; for(const token of tokens){ const e=buscarEnSinonimos(token,'entidades'); if(e){ entidad=e; break; } }
-    if(!entidad){ if(tokens.some(t=>t.includes('tanque')))entidad='tanque'; else if(tokens.some(t=>t.includes('bomba')))entidad='bomba'; else if(tokens.some(t=>t.includes('linea')))entidad='linea'; }
-    let cantidad=1; for(let i=0;i<tokens.length;i++){ const num=parseInt(tokens[i]); if(!isNaN(num)&&tokens[i]===num.toString()&&!['mm','cm','m'].includes(tokens[i+1])){ cantidad=num; break; } }
-    let configuracion='paralelo'; for(const token of tokens){ const conf=buscarEnSinonimos(token,'configuraciones'); if(conf)configuracion=conf; }
-    
-    if(entidad==='tanque'){
-        let d=contexto.ultimoDiametro,a=contexto.ultimaAltura,s=contexto.ultimaSeparacion,m=contexto.ultimoMaterial;
-        for(let i=0;i<tokens.length;i++){
-            if(tokens[i].startsWith('diam')){ const e=extraerValorConUnidad(tokens,i+1); if(e){ d=e.valor; i+=e.tokensConsumidos; } }
-            else if(tokens[i].startsWith('alt')){ const e=extraerValorConUnidad(tokens,i+1); if(e){ a=e.valor; i+=e.tokensConsumidos; } }
-            else if(tokens[i].startsWith('sep')){ const e=extraerValorConUnidad(tokens,i+1); if(e){ s=e.valor; i+=e.tokensConsumidos; } }
-            else{ const mat=buscarEnSinonimos(tokens[i],'materiales'); if(mat)m=mat.toUpperCase(); }
-        }
-        contexto.ultimoDiametro=d; contexto.ultimaAltura=a; contexto.ultimoMaterial=m; contexto.ultimaSeparacion=s;
-        if(cantidad>1)crearEquiposMasivos('tanque',cantidad,{diametro:d,altura:a,material:m},configuracion,s); else crearTanque(d,a,m,'Proceso');
-    }else if(entidad==='bomba'){
-        let p=contexto.ultimaPotencia,s=contexto.ultimaSeparacion,m=contexto.ultimoMaterial;
-        if(cantidad>1)crearEquiposMasivos('bomba',cantidad,{potencia:p,material:m,diametro:600,altura:800},configuracion,s); else crearBomba(p,m,'Bombeo');
-    }else if(entidad==='linea'){
-        let d=contexto.ultimoDiametroLinea,m=contexto.ultimoMaterial;
-        for(let i=0;i<tokens.length;i++){ if(tokens[i].includes('pulg')){ const num=parseFloat(tokens[i-1]); if(!isNaN(num))d=num; } else{ const mat=buscarEnSinonimos(tokens[i],'materiales'); if(mat)m=mat.toUpperCase(); } }
-        contexto.ultimoDiametroLinea=d; contexto.ultimoMaterial=m; crearLinea(d,m,'Proceso');
-    }else if(tokens.includes('conectar')){
-        const tags=comando.match(/[A-Z]{2,3}-\d{2,3}/gi); if(tags&&tags.length>=2) conectarEquipos(contexto.ultimoDiametroLinea,contexto.ultimoMaterial,tags[0].toUpperCase(),tags[1].toUpperCase()); else notify("Tags no encontrados",true);
-    }else if(tokens.includes('resumen')) generarResumenCompleto();
-    else if(tokens.includes('pcf')) exportarPCF();
-    else if(tokens.includes('normas')) verificarNormasASME();
-    else notify(`Comando no reconocido`,true);
+    const tokens=tokenizar(comando); if(!tokens.length)return; notify(`Procesando: "${comando}"...`); let entidad=null; for(const token of tokens){ const e=buscarEnSinonimos(token,'entidades'); if(e){ entidad=e; break; } } if(!entidad){ if(tokens.some(t=>t.includes('tanque')))entidad='tanque'; else if(tokens.some(t=>t.includes('bomba')))entidad='bomba'; else if(tokens.some(t=>t.includes('linea')))entidad='linea'; }
+    let cantidad=1; for(let i=0;i<tokens.length;i++){ const num=parseInt(tokens[i]); if(!isNaN(num)&&tokens[i]===num.toString()&&!['mm','cm','m'].includes(tokens[i+1])){ cantidad=num; break; } } let configuracion='paralelo'; for(const token of tokens){ const conf=buscarEnSinonimos(token,'configuraciones'); if(conf)configuracion=conf; }
+    if(entidad==='tanque'){ let d=contexto.ultimoDiametro,a=contexto.ultimaAltura,s=contexto.ultimaSeparacion,m=contexto.ultimoMaterial;
+        for(let i=0;i<tokens.length;i++){ if(tokens[i].startsWith('diam')){ const e=extraerValorConUnidad(tokens,i+1); if(e){ d=e.valor; i+=e.tokensConsumidos; } } else if(tokens[i].startsWith('alt')){ const e=extraerValorConUnidad(tokens,i+1); if(e){ a=e.valor; i+=e.tokensConsumidos; } } else if(tokens[i].startsWith('sep')){ const e=extraerValorConUnidad(tokens,i+1); if(e){ s=e.valor; i+=e.tokensConsumidos; } } else{ const mat=buscarEnSinonimos(tokens[i],'materiales'); if(mat)m=mat.toUpperCase(); } }
+        contexto.ultimoDiametro=d; contexto.ultimaAltura=a; contexto.ultimoMaterial=m; contexto.ultimaSeparacion=s; if(cantidad>1)crearEquiposMasivos('tanque',cantidad,{diametro:d,altura:a,material:m},configuracion,s); else crearTanque(d,a,m,'Proceso');
+    }else if(entidad==='bomba'){ let p=contexto.ultimaPotencia,s=contexto.ultimaSeparacion,m=contexto.ultimoMaterial; if(cantidad>1)crearEquiposMasivos('bomba',cantidad,{potencia:p,material:m,diametro:600,altura:800},configuracion,s); else crearBomba(p,m,'Bombeo');
+    }else if(entidad==='linea'){ let d=contexto.ultimoDiametroLinea,m=contexto.ultimoMaterial; for(let i=0;i<tokens.length;i++){ if(tokens[i].includes('pulg')){ const num=parseFloat(tokens[i-1]); if(!isNaN(num))d=num; } else{ const mat=buscarEnSinonimos(tokens[i],'materiales'); if(mat)m=mat.toUpperCase(); } } contexto.ultimoDiametroLinea=d; contexto.ultimoMaterial=m; crearLinea(d,m,'Proceso');
+    }else if(tokens.includes('conectar')){ const tags=comando.match(/[A-Z]{2,3}-\d{2,3}/gi); if(tags&&tags.length>=2) conectarEquipos(contexto.ultimoDiametroLinea,contexto.ultimoMaterial,tags[0].toUpperCase(),tags[1].toUpperCase()); else notify("Tags no encontrados",true);
+    }else if(tokens.includes('resumen')) generarResumenCompleto(); else if(tokens.includes('pcf')) exportarPCF(); else if(tokens.includes('normas')) verificarNormasASME(); else notify(`Comando no reconocido`,true);
 }
 function generarResumenCompleto(){
     let resumen=`=== RESUMEN DEL PROYECTO ===\n`; resumen+=`Proyecto: ${proyectoData.nombre||'Sin nombre'}\nIngeniero: ${proyectoData.autor||'No especificado'}\nCliente: ${proyectoData.cliente||'No especificado'}\nFecha: ${proyectoData.fecha||new Date().toLocaleDateString()}\n\n`;
     resumen+=`📦 EQUIPOS (${db.equipos.length}):\n`; db.equipos.forEach(e=>{ resumen+=`  • ${e.tag}: ${e.tipo} ${e.diametro||'?'}mm x ${e.altura||'?'}mm, ${e.material||'CS'}, ${e.servicio||'Proceso'}\n`; });
     resumen+=`\n📏 LÍNEAS (${db.lines.length}):\n`; let longTotal=0; db.lines.forEach(l=>{ const long=calcularLongitudLinea(l); longTotal+=long; resumen+=`  • ${l.tag}: ${l.diametro||4}" ${l.material||'CS'}, ${l.servicio||'Proceso'}, longitud ${(long/1000).toFixed(2)}m\n`; });
-    resumen+=`\n📐 LONGITUD TOTAL TUBERÍA: ${(longTotal/1000).toFixed(2)} metros\n`;
-    let totalValv=0,totalCodos=0,totalInst=0,totalSop=0; db.lines.forEach(l=>{ if(l.componentes) l.componentes.forEach(c=>{ if(c.type==='VALVE')totalValv++; else if(c.type==='ELBOW')totalCodos++; else if(c.type==='INSTRUMENT')totalInst++; else if(c.type==='SUPPORT')totalSop++; }); });
-    resumen+=`\n🔧 COMPONENTES: Válvulas:${totalValv}, Codos:${totalCodos}, Instrumentos:${totalInst}, Soportes:${totalSop}\n`;
-    notify(resumen); return resumen;
+    resumen+=`\n📐 LONGITUD TOTAL TUBERÍA: ${(longTotal/1000).toFixed(2)} metros\n`; let totalValv=0,totalCodos=0,totalInst=0,totalSop=0; db.lines.forEach(l=>{ if(l.componentes) l.componentes.forEach(c=>{ if(c.type==='VALVE')totalValv++; else if(c.type==='ELBOW')totalCodos++; else if(c.type==='INSTRUMENT')totalInst++; else if(c.type==='SUPPORT')totalSop++; }); });
+    resumen+=`\n🔧 COMPONENTES: Válvulas:${totalValv}, Codos:${totalCodos}, Instrumentos:${totalInst}, Soportes:${totalSop}\n`; notify(resumen); return resumen;
 }
 
 // ==================== PANEL DE PUNTOS ====================
@@ -741,12 +644,11 @@ function deleteSelected() {
 }
 
 // ==================== EVENTOS DEL CANVAS ====================
-function pointToSegmentDistance(p, a, b) { /* ... función existente ... */ const ax=p.x-a.x, ay=p.y-a.y, bx=b.x-a.x, by=b.y-a.y, dot=ax*bx+ay*by, len2=bx*bx+by*by; if(len2===0)return Math.hypot(ax,ay); let t=dot/len2; t=Math.max(0,Math.min(1,t)); const px=a.x+t*bx, py=a.y+t*by; return Math.hypot(p.x-px,p.y-py); }
+function pointToSegmentDistance(p, a, b) { const ax=p.x-a.x, ay=p.y-a.y, bx=b.x-a.x, by=b.y-a.y, dot=ax*bx+ay*by, len2=bx*bx+by*by; if(len2===0)return Math.hypot(ax,ay); let t=dot/len2; t=Math.max(0,Math.min(1,t)); const px=a.x+t*bx, py=a.y+t*by; return Math.hypot(p.x-px,p.y-py); }
 function getCanvasCoords(e) { const rect=canvas.getBoundingClientRect(); let cx,cy; if(e.touches){ cx=e.touches[0].clientX; cy=e.touches[0].clientY; } else { cx=e.clientX; cy=e.clientY; } const mx=cx-rect.left, my=cy-rect.top; const c30=0.866,s30=0.5; const xc=(mx-cam.panX)/cam.scale, yc=(my-cam.panY)/cam.scale; const z=(xc/c30-yc/s30)/2, xw=(xc/c30+yc/s30)/2; return {mx,my,worldX:xw,worldZ:z}; }
 function handleMove(e) { e.preventDefault(); const coords=getCanvasCoords(e); currentCursor={x:coords.worldX,y:0,z:coords.worldZ}; if(dragging){ if(selectedElement&&selectedElement.type==='equipment'&&editModeActive){ const dx=(coords.mx-lastPos.x)/cam.scale, dy=(coords.my-lastPos.y)/cam.scale; selectedElement.obj.x+=dx; selectedElement.obj.z+=dy; if(snapEnabled){ selectedElement.obj.x=Math.round(selectedElement.obj.x/500)*500; selectedElement.obj.z=Math.round(selectedElement.obj.z/500)*500; } } else if(!selectedElement||!editModeActive){ cam.panX+=coords.mx-lastPos.x; cam.panY+=coords.my-lastPos.y; } lastPos={x:coords.mx,y:coords.my}; } requestRender(); }
 function handleStart(e) { e.preventDefault(); const coords=getCanvasCoords(e); lastPos={x:coords.mx,y:coords.my}; dragging=true; if(measuringMode){ if(!tempMeasurePoint){ tempMeasurePoint={x:coords.worldX,y:0,z:coords.worldZ}; notify("Punto A marcado"); } else { const d=Math.hypot(coords.worldX-tempMeasurePoint.x,coords.worldZ-tempMeasurePoint.z); notify(`Distancia: ${d>=1000?(d/1000).toFixed(2)+'m':d.toFixed(0)+'mm'}`); tempMeasurePoint=null; } requestRender(); return; } let hit=false; for(let eq of db.equipos){ const p=project(eq); const r=((eq.diametro||2000)/2)*cam.scale, h=(eq.altura||3000)*cam.scale; if(coords.mx>p.x-r&&coords.mx<p.x+r&&coords.my>p.y-h&&coords.my<p.y){ selectedElement={type:'equipment',obj:eq}; hit=true; notify(`${eq.tag} seleccionado`); break; } } if(!hit){ for(let line of db.lines){ if(!line.points3D)continue; let minD=Infinity; for(let i=0;i<line.points3D.length-1;i++){ const p1=project(line.points3D[i]), p2=project(line.points3D[i+1]); const d=pointToSegmentDistance({x:coords.mx,y:coords.my},p1,p2); if(d<minD)minD=d; } if(minD<15){ selectedElement={type:'line',obj:line}; selectedPointIndex=-1; hit=true; notify(`${line.tag} seleccionada`); break; } } } if(!hit){ selectedElement=null; selectedPointIndex=-1; } requestRender(); }
 function handleEnd(e) { e.preventDefault(); if(dragging&&selectedElement){ saveState(); guardarAutoguardado(); } dragging=false; }
-
 function initCanvasEvents(){
     canvas.addEventListener('mousemove',handleMove); canvas.addEventListener('touchmove',handleMove,{passive:false});
     canvas.addEventListener('mousedown',handleStart); canvas.addEventListener('touchstart',handleStart,{passive:false});
@@ -821,4 +723,3 @@ setTimeout(init,30);
 </script>
 </body>
 </html>
-<!-- FIN PARTE 5 -->
