@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<title>SmartFlow Industrial v10.0 - Canvas Isométrico Corregido v2</title>
+<title>SmartFlow Industrial v10.0 - Completo</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -317,7 +316,7 @@ resumen"></textarea>
 </div>
 
 <script>
-// ==================== SISTEMA DE VOZ ====================
+// ==================== SISTEMA DE VOZ SIMPLIFICADO (FUNCIONAL EN IPHONE) ====================
 let speechQueue = [];
 let isSpeaking = false;
 let voiceEnabled = true;
@@ -328,10 +327,13 @@ function speakText(text, isUrgent) {
     if (!window.speechSynthesis) return;
     
     if (isUrgent) {
-        try { window.speechSynthesis.cancel(); } catch(e) {}
+        try {
+            window.speechSynthesis.cancel();
+        } catch(e) {}
         speechQueue = [];
         isSpeaking = false;
     }
+    
     speechQueue.push(text);
     processSpeechQueue();
 }
@@ -339,19 +341,40 @@ function speakText(text, isUrgent) {
 function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     if (!window.speechSynthesis) return;
+    
     isSpeaking = true;
     let text = speechQueue.shift();
     let utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
+    
     const indicator = document.getElementById('voiceIndicator');
     if (indicator) indicator.classList.add('active');
-    utterance.onend = () => { isSpeaking = false; if(indicator) indicator.classList.remove('active'); processSpeechQueue(); };
-    utterance.onerror = () => { isSpeaking = false; if(indicator) indicator.classList.remove('active'); processSpeechQueue(); };
-    try { window.speechSynthesis.speak(utterance); } catch(e) { isSpeaking = false; processSpeechQueue(); }
+    
+    utterance.onend = function() {
+        isSpeaking = false;
+        if (indicator) indicator.classList.remove('active');
+        processSpeechQueue();
+    };
+    
+    utterance.onerror = function() {
+        isSpeaking = false;
+        if (indicator) indicator.classList.remove('active');
+        processSpeechQueue();
+    };
+    
+    try {
+        window.speechSynthesis.speak(utterance);
+    } catch(e) {
+        console.warn("Error en speak:", e);
+        isSpeaking = false;
+        if (indicator) indicator.classList.remove('active');
+        processSpeechQueue();
+    }
 }
 
+// ==================== NOTIFY MEJORADA CON VOZ SIMPLIFICADA ====================
 function notify(msg, isError = false) {
     const container = document.getElementById('notificationContainer');
     const notif = document.createElement('div');
@@ -359,9 +382,24 @@ function notify(msg, isError = false) {
     notif.textContent = msg;
     container.appendChild(notif);
     document.getElementById('statusMsg').textContent = msg;
-    if (voiceEnabled && window.speechSynthesis) speakText(msg, isError);
-    setTimeout(() => { notif.style.opacity = '1'; notif.style.transform = 'translateY(0)'; }, 10);
-    setTimeout(() => { notif.style.opacity = '0'; notif.style.transform = 'translateY(-10px)'; setTimeout(() => notif.remove(), 300); }, 4000);
+    
+    if (voiceEnabled && window.speechSynthesis) {
+        try {
+            speakText(msg, isError);
+        } catch(e) {
+            console.warn("Error al hablar:", e);
+        }
+    }
+    
+    setTimeout(() => { 
+        notif.style.opacity = '1'; 
+        notif.style.transform = 'translateY(0)'; 
+    }, 10);
+    setTimeout(() => { 
+        notif.style.opacity = '0'; 
+        notif.style.transform = 'translateY(-10px)'; 
+        setTimeout(() => notif.remove(), 300); 
+    }, 4000);
 }
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
@@ -382,6 +420,11 @@ let proyectoData = { nombre: '', autor: '', fecha: '', cliente: '' };
 const canvas = document.getElementById('isoCanvas');
 const ctx = canvas.getContext('2d');
 
+// ==================== FUNCIONES AUXILIARES ====================
+function hablar(msg) {
+    speakText(msg, false);
+}
+
 // ==================== HISTORIAL ====================
 function saveState() {
     const state = JSON.parse(JSON.stringify({ equipos: db.equipos, lines: db.lines }));
@@ -399,9 +442,7 @@ function undo() {
     selectedElement = null; selectedPointIndex = -1;
     document.getElementById('propertyPanel').style.display = 'none';
     document.getElementById('pointsPanel').style.display = 'none';
-    requestRender(); 
-    safeAutoCenter();
-    notify("Deshecho");
+    requestRender(); notify("Deshecho");
 }
 function redo() {
     if (history.future.length === 0) { notify("Nada que rehacer", true); return; }
@@ -411,9 +452,7 @@ function redo() {
     db.equipos = next.equipos || [];
     db.lines = next.lines || [];
     selectedElement = null;
-    requestRender(); 
-    safeAutoCenter();
-    notify("Rehecho");
+    requestRender(); notify("Rehecho");
 }
 
 // ==================== RENDERIZADO ====================
@@ -450,19 +489,11 @@ function drawEquipment(e) {
     const p = project(e);
     const r = ((e.diametro || 2000) / 2) * cam.scale;
     const h = (e.altura || 3000) * cam.scale;
-    
     ctx.fillStyle = getMaterialColor(e.material || 'Acero Carbono');
     ctx.fillRect(p.x - r, p.y - h, r * 2, h);
-    
-    // Borde blanco semitransparente para depuración (se puede quitar luego)
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(p.x - r, p.y - h, r * 2, h);
-    
     ctx.beginPath();
     ctx.ellipse(p.x, p.y - h, r, r * 0.5, 0, 0, 2 * Math.PI);
     ctx.fill();
-    
     if (selectedElement?.obj === e && selectedElement?.type === 'equipment') {
         ctx.strokeStyle = 'var(--primary)';
         ctx.lineWidth = 3;
@@ -553,114 +584,22 @@ function render() {
     }
     document.getElementById('coords').innerHTML = `X:${Math.round(currentCursor.x)} Z:${Math.round(currentCursor.z)}`;
 }
-
-// ==================== AUTO CENTER MEJORADO (con proyección real de bounding box) ====================
-function safeAutoCenter() {
-    // Espera a que el canvas tenga dimensiones
-    if (!canvas.width || !canvas.height) {
-        setTimeout(() => safeAutoCenter(), 50);
-        return;
-    }
-    autoCenter();
-}
-
 function autoCenter() {
-    if (db.equipos.length === 0 && db.lines.length === 0) {
-        cam.panX = canvas.width / 2;
-        cam.panY = canvas.height / 2;
-        cam.scale = 0.6;
-        requestRender();
-        return;
+    if (db.equipos.length === 0) {
+        cam.panX = canvas.width / 2; cam.panY = canvas.height / 2; cam.scale = 0.5;
+    } else {
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+        db.equipos.forEach(e => { minX = Math.min(minX, e.x); maxX = Math.max(maxX, e.x); minZ = Math.min(minZ, e.z); maxZ = Math.max(maxZ, e.z); });
+        const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+        const center = project({ x: cx, y: 0, z: cz });
+        cam.panX = canvas.width / 2 - center.x;
+        cam.panY = canvas.height / 2 - center.y;
+        const maxDim = Math.max(maxX - minX, maxZ - minZ);
+        cam.scale = Math.min(0.8, canvas.width / (maxDim + 2000));
+        cam.scale = Math.max(cam.scale, 0.2);
     }
-    
-    // Recopilar todos los puntos significativos (equipos y puntos de líneas)
-    let points = [];
-    db.equipos.forEach(e => {
-        // Consideramos las esquinas del bounding box del equipo (simplificado como su posición central)
-        // Para un mejor ajuste, tomamos el centro y los extremos en XZ
-        const w = (e.diametro || 2000) / 2;
-        const d = (e.altura || 3000); // no afecta XZ, pero lo dejamos
-        points.push({ x: e.x - w, y: e.y || 0, z: e.z - w });
-        points.push({ x: e.x + w, y: e.y || 0, z: e.z + w });
-    });
-    db.lines.forEach(l => {
-        if (l.points3D) {
-            l.points3D.forEach(p => points.push({ x: p.x, y: p.y || 0, z: p.z }));
-        }
-    });
-    
-    if (points.length === 0) {
-        cam.panX = canvas.width / 2;
-        cam.panY = canvas.height / 2;
-        cam.scale = 0.6;
-        requestRender();
-        return;
-    }
-    
-    // Encontrar bounding box en coordenadas de mundo
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    points.forEach(p => {
-        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
-    });
-    
-    // Agregar margen (20%)
-    const marginX = Math.max((maxX - minX) * 0.2, 2000);
-    const marginZ = Math.max((maxZ - minZ) * 0.2, 2000);
-    minX -= marginX; maxX += marginX;
-    minZ -= marginZ; maxZ += marginZ;
-    
-    // Calcular las 8 esquinas del bounding box 3D
-    const corners = [
-        { x: minX, y: minY, z: minZ }, { x: maxX, y: minY, z: minZ },
-        { x: minX, y: maxY, z: minZ }, { x: maxX, y: maxY, z: minZ },
-        { x: minX, y: minY, z: maxZ }, { x: maxX, y: minY, z: maxZ },
-        { x: minX, y: maxY, z: maxZ }, { x: maxX, y: maxY, z: maxZ }
-    ];
-    
-    // Proyectar las esquinas con escala = 1.0 y pan = 0 para medir extensión en píxeles
-    const proj = corners.map(c => {
-        const c30 = 0.866, s30 = 0.5;
-        const x = (c.x - c.z) * c30;
-        const y = (c.x + c.z) * s30 - c.y;
-        return { x, y };
-    });
-    
-    let minProjX = Infinity, maxProjX = -Infinity, minProjY = Infinity, maxProjY = -Infinity;
-    proj.forEach(p => {
-        minProjX = Math.min(minProjX, p.x); maxProjX = Math.max(maxProjX, p.x);
-        minProjY = Math.min(minProjY, p.y); maxProjY = Math.max(maxProjY, p.y);
-    });
-    
-    const projWidth = maxProjX - minProjX;
-    const projHeight = maxProjY - minProjY;
-    
-    // Calcular escala para que quepa en el canvas con un margen del 5%
-    const scaleX = (canvas.width * 0.9) / projWidth;
-    const scaleY = (canvas.height * 0.9) / projHeight;
-    let newScale = Math.min(scaleX, scaleY, 1.5); // máximo 1.5 para no exagerar zoom in
-    newScale = Math.max(newScale, 0.1); // mínimo 0.1
-    
-    cam.scale = newScale;
-    
-    // Calcular el centro del bounding box en proyección
-    const centerProj = {
-        x: (minProjX + maxProjX) / 2,
-        y: (minProjY + maxProjY) / 2
-    };
-    
-    // Ajustar pan para que el centro proyectado quede en el centro del canvas
-    cam.panX = canvas.width / 2 - centerProj.x * cam.scale;
-    cam.panY = canvas.height / 2 - centerProj.y * cam.scale;
-    
-    console.log(`AutoCenter: bounding world X[${minX.toFixed(0)}, ${maxX.toFixed(0)}] Z[${minZ.toFixed(0)}, ${maxZ.toFixed(0)}]`);
-    console.log(`Proj size: ${projWidth.toFixed(0)} x ${projHeight.toFixed(0)}, scale=${cam.scale.toFixed(4)}`);
-    
     requestRender();
 }
-
-// ==================== CREACIÓN DE EQUIPOS ====================
 function generarTag(prefix) {
     let num = 1;
     while (db.equipos.some(e => e.tag === `${prefix}-${String(num).padStart(2, '0')}`)) num++;
@@ -681,13 +620,14 @@ function calcularLongitudLinea(line) {
     return total;
 }
 
+// ==================== CREACIÓN DE EQUIPOS ====================
+
 function crearTanque(diametro, altura, material, servicio) {
     saveState();
     const tag = generarTag('TK');
     db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 4000, y: 0, z: 0, tipo: 'tanque', diametro: diametro || 2400, altura: altura || 4000, material: material || 'Acero Carbono', servicio: servicio || 'Almacenamiento', presion: 1, temperatura: 50 });
     notify(`Tanque ${tag}: ${diametro || 2400}mm x ${altura || 4000}mm ${material || 'Acero Carbono'} - ${servicio || 'Almacenamiento'}`);
-    requestRender(); 
-    safeAutoCenter();
+    requestRender(); autoCenter();
 }
 
 function crearBomba(potencia, caudal, material, servicio, subTipo) {
@@ -695,8 +635,7 @@ function crearBomba(potencia, caudal, material, servicio, subTipo) {
     const tag = generarTag('P');
     db.equipos.push({ type: 'equipment', tag, x: db.equipos.length * 3500, y: 0, z: 0, tipo: 'bomba', subTipo: subTipo || 'centrifuga', diametro: 600, altura: 800, potencia: potencia || 75, caudal: caudal || 500, material: material || 'Acero Carbono', servicio: servicio || 'Bombeo', presion: 10, temperatura: 60 });
     notify(`Bomba ${tag}: ${potencia || 75}HP, ${caudal || 500}m³/h - ${servicio || 'Bombeo'}`);
-    requestRender(); 
-    safeAutoCenter();
+    requestRender();
 }
 
 function crearEquiposMasivos(tipo, cantidad, parametros, configuracion, separacion) {
@@ -716,19 +655,7 @@ function crearEquiposMasivos(tipo, cantidad, parametros, configuracion, separaci
         db.equipos.push(equipo);
     }
     notify(`Creados ${cantidad} ${tipo}s en configuración ${configuracion}, separación ${sep/1000}m`);
-    requestRender(); 
-    // Pequeño retraso para asegurar que el canvas esté listo
-    setTimeout(() => safeAutoCenter(), 50);
-}
-
-function crearLinea(diametroPulgadas, material, servicio) {
-    saveState();
-    const tag = generarTagLinea();
-    const puntos = [{ x: 0, y: 500, z: 0 }, { x: 3000, y: 500, z: 2000 }];
-    db.lines.push({ tag, diametro: diametroPulgadas || 4, material: material || 'Acero Carbono', servicio: servicio || 'Proceso', puntos3D: puntos, componentes: [] });
-    notify(`Línea ${tag} creada (${diametroPulgadas || 4}" ${material || 'Acero Carbono'})`);
-    requestRender(); 
-    safeAutoCenter();
+    requestRender(); autoCenter();
 }
 
 function conectarEquipos(diametroPulgadas, material, tagOrigen, tagDestino) {
@@ -741,8 +668,7 @@ function conectarEquipos(diametroPulgadas, material, tagOrigen, tagDestino) {
     const p2 = { x: e2.x - (e2.diametro || 2000)/2 - 500, y: 500, z: e2.z };
     db.lines.push({ tag, diametro: diametroPulgadas || 4, material: material || 'Acero Carbono', servicio: `Conexión ${tagOrigen}-${tagDestino}`, puntos3D: [p1, p2], componentes: [], presion: 10, temperatura: 100 });
     notify(`Conexión ${tagOrigen}-${tagDestino} creada (${diametroPulgadas || 4}" ${material || 'Acero Carbono'})`);
-    requestRender(); 
-    safeAutoCenter();
+    requestRender();
 }
 
 function agregarValvula(lineaTag, tipo, posicion) {
@@ -875,8 +801,7 @@ function importarPCF() {
                 }
             }
             db.lines = linesTemp;
-            requestRender(); 
-            safeAutoCenter();
+            requestRender(); autoCenter();
             notify(`PCF importado: ${linesTemp.length} tuberías`);
             saveState();
         };
@@ -885,11 +810,12 @@ function importarPCF() {
     inp.click();
 }
 
-// ==================== PROCESAR COMANDO ====================
+// ==================== PROCESAR COMANDO (MEJORADA CON PARALELO/SERIE/SEPARACIÓN) ====================
 function procesarComando(comando) {
     const c = comando.toLowerCase();
     notify(`Procesando: "${comando}"...`);
     
+    // --- FUNCIÓN DE EXTRACCIÓN MEJORADA ---
     const extraerMedida = (texto, palabraClave, defecto) => {
         const regex = new RegExp(`(?:${palabraClave})\\s*(?:de)?\\s*(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?|(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|hp|pulgadas?|")?\\s*(?:de)?\\s*(?:${palabraClave})`, "i");
         const match = texto.match(regex);
@@ -903,6 +829,7 @@ function procesarComando(comando) {
         return defecto;
     };
 
+    // Detectar cantidad y configuración para cualquier equipo
     let cantidad = 1;
     const cantMatch = c.match(/(\d+)\s+(?:tanque|bomba|intercambiador|filtro|torre)/);
     if (cantMatch) cantidad = parseInt(cantMatch[1]);
@@ -916,63 +843,70 @@ function procesarComando(comando) {
     else if (c.includes("inox") || c.includes("inoxidable")) material = "Acero Inoxidable";
     else if (c.includes("hdpe")) material = "HDPE";
 
+    // --- CASO: TANQUES ---
     if (c.includes("tanque")) {
         const d = extraerMedida(c, "diametro", 2400);
         const h = extraerMedida(c, "altura", 4000);
         const sep = extraerMedida(c, "separacion", (d + 800));
+
         if (cantidad > 1) {
             crearEquiposMasivos('tanque', cantidad, { diametro: d, altura: h, material }, configuracion, sep);
-            speakText(`Instalados ${cantidad} tanques en ${configuracion} con separación de ${sep} milímetros.`);
+            hablar(`Instalados ${cantidad} tanques en ${configuracion} con separación de ${sep} milímetros.`);
         } else {
             crearTanque(d, h, material, "Proceso");
-            speakText(`Tanque único de ${d}mm diámetro y ${h}mm altura creado.`);
+            hablar(`Tanque único de ${d}mm diámetro y ${h}mm altura creado.`);
         }
         return;
     }
 
+    // --- CASO: BOMBAS ---
     if (c.includes("bomba")) {
         const potencia = extraerMedida(c, "hp", 75);
         const sepBombas = extraerMedida(c, "separacion", 2000);
+
         if (cantidad > 1) {
             crearEquiposMasivos('bomba', cantidad, { potencia: potencia, material: material, diametro: 600, altura: 800 }, configuracion, sepBombas);
-            speakText(`Configuradas ${cantidad} bombas de ${potencia} HP en ${configuracion} con separación de ${sepBombas/1000} metros.`);
+            hablar(`Configuradas ${cantidad} bombas de ${potencia} HP en ${configuracion} con separación de ${sepBombas/1000} metros.`);
         } else {
             crearBomba(potencia, 500, material, "Bombeo");
-            speakText(`Bomba de ${potencia} HP creada.`);
+            hablar(`Bomba de ${potencia} HP creada.`);
         }
         return;
     }
 
+    // --- CASO: LÍNEA / TUBERÍA ---
     if (c.includes("linea") || c.includes("tuberia") || c.includes("cañeria")) {
         const pulg = c.match(/(\d+(?:\.\d+)?)\s*(?:pulgadas?|pulg|")/i);
         const diam = pulg ? parseFloat(pulg[1]) : 4;
         crearLinea(diam, material, "Proceso");
-        speakText(`Línea de ${diam} pulgadas material ${material} creada.`);
+        hablar(`Línea de ${diam} pulgadas material ${material} creada.`);
         return;
     }
 
+    // --- CASO: CONECTAR ---
     if (c.includes("conectar")) {
         const tags = c.match(/[A-Z]{2,3}-\d{2,3}/gi);
         const diam = extraerMedida(c, "pulgadas", 4);
         if (tags && tags.length >= 2) {
             conectarEquipos(diam, material, tags[0].toUpperCase(), tags[1].toUpperCase());
-            speakText(`Conexión ${tags[0]} con ${tags[1]} de ${diam}" ${material} creada.`);
+            hablar(`Conexión ${tags[0]} con ${tags[1]} de ${diam}" ${material} creada.`);
         } else {
             notify("Indica dos tags, ej: 'conectar TK-01 con B-01'", true);
         }
         return;
     }
 
+    // --- CASO: RESÚMENES Y OTROS ---
     if (c.includes("resumen")) { generarResumenCompleto(); return; }
     if (c.includes("pcf")) { exportarPCF(); return; }
     if (c.includes("normas")) { verificarNormasASME(); return; }
-    if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); safeAutoCenter(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto limpiado"); } return; }
+    if (c.includes("limpiar") || c.includes("nuevo")) { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); hablar("Proyecto limpiado"); } return; }
 
     notify(`Comando no reconocido: "${comando}"`, true);
-    speakText(`Lo siento, no entendí el comando: ${comando}`);
+    hablar(`Lo siento, no entendí el comando: ${comando}`);
 }
 
-// ==================== EVENTOS DEL CANVAS (sin cambios) ====================
+// ==================== EVENTOS DEL CANVAS ====================
 function pointToSegmentDistance(p, a, b) {
     const ax = p.x - a.x, ay = p.y - a.y;
     const bx = b.x - a.x, by = b.y - a.y;
@@ -1086,7 +1020,7 @@ function initCanvasEvents() {
     });
 }
 
-// ==================== PANEL DE PUNTOS Y PROPIEDADES (sin cambios) ====================
+// ==================== PANEL DE PUNTOS ====================
 function updatePointsPanel() {
     const panel = document.getElementById('pointsPanel');
     if (!selectedElement || selectedElement.type !== 'line') {
@@ -1191,6 +1125,7 @@ function addPointAtEnd() {
     requestRender();
 }
 
+// ==================== PROPIEDADES ====================
 function showProperties() {
     if (!selectedElement) { notify("Seleccione un elemento primero", true); return; }
     const panel = document.getElementById('propertyPanel');
@@ -1230,6 +1165,7 @@ function applyProperties() {
     document.getElementById('propertyPanel').style.display = 'none';
 }
 
+// ==================== FUNCIONES DE EDICIÓN ====================
 function duplicateElement() {
     if (!selectedElement) { notify("Seleccione un elemento para duplicar", true); return; }
     saveState();
@@ -1249,8 +1185,7 @@ function duplicateElement() {
         db.lines.push(newLine);
         notify(`${orig.tag} duplicada como ${newTag}`);
     }
-    requestRender(); 
-    safeAutoCenter();
+    requestRender();
 }
 
 function readElement() {
@@ -1283,8 +1218,7 @@ function deleteSelected() {
     selectedPointIndex = -1;
     document.getElementById('propertyPanel').style.display = 'none';
     document.getElementById('pointsPanel').style.display = 'none';
-    requestRender(); 
-    safeAutoCenter();
+    requestRender();
 }
 
 // ==================== MODAL DEL PROYECTO ====================
@@ -1299,13 +1233,13 @@ function mostrarModalProyecto() {
         proyectoData.cliente = document.getElementById('proyectoCliente').value || "Cliente";
         modal.style.display = 'none';
         notify(`Proyecto: ${proyectoData.nombre} | Ingeniero: ${proyectoData.autor} | Cliente: ${proyectoData.cliente}`);
-        speakText(`Proyecto ${proyectoData.nombre} iniciado.`);
+        hablar(`Proyecto ${proyectoData.nombre} iniciado.`);
     };
     document.getElementById('saltarProyectoBtn').onclick = () => {
         proyectoData = { nombre: "Proyecto Temporal", autor: "Usuario", fecha: new Date().toISOString().slice(0,10), cliente: "Demo" };
         modal.style.display = 'none';
         notify("Proyecto temporal iniciado");
-        speakText("Proyecto temporal iniciado");
+        hablar("Proyecto temporal iniciado");
     };
 }
 
@@ -1327,10 +1261,10 @@ function initHotkeys() {
 }
 
 function initToolbar() {
-    document.getElementById('btnNew').onclick = () => { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); safeAutoCenter(); saveState(); notify("Nuevo proyecto"); speakText("Proyecto nuevo creado"); } };
-    document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); requestRender(); safeAutoCenter(); notify("Cargado"); speakText("Proyecto cargado"); } else notify("No hay guardado",true); };
-    document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); speakText("Proyecto guardado"); };
-    document.getElementById('btnReset').onclick = () => { safeAutoCenter(); notify("Vista centrada"); };
+    document.getElementById('btnNew').onclick = () => { if(confirm("¿Borrar todo?")){ db={equipos:[], lines:[]}; requestRender(); autoCenter(); saveState(); notify("Nuevo proyecto"); hablar("Proyecto nuevo creado"); } };
+    document.getElementById('btnOpen').onclick = () => { const data=localStorage.getItem('acquablue_save'); if(data){ db=JSON.parse(data); requestRender(); autoCenter(); notify("Cargado"); hablar("Proyecto cargado"); } else notify("No hay guardado",true); };
+    document.getElementById('btnSave').onclick = () => { localStorage.setItem('acquablue_save',JSON.stringify(db)); notify("Guardado"); hablar("Proyecto guardado"); };
+    document.getElementById('btnReset').onclick = () => { autoCenter(); notify("Vista centrada"); };
     document.getElementById('btnUndo').onclick = () => undo();
     document.getElementById('btnRedo').onclick = () => redo();
     document.getElementById('btnMTO').onclick = () => exportarMTO();
@@ -1346,7 +1280,9 @@ function initToolbar() {
         if (voiceEnabled && window.speechSynthesis) {
             let testMsg = new SpeechSynthesisUtterance("Voz activada");
             testMsg.lang = 'es-ES';
-            try { window.speechSynthesis.speak(testMsg); } catch(e) {}
+            try {
+                window.speechSynthesis.speak(testMsg);
+            } catch(e) {}
         }
     };
     document.getElementById('btnReadElement').onclick = () => readElement();
@@ -1365,6 +1301,7 @@ function initToolbar() {
     };
     document.getElementById('clearCommand').onclick = () => { document.getElementById('commandText').value = ''; };
     
+    // Barra flotante de edición
     const editBar = document.getElementById('editFloatingBar');
     document.getElementById('editModeBtn').onclick = () => { editModeActive = !editModeActive; editBar.style.display = editModeActive ? 'flex' : 'none'; notify(editModeActive ? "Modo edición activado" : "Modo edición desactivado"); };
     document.getElementById('closeEditBtn').onclick = () => { editModeActive = false; editBar.style.display = 'none'; };
@@ -1381,6 +1318,7 @@ function initToolbar() {
     document.getElementById('duplicateBtn').onclick = () => duplicateElement();
     document.getElementById('deleteElemBtn').onclick = () => deleteSelected();
     
+    // Sincronizar sliders de propiedades
     const diamSlider = document.getElementById('propDiamSlider');
     const diamNum = document.getElementById('propDiamNum');
     diamSlider.oninput = () => { diamNum.value = diamSlider.value; };
@@ -1392,33 +1330,28 @@ function initToolbar() {
 }
 
 function init() {
-    const resizeAndCenter = () => {
-        const container = canvas.parentElement;
-        if (container.clientWidth > 0 && container.clientHeight > 0) {
-            canvas.width = container.clientWidth;
-            canvas.height = container.clientHeight;
-            safeAutoCenter();
-            requestRender();
-        }
-    };
-    
-    setTimeout(resizeAndCenter, 50);
-    
-    window.addEventListener('resize', () => {
-        setTimeout(resizeAndCenter, 10);
-    });
-    
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
     initCanvasEvents();
     initHotkeys();
     initToolbar();
     
+    window.addEventListener('resize', () => {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+        autoCenter();
+        requestRender();
+    });
+    autoCenter();
+    requestRender();
     saveState();
     mostrarModalProyecto();
-    notify("SmartFlow Industrial v10.0 - Listo (v2)");
+    notify("SmartFlow Industrial v10.0 - Listo");
     speakText("Aplicación lista. Use el botón comandos para empezar.", false);
 }
 
-setTimeout(init, 30);
+// Iniciar aplicación
+init();
 </script>
 </body>
 </html>
