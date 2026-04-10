@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v8.3 - Comandos Paramétricos Avanzados</title>
+<title>SmartFlow Pro v10.0 - Enrutamiento Inteligente y Codos Redondeados</title>
 <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -25,6 +24,9 @@
     .status-bar{background:#111;padding:6px;font-size:12px;text-align:center;border-top:1px solid #2a2a4a}
     .modal-reporte{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e1e2e;border:2px solid #7c3aed;border-radius:12px;padding:20px;max-width:90%;max-height:80vh;overflow:auto;z-index:3000;font-family:monospace;white-space:pre-wrap}
     .modal-close{float:right;background:none;border:none;color:white;font-size:20px;cursor:pointer}
+    .tools-panel{position:fixed;left:20px;top:100px;background:#1a1a2e;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:900;border:1px solid #7c3aed}
+    .tools-panel button{background:#2c3e66;padding:6px 12px;font-size:12px}
+    .tools-panel button.active{background:#7c3aed;color:white}
     @media (max-width:768px){button{padding:10px;font-size:12px}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -39,7 +41,6 @@
     <button id="btnCommand" class="btn-primary">🤖 Comandos</button>
     <button id="btnAddTank">🏭 Tanque</button>
     <button id="btnAddPump">⚙️ Bomba</button>
-    <button id="btnAddPipe">📐 Tubería</button>
     <button id="btnMTO">📊 MTO</button>
     <button id="btnPDF">📄 PDF</button>
     <button id="btnUndo" class="btn-warning">↩️ Undo</button>
@@ -47,24 +48,53 @@
     <button id="btnVoice" style="background:#7c3aed">🔊 Voz ON</button>
     <button id="btnApplyNorm">📐 Normas</button>
     <button id="btnSpeakSummary" class="btn-speak">📢 Resumen</button>
+    <button id="btnCatalog" class="btn-speak">📚 Catálogo</button>
+    <button id="btnRecalc">🔄 Recalcular</button>
 </div>
 <div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
 <div id="commandPanel" class="command-panel">
-    <div class="command-header"><strong>🤖 Comando paramétrico avanzado</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;">✖</button></div>
-    <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;crear tanque 2380 mm diametro 2900 mm altura material PPR&#10;crear 2 tanques paralelo diametro 2380mm altura 3500mm separacion 3200mm material PPR&#10;crear 2 bombas paralelo 5 HP caudal 300 m3/h material acero inoxidable separacion 1000mm&#10;sistema 2 tanques colector 4 conexiones 3 bomba centro&#10;resumen"></textarea>
+    <div class="command-header"><strong>🤖 Comandos</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;">✖</button></div>
+    <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;connect TK-01 N1 to B-01 SUC diameter 4 material PPR&#10;edit equipment TK-01 move to (5000,0,0)&#10;edit line L-101 add waypoint (3000,1500,1000) after 1&#10;help"></textarea>
     <div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div>
 </div>
 <div id="notification" class="notification"></div>
-<div class="status-bar" id="statusMsg">SmartFlow Pro v8.3 - Comandos paramétricos avanzados listos</div>
+<div class="status-bar" id="statusMsg">SmartFlow Pro v10.0 - Enrutamiento ortogonal con codos redondeados</div>
+<div class="tools-panel" id="toolsPanel">
+    <button id="toolSelect" class="active">🔍 Seleccionar</button>
+    <button id="toolMoveEq">✋ Mover equipo</button>
+    <button id="toolEditPipe">✏️ Editar tubería</button>
+    <button id="toolAddPoint">➕ Añadir punto</button>
+</div>
 
 <script>
+// ==================== SmartFlow Pro v10.0 ====================
+// Características:
+// - Equipos con puertos (nozzles) con metadatos (posición relativa, diámetro, orientación)
+// - Tuberías con anclajes (anchors) a puertos de equipos
+// - Enrutamiento ortogonal automático respetando orientación de nozzles
+// - Dibujo de codos redondeados con quadraticCurveTo
+// - Arrastre de equipos con actualización dinámica de tuberías conectadas
+// - Comandos: connect, edit equipment, edit line, etc.
+// - MTO automático (codos, bridas, etc.)
+// - Persistencia en localStorage
+// - Sin compatibilidad con versiones anteriores (limpieza total)
+
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
 let cam = { scale: 0.5, panX: 0, panY: 0 };
-let dragging = false, lastPos = { x: 0, y: 0 };
 let selectedElement = null;
 let voiceEnabled = true;
 let history = { past: [], future: [], maxSize: 30 };
+let toolMode = 'select'; // 'select', 'moveEq', 'editPipe', 'addPoint'
+
+// Arrastre de equipos
+let draggingEquipment = false;
+let draggedEquip = null;
+let dragLastPos = { x: 0, y: 0 };
+
+// Arrastre de cámara
+let panning = false;
+let panStart = { x: 0, y: 0 };
 
 const canvas = document.getElementById('isoCanvas');
 const ctx = canvas.getContext('2d');
@@ -123,7 +153,154 @@ function project(p) {
     return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY };
 }
 
-// ==================== DIBUJO (igual que v8.2) ====================
+// Inversa aproximada (suelo, y=0) para arrastrar equipos
+function inverseProject(screenX, screenY) {
+    const cos30 = Math.cos(30 * Math.PI / 180);
+    const sin30 = Math.sin(30 * Math.PI / 180);
+    const X = (screenX - cam.panX) / cam.scale;
+    const Y = (screenY - cam.panY) / cam.scale;
+    const A = X / cos30;
+    const B = Y / sin30;
+    const x = (A + B) / 2;
+    const z = (B - A) / 2;
+    return { x, y: 0, z };
+}
+
+// ==================== EQUIPOS CON PUERTOS ====================
+function crearEquipoConPuertos(tipo, tag, x, y, z, params = {}) {
+    let puertos = [];
+    const diam = params.diametro || 2400;
+    const alt = params.altura || 2500;
+    if (tipo === 'tanque_v') {
+        puertos = [
+            { id: 'N1', label: 'Salida fondo', relX: 0, relY: -alt/2, relZ: 0, diametro: 4, tipoConexion: 'NPT', orientacion: {dx:0, dy:-1, dz:0}, material: 'CS', rating: '150#' },
+            { id: 'N2', label: 'Entrada superior', relX: 0, relY: alt/2, relZ: 0, diametro: 3, tipoConexion: 'NPT', orientacion: {dx:0, dy:1, dz:0}, material: 'CS', rating: '150#' },
+            { id: 'N3', label: 'Venteo', relX: 0, relY: alt/2, relZ: diam/2, diametro: 1, tipoConexion: 'NPT', orientacion: {dx:0, dy:1, dz:0}, material: 'CS', rating: '150#' }
+        ];
+    } else if (tipo === 'bomba') {
+        puertos = [
+            { id: 'SUC', label: 'Succión', relX: -500, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0}, material: 'SS', rating: '300#' },
+            { id: 'DESC', label: 'Descarga', relX: 500, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'NPT', orientacion: {dx:1, dy:0, dz:0}, material: 'SS', rating: '300#' }
+        ];
+    }
+    return {
+        tag, tipo, x, y, z,
+        diametro: diam,
+        altura: alt,
+        puertos: puertos
+    };
+}
+
+function obtenerPosicionPuerto(equipTag, nozzleId) {
+    const eq = db.equipos.find(e => e.tag === equipTag);
+    if (!eq) return null;
+    const nz = eq.puertos?.find(n => n.id === nozzleId);
+    if (!nz) return null;
+    return {
+        x: eq.x + nz.relX,
+        y: eq.y + nz.relY,
+        z: eq.z + nz.relZ
+    };
+}
+
+function obtenerDireccionSalida(nozzle) {
+    if (nozzle && nozzle.orientacion) {
+        const { dx, dy, dz } = nozzle.orientacion;
+        const len = Math.hypot(dx, dy, dz);
+        if (len > 0) return { dx: dx/len, dy: dy/len, dz: dz/len };
+    }
+    return { dx: 1, dy: 0, dz: 0 };
+}
+
+// ==================== ENRUTAMIENTO ORTOGONAL CON RESPETO ====================
+function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetSalida = 300) {
+    let puntos = [p1];
+    // Tramo de salida en la dirección del nozzle origen
+    if (nozzleStart) {
+        const dir = obtenerDireccionSalida(nozzleStart);
+        const salida = {
+            x: p1.x + dir.dx * offsetSalida,
+            y: p1.y + dir.dy * offsetSalida,
+            z: p1.z + dir.dz * offsetSalida
+        };
+        puntos.push(salida);
+    }
+    // Ajustar X
+    let current = puntos[puntos.length-1];
+    if (current.x !== p2.x) {
+        puntos.push({ x: p2.x, y: current.y, z: current.z });
+    }
+    // Ajustar Z
+    current = puntos[puntos.length-1];
+    if (current.z !== p2.z) {
+        puntos.push({ x: current.x, y: current.y, z: p2.z });
+    }
+    // Ajustar Y
+    current = puntos[puntos.length-1];
+    if (current.y !== p2.y) {
+        puntos.push({ x: current.x, y: p2.y, z: current.z });
+    }
+    // Tramo de llegada según orientación del nozzle destino (opcional)
+    if (nozzleEnd) {
+        const dirEnd = obtenerDireccionSalida(nozzleEnd);
+        const llegada = {
+            x: p2.x - dirEnd.dx * offsetSalida,
+            y: p2.y - dirEnd.dy * offsetSalida,
+            z: p2.z - dirEnd.dz * offsetSalida
+        };
+        // Insertar antes del último punto
+        puntos.splice(puntos.length-1, 0, llegada);
+    }
+    // Eliminar puntos duplicados consecutivos
+    const clean = [];
+    for (let i = 0; i < puntos.length; i++) {
+        if (i === 0 || puntos[i].x !== puntos[i-1].x || puntos[i].y !== puntos[i-1].y || puntos[i].z !== puntos[i-1].z) {
+            clean.push(puntos[i]);
+        }
+    }
+    return clean;
+}
+
+// ==================== ACTUALIZACIÓN DE TUBERÍAS CONECTADAS ====================
+function actualizarTuberiasConectadas(equipTag) {
+    db.lines.forEach(line => {
+        if (line.anchors && (line.anchors.start.equipTag === equipTag || line.anchors.end.equipTag === equipTag)) {
+            const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
+            const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
+            if (p1 && p2) {
+                const eqStart = db.equipos.find(e => e.tag === line.anchors.start.equipTag);
+                const nozzleStart = eqStart?.puertos?.find(n => n.id === line.anchors.start.nozzleId);
+                const eqEnd = db.equipos.find(e => e.tag === line.anchors.end.equipTag);
+                const nozzleEnd = eqEnd?.puertos?.find(n => n.id === line.anchors.end.nozzleId);
+                const puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 300);
+                line._cachedPoints = puntos;
+                // Actualizar contador de codos (opcional para MTO)
+                line.codos = puntos.length - 2;
+            }
+        }
+    });
+}
+
+function recalcularTodo() {
+    db.lines.forEach(line => {
+        if (line.anchors) {
+            const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
+            const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
+            if (p1 && p2) {
+                const eqStart = db.equipos.find(e => e.tag === line.anchors.start.equipTag);
+                const nozzleStart = eqStart?.puertos?.find(n => n.id === line.anchors.start.nozzleId);
+                const eqEnd = db.equipos.find(e => e.tag === line.anchors.end.equipTag);
+                const nozzleEnd = eqEnd?.puertos?.find(n => n.id === line.anchors.end.nozzleId);
+                const puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 300);
+                line._cachedPoints = puntos;
+                line.codos = puntos.length - 2;
+            }
+        }
+    });
+    render();
+}
+
+// ==================== DIBUJO ====================
 function drawGrid() {
     const step = 1000;
     const minX = -8000, maxX = 20000, minZ = -8000, maxZ = 15000;
@@ -173,37 +350,45 @@ function drawTank(eq) {
     ctx.fillStyle = '#3b82f6';
     ctx.fillRect(p.x, topY, w, h);
     ctx.beginPath();
-    ctx.ellipse(p.x, topY, w, w * 0.5, 0, 0, 2 * Math.PI);
+    ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI);
     ctx.fillStyle = '#60a5fa';
     ctx.fill();
     ctx.strokeStyle = 'white';
     ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(p.x, bottomY, w, w * 0.5, 0, 0, 2 * Math.PI);
+    ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI);
     ctx.fillStyle = '#2563eb';
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = 'white';
     ctx.font = `bold ${Math.max(12, 14 * cam.scale)}px Arial`;
     ctx.fillText(eq.tag, p.x - 18, topY - 10);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 8, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ff8800';
-    ctx.fill();
-    ctx.strokeStyle = 'white';
-    ctx.stroke();
+    // Dibujar puertos (opcional, para depuración)
+    if (eq.puertos) {
+        eq.puertos.forEach(nz => {
+            const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+            const proj = project(pos);
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 5, 0, 2*Math.PI);
+            ctx.fillStyle = '#ff8800';
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '8px monospace';
+            ctx.fillText(nz.id, proj.x-4, proj.y-4);
+        });
+    }
     ctx.restore();
 }
 
 function drawBomba(eq) {
     const p = project(eq);
     const rad = 12 * cam.scale;
-    const grad = ctx.createRadialGradient(p.x - 3, p.y - 3, 2, p.x, p.y, rad);
+    const grad = ctx.createRadialGradient(p.x-3, p.y-3, 2, p.x, p.y, rad);
     grad.addColorStop(0, '#f39c12');
     grad.addColorStop(1, '#b85c00');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, rad, 0, 2 * Math.PI);
+    ctx.arc(p.x, p.y, rad, 0, 2*Math.PI);
     ctx.fill();
     ctx.strokeStyle = 'white';
     ctx.stroke();
@@ -216,109 +401,59 @@ function drawBomba(eq) {
     ctx.fillStyle = 'white';
     ctx.font = `${Math.max(10, 12 * cam.scale)}px Arial`;
     ctx.fillText(eq.tag, p.x + 15, p.y - 5);
+    // Puertos
+    if (eq.puertos) {
+        eq.puertos.forEach(nz => {
+            const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+            const proj = project(pos);
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 5, 0, 2*Math.PI);
+            ctx.fillStyle = '#ff8800';
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = '8px monospace';
+            ctx.fillText(nz.id, proj.x-4, proj.y-4);
+        });
+    }
 }
 
-function drawPipeSegment(line, segIndex) {
-    if (!line.points3D || line.points3D.length < 2 || segIndex >= line.points3D.length-1) return;
-    const p1 = line.points3D[segIndex];
-    const p2 = line.points3D[segIndex+1];
-    const proj1 = project(p1);
-    const proj2 = project(p2);
-    const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x);
-    const perpX = Math.sin(angle) * 2;
-    const perpY = -Math.cos(angle) * 2;
+function getPointAtDistance(from, to, dist) {
+    const d = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+    const t = Math.min(dist / d, 0.5);
+    return {
+        x: from.x + (to.x - from.x) * t,
+        y: from.y + (to.y - from.y) * t,
+        z: from.z + (to.z - from.z) * t
+    };
+}
+
+function drawPipeWithElbows(line) {
+    const pts = line._cachedPoints || line.points3D;
+    if (!pts || pts.length < 2) return;
+    const diamMM = (line.diameter || 4) * 25.4;
+    const radio = Math.min(diamMM * 1.5, 500);
     ctx.beginPath();
-    ctx.moveTo(proj1.x + perpX, proj1.y + perpY);
-    ctx.lineTo(proj2.x + perpX, proj2.y + perpY);
-    ctx.strokeStyle = '#1e3a5f';
-    ctx.lineWidth = Math.max(6, (line.diameter || 4) * cam.scale);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(proj1.x, proj1.y);
-    ctx.lineTo(proj2.x, proj2.y);
+    let firstProj = project(pts[0]);
+    ctx.moveTo(firstProj.x, firstProj.y);
+    for (let i = 1; i < pts.length - 1; i++) {
+        const pPrev = pts[i-1];
+        const pCurr = pts[i];
+        const pNext = pts[i+1];
+        const pIn = getPointAtDistance(pCurr, pPrev, radio);
+        const pOut = getPointAtDistance(pCurr, pNext, radio);
+        const projIn = project(pIn);
+        const projOut = project(pOut);
+        const projCurr = project(pCurr);
+        ctx.lineTo(projIn.x, projIn.y);
+        ctx.quadraticCurveTo(projCurr.x, projCurr.y, projOut.x, projOut.y);
+    }
+    const lastProj = project(pts[pts.length-1]);
+    ctx.lineTo(lastProj.x, lastProj.y);
     ctx.strokeStyle = '#facc15';
     ctx.lineWidth = Math.max(4, (line.diameter || 4) * cam.scale);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(proj1.x, proj1.y);
-    ctx.lineTo(proj2.x, proj2.y);
-    ctx.strokeStyle = 'rgba(255,255,200,0.6)';
-    ctx.lineWidth = Math.max(2, (line.diameter || 4) * cam.scale / 3);
-    ctx.stroke();
 }
 
-function drawComponent(comp, line) {
-    const pos = getPositionOnLine(line, comp.param);
-    if (!pos) return;
-    const p = project(pos);
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.beginPath();
-    switch (comp.type) {
-        case 'VALVE':
-            const grad = ctx.createLinearGradient(-6, -4, 6, 4);
-            grad.addColorStop(0, '#ffcc66');
-            grad.addColorStop(1, '#cc9900');
-            ctx.fillStyle = grad;
-            ctx.moveTo(-6, -4); ctx.lineTo(0,0); ctx.lineTo(6,-4); ctx.lineTo(0,6); ctx.closePath();
-            ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(-3, -2); ctx.lineTo(0,1); ctx.lineTo(3,-2);
-            ctx.strokeStyle = 'rgba(255,255,200,0.8)';
-            ctx.stroke();
-            break;
-        case 'ELBOW':
-            const gradElbow = ctx.createLinearGradient(0, -6, 6, 0);
-            gradElbow.addColorStop(0, '#88aaff');
-            gradElbow.addColorStop(1, '#3366cc');
-            ctx.fillStyle = gradElbow;
-            ctx.arc(0,0,6,0,Math.PI/2);
-            ctx.lineTo(6,0);
-            ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.stroke();
-            break;
-        case 'ADAPTADOR':
-            ctx.fillStyle = '#bbaa88';
-            ctx.fillRect(-5,-3,10,6);
-            ctx.fillStyle = '#8a7a5a';
-            ctx.fillRect(-5,-3,5,6);
-            ctx.strokeStyle = 'white';
-            ctx.strokeRect(-5,-3,10,6);
-            break;
-        case 'SOPORTE':
-            ctx.fillStyle = '#ffaa33';
-            ctx.fillRect(-4,-2,8,4);
-            ctx.strokeStyle = 'white';
-            ctx.strokeRect(-4,-2,8,4);
-            break;
-        default:
-            ctx.fillStyle = '#88aaff';
-            ctx.fillRect(-4,-3,8,6);
-            ctx.stroke();
-    }
-    if (comp.skey) {
-        ctx.font = '7px monospace';
-        ctx.fillStyle = 'white';
-        ctx.fillText(comp.skey, -6, -6);
-    }
-    ctx.restore();
-}
-
-function getPositionOnLine(line, t) {
-    const pts = line.points3D;
-    if (!pts || pts.length < 2) return null;
-    if (t <= 0) return pts[0];
-    if (t >= 1) return pts[pts.length-1];
-    const idx = Math.floor(t * (pts.length-1));
-    const seg = t * (pts.length-1) - idx;
-    const p1 = pts[idx], p2 = pts[idx+1];
-    return { x: p1.x + seg*(p2.x-p1.x), y: p1.y + seg*(p2.y-p1.y), z: p1.z + seg*(p2.z-p1.z) };
-}
-
-// ==================== RENDER CON PROFUNDIDAD ====================
 function render() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -327,37 +462,16 @@ function render() {
     ctx.save();
     drawGrid();
     drawOrigin();
-    let drawList = [];
+    // Tuberías
     for (let line of db.lines) {
-        if (!line.points3D || line.points3D.length < 2) continue;
-        for (let i = 0; i < line.points3D.length - 1; i++) {
-            const p1 = line.points3D[i];
-            const p2 = line.points3D[i+1];
-            const mid = { x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2, z: (p1.z + p2.z)/2 };
-            drawList.push({ type: 'pipe', data: { line, segIndex: i }, depth: mid.x + mid.y + mid.z });
-        }
+        drawPipeWithElbows(line);
     }
-    for (let line of db.lines) {
-        if (line.components) {
-            for (let comp of line.components) {
-                const pos = getPositionOnLine(line, comp.param);
-                if (pos) drawList.push({ type: 'component', data: { line, comp }, depth: pos.x + pos.y + pos.z });
-            }
-        }
-    }
+    // Equipos
     for (let eq of db.equipos) {
-        drawList.push({ type: 'equipment', data: eq, depth: eq.x + eq.y + eq.z });
+        if (eq.tipo === 'tanque_v') drawTank(eq);
+        else if (eq.tipo === 'bomba') drawBomba(eq);
     }
-    drawList.sort((a, b) => a.depth - b.depth);
-    for (let item of drawList) {
-        if (item.type === 'pipe') drawPipeSegment(item.data.line, item.data.segIndex);
-        else if (item.type === 'component') drawComponent(item.data.comp, item.data.line);
-        else if (item.type === 'equipment') {
-            if (item.data.tipo === 'tanque_v') drawTank(item.data);
-            else if (item.data.tipo === 'bomba') drawBomba(item.data);
-            else drawTank(item.data);
-        }
-    }
+    // Resaltar selección
     if (selectedElement) {
         if (selectedElement.type === 'equipment') {
             const eq = selectedElement.obj;
@@ -371,9 +485,10 @@ function render() {
             ctx.stroke();
         } else if (selectedElement.type === 'line') {
             const line = selectedElement.obj;
-            if (line.points3D && line.points3D.length >= 2) {
+            const pts = line._cachedPoints || line.points3D;
+            if (pts && pts.length) {
                 ctx.beginPath();
-                const proj = line.points3D.map(p => project(p));
+                const proj = pts.map(p => project(p));
                 ctx.moveTo(proj[0].x, proj[0].y);
                 for (let i=1; i<proj.length; i++) ctx.lineTo(proj[i].x, proj[i].y);
                 ctx.strokeStyle = '#facc15';
@@ -385,23 +500,265 @@ function render() {
     ctx.restore();
 }
 
-// ==================== autoCenter ====================
+// ==================== COMANDOS ====================
+function parseConnect(cmd) {
+    // Formato: connect TK-01 N1 to B-01 SUC diameter 4 material PPR
+    const parts = cmd.split(/\s+/);
+    if (parts[0].toLowerCase() !== 'connect') return false;
+    let idx = 1;
+    const fromEquip = parts[idx++];
+    const fromNozzle = parts[idx++];
+    if (parts[idx].toLowerCase() !== 'to') return false;
+    idx++;
+    const toEquip = parts[idx++];
+    const toNozzle = parts[idx++];
+    let diameter = 4, material = 'PPR';
+    while (idx < parts.length) {
+        const key = parts[idx++].toLowerCase();
+        if (key === 'diameter') diameter = parseFloat(parts[idx++]);
+        else if (key === 'material') material = parts[idx++].toUpperCase();
+    }
+    // Validar equipos y puertos
+    const eqFrom = db.equipos.find(e => e.tag === fromEquip);
+    const eqTo = db.equipos.find(e => e.tag === toEquip);
+    if (!eqFrom || !eqTo) { notify("Equipo no encontrado", true); return true; }
+    const nzFrom = eqFrom.puertos?.find(n => n.id === fromNozzle);
+    const nzTo = eqTo.puertos?.find(n => n.id === toNozzle);
+    if (!nzFrom || !nzTo) { notify("Puerto no encontrado", true); return true; }
+    if (nzFrom.diametro !== nzTo.diametro && diameter !== nzFrom.diametro) {
+        notify(`Diámetros incompatibles: ${nzFrom.diametro}" vs ${nzTo.diametro}"`, true);
+        return true;
+    }
+    const tag = `L-${db.lines.length+1}`;
+    const newLine = {
+        tag,
+        diameter,
+        material,
+        anchors: {
+            start: { equipTag: fromEquip, nozzleId: fromNozzle },
+            end: { equipTag: toEquip, nozzleId: toNozzle }
+        },
+        waypoints: [],
+        _cachedPoints: null
+    };
+    db.lines.push(newLine);
+    actualizarTuberiasConectadas(fromEquip);
+    actualizarTuberiasConectadas(toEquip);
+    saveState();
+    render();
+    notify(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip}.${toNozzle} (${tag})`);
+    return true;
+}
+
+function parseEditCommand(cmd) {
+    const parts = cmd.split(/\s+/);
+    if (parts[0].toLowerCase() !== 'edit') return false;
+    const type = parts[1].toLowerCase();
+    if (type === 'equipment') {
+        const tag = parts[2];
+        const action = parts[3].toLowerCase();
+        const eq = db.equipos.find(e => e.tag === tag);
+        if (!eq) { notify(`Equipo ${tag} no encontrado`, true); return true; }
+        if (action === 'move') {
+            const coords = parts[4] === 'to' ? parts[5] : parts[4];
+            const match = coords.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+            if (match) {
+                eq.x = parseFloat(match[1]);
+                eq.y = parseFloat(match[2]);
+                eq.z = parseFloat(match[3]);
+                actualizarTuberiasConectadas(tag);
+                saveState();
+                render();
+                notify(`Equipo ${tag} movido a (${eq.x},${eq.y},${eq.z})`);
+                return true;
+            }
+        }
+    } else if (type === 'line') {
+        const tag = parts[2];
+        const line = db.lines.find(l => l.tag === tag);
+        if (!line) { notify(`Línea ${tag} no encontrada`, true); return true; }
+        const action = parts[3].toLowerCase();
+        if (action === 'add' && parts[4] === 'waypoint') {
+            const coords = parts[5];
+            const match = coords.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+            if (match) {
+                const wp = { x: parseFloat(match[1]), y: parseFloat(match[2]), z: parseFloat(match[3]) };
+                let after = null;
+                if (parts[6] === 'after') after = parseInt(parts[7]);
+                if (after !== null && after >= 0 && after < (line.waypoints?.length || 0)) {
+                    line.waypoints.splice(after+1, 0, wp);
+                } else {
+                    if (!line.waypoints) line.waypoints = [];
+                    line.waypoints.push(wp);
+                }
+                // Recalcular ruta con waypoints
+                const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
+                const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
+                if (p1 && p2) {
+                    let puntos = [p1];
+                    if (line.waypoints) puntos.push(...line.waypoints);
+                    puntos.push(p2);
+                    line._cachedPoints = puntos;
+                }
+                saveState();
+                render();
+                notify(`Waypoint añadido a ${tag}`);
+                return true;
+            }
+        } else if (action === 'remove' && parts[4] === 'waypoint') {
+            const idx = parseInt(parts[5]) - 1;
+            if (line.waypoints && idx >= 0 && idx < line.waypoints.length) {
+                line.waypoints.splice(idx, 1);
+                const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
+                const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
+                if (p1 && p2) {
+                    let puntos = [p1];
+                    if (line.waypoints) puntos.push(...line.waypoints);
+                    puntos.push(p2);
+                    line._cachedPoints = puntos;
+                }
+                saveState();
+                render();
+                notify(`Waypoint eliminado de ${tag}`);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function parseHelp(cmd) {
+    const lower = cmd.toLowerCase();
+    if (lower === 'help') {
+        mostrarAyuda();
+        return true;
+    }
+    if (lower === 'help equipos') {
+        mostrarCatalogoEquipos();
+        return true;
+    }
+    if (lower === 'help accesorios') {
+        mostrarCatalogoAccesorios();
+        return true;
+    }
+    return false;
+}
+
+function mostrarAyuda() {
+    let ayuda = "═══════════════════════════════════════════════════════════\n";
+    ayuda += "               SMARTFLOW PRO v10.0 - AYUDA\n";
+    ayuda += "═══════════════════════════════════════════════════════════\n\n";
+    ayuda += "📌 COMANDOS:\n";
+    ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter [num] material [mat]\n";
+    ayuda += "  edit equipment [tag] move to (x,y,z)\n";
+    ayuda += "  edit line [tag] add waypoint (x,y,z) [after n]\n";
+    ayuda += "  edit line [tag] remove waypoint n\n";
+    ayuda += "  help, help equipos, help accesorios\n\n";
+    ayuda += "🖱️ HERRAMIENTAS MANUALES (panel izquierdo):\n";
+    ayuda += "  🔍 Seleccionar: clic para seleccionar, Supr elimina\n";
+    ayuda += "  ✋ Mover equipo: arrastra el equipo seleccionado\n";
+    ayuda += "  ✏️ Editar tubería: arrastra los puntos naranjas (waypoints)\n";
+    ayuda += "  ➕ Añadir punto: clic en tubería para añadir waypoint\n\n";
+    ayuda += "═══════════════════════════════════════════════════════════\n";
+    mostrarReporte(ayuda);
+}
+
+function mostrarCatalogoEquipos() {
+    let texto = "═══════════════════════════════════════════════════════════\n";
+    texto += "              CATÁLOGO DE EQUIPOS\n";
+    texto += "═══════════════════════════════════════════════════════════\n\n";
+    texto += "🏭 TANQUE_V (vertical):\n";
+    texto += "   Puertos: N1 (salida fondo, 4\", NPT), N2 (entrada superior, 3\", NPT), N3 (venteo, 1\", NPT)\n\n";
+    texto += "⚙️ BOMBA:\n";
+    texto += "   Puertos: SUC (succión, 4\", NPT), DESC (descarga, 3\", NPT)\n\n";
+    texto += "Para crear un equipo, usa el botón correspondiente en la barra.\n";
+    texto += "═══════════════════════════════════════════════════════════\n";
+    mostrarReporte(texto);
+}
+
+function mostrarCatalogoAccesorios() {
+    let texto = "═══════════════════════════════════════════════════════════\n";
+    texto += "              CATÁLOGO DE ACCESORIOS\n";
+    texto += "═══════════════════════════════════════════════════════════\n\n";
+    texto += "🔧 TIPOS DE COMPONENTES:\n";
+    texto += "  VALVE, FLANGE, ELBOW, TEE, REDUCER, INSTRUMENT, WELD, CAP, BLIND, SOPORTE, ADAPTADOR\n\n";
+    texto += "Nota: Los codos se generan automáticamente por el enrutador.\n";
+    texto += "═══════════════════════════════════════════════════════════\n";
+    mostrarReporte(texto);
+}
+
+function mostrarReporte(texto) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-reporte';
+    modal.innerHTML = `<div><button class="modal-close">✖</button></div><pre>${texto}</pre>`;
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close').onclick = () => modal.remove();
+}
+
+function resumenProyecto() {
+    const tanques = db.equipos.filter(e => e.tipo === 'tanque_v');
+    const bombas = db.equipos.filter(e => e.tipo === 'bomba');
+    const tuberias = db.lines;
+    let totalCodos = 0;
+    tuberias.forEach(l => { if (l.codos) totalCodos += l.codos; });
+    let mensaje = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${tuberias.length} tuberías, ${totalCodos} codos.`;
+    notify(mensaje);
+}
+
+function exportarMTO() {
+    let items = [];
+    for (let eq of db.equipos) {
+        let desc = eq.tipo === 'tanque_v' ? `Tanque vertical Ø${(eq.diametro/1000).toFixed(1)}m` : `Bomba centrífuga`;
+        items.push([eq.tag, desc, "Und", 1]);
+    }
+    for (let line of db.lines) {
+        let long = 0; // No calculamos longitud real por simplicidad
+        items.push([line.tag, `Tubería ${line.material} ${line.diameter}"`, "m", 0]);
+        if (line.codos) {
+            items.push([`Codos-${line.tag}`, `Codo 90° ${line.diameter}"`, "Und", line.codos]);
+        }
+    }
+    if (items.length === 0) { notify("No hay elementos", true); return; }
+    const ws = XLSX.utils.aoa_to_sheet([["Tag","Descripción","Unidad","Cantidad"], ...items]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MTO");
+    XLSX.writeFile(wb, `MTO_${Date.now()}.xlsx`);
+    notify("MTO exportado");
+}
+
+function guardarProyecto() {
+    localStorage.setItem('smartflow_v10', JSON.stringify(db));
+    notify("Proyecto guardado");
+}
+function cargarProyecto() {
+    const data = localStorage.getItem('smartflow_v10');
+    if (data) {
+        db = JSON.parse(data);
+        selectedElement = null;
+        recalcularTodo();
+        render();
+        autoCenter();
+        notify("Proyecto cargado");
+    } else notify("No hay proyecto guardado", true);
+}
+function nuevoProyecto() {
+    if (confirm("¿Borrar todo?")) {
+        db = { equipos: [], lines: [] };
+        selectedElement = null;
+        render();
+        autoCenter();
+        notify("Nuevo proyecto");
+        saveState();
+    }
+}
 function autoCenter() {
     if (!canvas) return;
     let points = [];
     db.equipos.forEach(eq => {
-        const r = (eq.diametro || 1000) / 2;
-        const h = (eq.altura || 2000);
         points.push({ x: eq.x, y: eq.y, z: eq.z });
-        points.push({ x: eq.x, y: eq.y + h/2, z: eq.z });
-        points.push({ x: eq.x, y: eq.y - h/2, z: eq.z });
-        points.push({ x: eq.x + r, y: eq.y, z: eq.z });
-        points.push({ x: eq.x - r, y: eq.y, z: eq.z });
-        points.push({ x: eq.x, y: eq.y, z: eq.z + r });
-        points.push({ x: eq.x, y: eq.y, z: eq.z - r });
     });
     db.lines.forEach(line => {
-        if (line.points3D) points.push(...line.points3D);
+        if (line._cachedPoints) points.push(...line._cachedPoints);
     });
     if (points.length === 0) points = [{ x: -2000, y: 0, z: -2000 }, { x: 2000, y: 2000, z: 2000 }];
     const cos30 = Math.cos(30 * Math.PI / 180);
@@ -436,423 +793,59 @@ function autoCenter() {
     cam.panY = canvas.height / 2 - worldCenterY * cam.scale;
     render();
 }
-
-// ==================== FUNCIONES DE MANIPULACIÓN MEJORADAS ====================
-function addEquipment(tipo, tag, diam = 2400, alt = 2500, x = null, y = null, z = null, extra = {}) {
-    if (x === null) {
-        const last = db.equipos.filter(e => e.tipo === tipo).pop();
-        x = last ? last.x + 2000 : 0;
-        z = 0;
-    }
-    if (y === null) y = (tipo === 'tanque_v') ? alt/2 : 600;
-    const newEq = { type: 'equipment', tag, x, y, z, tipo, diametro: diam, altura: alt, ...extra };
-    db.equipos.push(newEq);
-    notify(`Equipo ${tag} creado`);
-    saveState();
-    render();
-    autoCenter();
+function toggleVoice() {
+    voiceEnabled = !voiceEnabled;
+    const btn = document.getElementById('btnVoice');
+    btn.textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF";
+    notify(voiceEnabled ? "Voz activada" : "Voz desactivada");
 }
-
-function addPipe(tag, diam, material, points) {
-    const newLine = { tag, diameter: diam, material, points3D: points, components: [] };
-    db.lines.push(newLine);
-    notify(`Tubería ${tag} creada`);
-    saveState();
-    render();
-    autoCenter();
+function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const imgData = canvas.toDataURL('image/png');
+    doc.addImage(imgData, 'PNG', 10, 10, 277, 150);
+    doc.setFontSize(16);
+    doc.text("SmartFlow Pro - Reporte Isométrico", 10, 175);
+    doc.text(`Fecha: ${new Date().toLocaleString()}`, 10, 185);
+    doc.save(`isometrico_${Date.now()}.pdf`);
+    notify("PDF generado");
 }
-
-function addComponent(lineTag, compType, compTag, param, extra = {}) {
-    const line = db.lines.find(l => l.tag === lineTag);
-    if (!line) { notify(`Línea ${lineTag} no encontrada`, true); return; }
-    if (!line.components) line.components = [];
-    const comp = { type: compType, tag: compTag, param, ...extra };
-    line.components.push(comp);
-    notify(`Componente ${compTag} añadido a ${lineTag}`);
-    render();
-    saveState();
+function exportPCF() {
+    let pcf = `!PCF v10.0 - SmartFlow Pro\nUNITS MM\n`;
+    for (let line of db.lines) {
+        if (!line._cachedPoints) continue;
+        pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n    DIAMETER ${(line.diameter*25.4).toFixed(2)} MM\n`;
+        line._cachedPoints.forEach(p=>pcf+=`    POINT ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}\n`);
+        pcf += `ENDPIPE\n`;
+    }
+    const blob = new Blob([pcf], {type:'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `proyecto.pcf`;
+    a.click();
+    notify("PCF exportado");
 }
-
-// ==================== PARSER AVANZADO PARA COMANDOS DE CREACIÓN ====================
-function parseCommandCrear(cmd) {
-    const lower = cmd.toLowerCase();
-    if (!lower.startsWith('crear') && !lower.startsWith('crea')) return false;
-    
-    // Detectar tipo de equipo
-    let esTanque = lower.includes('tanque');
-    let esBomba = lower.includes('bomba');
-    if (!esTanque && !esBomba) return false;
-    
-    // Extraer cantidad (número antes de "tanque/s" o "bomba/s")
-    let cantidad = 1;
-    const cantMatch = cmd.match(/(\d+)\s+(tanques?|bombas?)/i);
-    if (cantMatch) cantidad = parseInt(cantMatch[1]);
-    
-    // Extraer disposición (paralelo / en línea)
-    let disposicion = 'linea';
-    if (lower.includes('paralelo') || lower.includes('en linea')) disposicion = 'linea';
-    
-    // Extraer dimensiones según tipo
-    let diametro = null, altura = null, potencia = null, caudal = null;
-    if (esTanque) {
-        const diamMatch = cmd.match(/di[áa]metro\s+(\d+(?:\.\d+)?)\s*mm/i);
-        if (diamMatch) diametro = parseFloat(diamMatch[1]);
-        const altMatch = cmd.match(/altura\s+(\d+(?:\.\d+)?)\s*mm/i);
-        if (altMatch) altura = parseFloat(altMatch[1]);
-        if (!diametro) diametro = 2400;
-        if (!altura) altura = 2900;
-    } else if (esBomba) {
-        const hpMatch = cmd.match(/(\d+(?:\.\d+)?)\s*HP/i);
-        if (hpMatch) potencia = parseFloat(hpMatch[1]);
-        const caudalMatch = cmd.match(/caudal\s+(\d+(?:\.\d+)?)\s*m3\/h/i);
-        if (caudalMatch) caudal = parseFloat(caudalMatch[1]);
-        if (!potencia) potencia = 5;
-        if (!caudal) caudal = 0;
-        // Usamos diametro y altura para almacenar valores de la bomba (no afectan al dibujo)
-        diametro = potencia * 100; // solo para tener un valor
-        altura = caudal;
-    }
-    
-    // Extraer material
-    let material = null;
-    const matMatch = cmd.match(/material\s+([a-zA-Záéíóú\s]+?)(?:\s+separacion|\s+$|\s+\d)/i);
-    if (matMatch) material = matMatch[1].trim().toUpperCase();
-    if (!material) material = esTanque ? 'PPR' : 'ACERO INOXIDABLE';
-    
-    // Extraer separación (en mm)
-    let separacion = 2000;
-    const sepMatch = cmd.match(/separacion\s+(\d+(?:\.\d+)?)\s*mm/i);
-    if (sepMatch) separacion = parseFloat(sepMatch[1]);
-    
-    // Crear los equipos en línea
-    for (let i = 0; i < cantidad; i++) {
-        let tag;
-        if (esTanque) tag = `TK-${(db.equipos.filter(e=>e.tipo==='tanque_v').length+1).toString().padStart(2,'0')}`;
-        else tag = `B-${(db.equipos.filter(e=>e.tipo==='bomba').length+1).toString().padStart(2,'0')}`;
-        const x = i * separacion;
-        if (esTanque) {
-            addEquipment('tanque_v', tag, diametro, altura, x, null, 0, { material });
-        } else {
-            addEquipment('bomba', tag, diametro, altura, x, null, 0, { potencia, caudal, material });
-        }
-    }
-    
-    notify(`✅ Creados ${cantidad} ${esTanque ? 'tanque(s)' : 'bomba(s)'} en ${disposicion} con separación ${separacion}mm`);
-    return true;
-}
-
-// ==================== COMANDO SISTEMA PARAMÉTRICO ====================
-function sistemaParametrico(cmd) {
-    const lower = cmd.toLowerCase();
-    if (!lower.includes('sistema') || !lower.includes('tanques') || !lower.includes('colector')) return false;
-    
-    let n = 2;
-    const nMatch = lower.match(/sistema\s+(\d+)\s+tanques/);
-    if (nMatch) n = parseInt(nMatch[1]);
-    let diamColector = 4;
-    const dMatch = lower.match(/colector\s+(\d+)/);
-    if (dMatch) diamColector = parseInt(dMatch[1]);
-    let diamConex = 3;
-    const cMatch = lower.match(/conexiones\s+(\d+)/);
-    if (cMatch) diamConex = parseInt(cMatch[1]);
-    let bombaPos = 'centro';
-    if (lower.includes('bomba final')) bombaPos = 'final';
-    else if (lower.includes('bomba centro')) bombaPos = 'centro';
-    
-    // Crear tanques
-    const tanques = [];
-    for (let i = 0; i < n; i++) {
-        const tag = `TK-${(i+1).toString().padStart(2,'0')}`;
-        const x = i * 2000;
-        addEquipment('tanque_v', tag, 2400, 2500, x, 0, 0);
-        tanques.push({ tag, x });
-    }
-    
-    // Colector
-    const xMin = tanques[0].x;
-    const xMax = tanques[tanques.length-1].x;
-    const colectorY = 1500;
-    const colectorZ = 1000;
-    const puntosColector = [
-        { x: xMin, y: colectorY, z: colectorZ },
-        { x: xMax, y: colectorY, z: colectorZ }
-    ];
-    addPipe('L-COLECTOR', diamColector, 'PPR', puntosColector);
-    
-    // Conexiones de cada tanque
-    for (let t of tanques) {
-        const lineTag = `L-${t.tag}-COL`;
-        const puntos = [
-            { x: t.x, y: colectorY, z: 0 },
-            { x: t.x, y: colectorY, z: colectorZ/2 },
-            { x: t.x, y: colectorY, z: colectorZ }
-        ];
-        addPipe(lineTag, diamConex, 'PPR', puntos);
-        addComponent(lineTag, 'ELBOW', `ELB-${t.tag}-1`, 0.33, { angle: 90 });
-        addComponent(lineTag, 'VALVE', `V-${t.tag}`, 0.66, { type: 'gate', size: diamConex, rating: '150#' });
-        addComponent(lineTag, 'ELBOW', `ELB-${t.tag}-2`, 0.99, { angle: 90 });
-    }
-    
-    // Bomba
-    let bombaX, bombaZ;
-    if (bombaPos === 'centro') {
-        bombaX = (xMin + xMax) / 2;
-        bombaZ = colectorZ + 1000;
-    } else {
-        bombaX = xMax + 1000;
-        bombaZ = colectorZ;
-    }
-    addEquipment('bomba', 'B-01', 800, 800, bombaX, 800, bombaZ);
-    
-    // Tubería colector-bomba
-    const puntosBomba = [
-        { x: bombaX, y: colectorY, z: colectorZ },
-        { x: bombaX, y: 800, z: colectorZ },
-        { x: bombaX, y: 800, z: bombaZ }
-    ];
-    addPipe('L-COL-PUMP', diamConex, 'PPR', puntosBomba);
-    addComponent('L-COL-PUMP', 'ELBOW', 'ELB-PUMP-1', 0.33, { angle: 90 });
-    addComponent('L-COL-PUMP', 'VALVE', 'V-PUMP', 0.85, { type: 'gate', size: diamConex, rating: '150#' });
-    
-    notify(`✅ Sistema creado: ${n} tanques, colector ${diamColector}", conexiones ${diamConex}", bomba en ${bombaPos}`);
-    return true;
-}
-
-// ==================== PARSER CLÁSICO (line, component, equipment) ====================
-function parseClassic(cmd) {
-    const parts = cmd.trim().split(/\s+/);
-    if (parts.length === 0) return null;
-    const command = parts[0].toLowerCase();
-    if (command === 'line') {
-        let tag = parts[1];
-        let diam = null, material = 'PPR', schedule = '40';
-        let points = [];
-        for (let i = 2; i < parts.length; i++) {
-            if (parts[i] === 'diameter') diam = parseFloat(parts[++i]);
-            else if (parts[i] === 'material') material = parts[++i].toUpperCase();
-            else if (parts[i] === 'schedule') schedule = parts[++i];
-            else if (parts[i] === 'points') {
-                let j = i+1;
-                while (j < parts.length) {
-                    const match = parts[j].match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
-                    if (match) {
-                        points.push({ x: parseFloat(match[1]), y: parseFloat(match[2]), z: parseFloat(match[3]) });
-                        j++;
-                    } else break;
-                }
-                break;
-            }
-        }
-        if (tag && diam && points.length >= 2) {
-            addPipe(tag, diam, material, points);
-            return true;
-        }
-    }
-    else if (command === 'component') {
-        let type = parts[1].toUpperCase();
-        let tag = parts[2];
-        let atIdx = parts.indexOf('at');
-        if (atIdx === -1) return false;
-        let lineTag = parts[atIdx+1];
-        let paramIdx = parts.indexOf('param');
-        if (paramIdx === -1) return false;
-        let param = parseFloat(parts[paramIdx+1]);
-        if (isNaN(param)) return false;
-        let extra = {};
-        for (let i = paramIdx+2; i < parts.length; i++) {
-            let key = parts[i];
-            if (i+1 >= parts.length) break;
-            let val = parts[++i];
-            if (key === 'angle') extra.angle = parseFloat(val);
-            else if (key === 'radius') extra.radius = parseFloat(val);
-            else if (key === 'size') extra.size = parseFloat(val);
-            else if (key === 'rating') extra.rating = val;
-            else if (key === 'type') extra.subtype = val;
-            else extra[key] = val;
-        }
-        addComponent(lineTag, type, tag, param, extra);
-        return true;
-    }
-    else if (command === 'equipment') {
-        let tag = parts[1];
-        let atIdx = parts.indexOf('at');
-        if (atIdx === -1) return false;
-        let coords = parts[atIdx+1].match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
-        if (!coords) return false;
-        let x = parseFloat(coords[1]), y = parseFloat(coords[2]), z = parseFloat(coords[3]);
-        let tipo = 'tanque_v';
-        if (cmd.toLowerCase().includes('bomba')) tipo = 'bomba';
-        let diam = 2400, alt = 2500;
-        if (tipo === 'bomba') { diam = 800; alt = 800; }
-        addEquipment(tipo, tag, diam, alt, x, y, z);
-        return true;
-    }
-    return false;
-}
-
-// ==================== COMANDOS DE LENGUAJE NATURAL (resumen, conectar, etc.) ====================
-function parseNatural(cmd) {
-    const lower = cmd.toLowerCase().trim();
-    if (lower === 'dime' || lower.includes('resumen') || lower.includes('qué hay') || lower.includes('listar') || lower.includes('estado')) {
-        const tanques = db.equipos.filter(e => e.tipo === 'tanque_v');
-        const bombas = db.equipos.filter(e => e.tipo === 'bomba');
-        const tuberias = db.lines;
-        let totalComponentes = 0, longitudTotal = 0;
-        tuberias.forEach(l => {
-            longitudTotal += calcularLongitud(l) / 1000;
-            totalComponentes += l.components ? l.components.length : 0;
-        });
-        let mensaje = `El proyecto tiene ${tanques.length} tanques. `;
-        if (tanques.length > 0) mensaje += `Nombres: ${tanques.map(t => t.tag).join(", ")}. `;
-        mensaje += `${bombas.length} bombas. `;
-        if (bombas.length > 0) mensaje += `Nombres: ${bombas.map(b => b.tag).join(", ")}. `;
-        mensaje += `${tuberias.length} tuberías, con una longitud total de ${longitudTotal.toFixed(1)} metros. `;
-        if (totalComponentes > 0) mensaje += `Además, hay ${totalComponentes} componentes instalados. `;
-        else mensaje += `No hay componentes adicionales. `;
-        notify(mensaje);
-        return true;
-    }
-    if (lower.includes('conecta')) {
-        const tags = [...cmd.matchAll(/([A-Z0-9-]+)/g)].map(m=>m[1]);
-        if (tags.length >= 2) {
-            const e1 = db.equipos.find(e=>e.tag===tags[0]);
-            const e2 = db.equipos.find(e=>e.tag===tags[1]);
-            if (e1 && e2) {
-                let diam = 4;
-                const d = lower.match(/(\d+)\s+pulgadas/);
-                if (d) diam = parseInt(d[1]);
-                const points = [
-                    { x: e1.x, y: e1.y + 300, z: e1.z },
-                    { x: (e1.x+e2.x)/2, y: e1.y + 500, z: (e1.z+e2.z)/2 },
-                    { x: e2.x, y: e2.y + 300, z: e2.z }
-                ];
-                addPipe(`L-${tags[0]}-${tags[1]}`, diam, 'PPR', points);
-                return true;
-            } else notify("Equipo no encontrado", true);
-        }
-        return false;
-    }
-    if (lower.includes('aplicar normas')) { aplicarNormas(); return true; }
-    if (lower.includes('auditar planta')) { auditarPlanta(); return true; }
-    if (lower.includes('exportar mto')) { exportarMTO(); return true; }
-    if (lower.includes('estimar recursos')) { estimarRecursos(); return true; }
-    return false;
-}
-
-// ==================== FUNCIONES DE APOYO ====================
-function calcularLongitud(line) {
-    if (!line.points3D || line.points3D.length<2) return 0;
-    let len=0;
-    for (let i=0;i<line.points3D.length-1;i++) len += Math.hypot(line.points3D[i+1].x-line.points3D[i].x, line.points3D[i+1].y-line.points3D[i].y, line.points3D[i+1].z-line.points3D[i].z);
-    return len;
-}
-
 function aplicarNormas() {
-    let cambios = 0;
-    for (let line of db.lines) {
-        const diamMM = (line.diameter || 4) * 25.4;
-        if (diamMM >= 110) {
-            const long = calcularLongitud(line);
-            const necesarios = Math.max(1, Math.floor(long / 1500));
-            const actuales = line.components?.filter(c=>c.type==='SOPORTE').length || 0;
-            for (let i=actuales; i<necesarios; i++) {
-                if (!line.components) line.components = [];
-                line.components.push({ type:'SOPORTE', tag:`SUP-${line.tag}-${i+1}`, param: (i+1)/(necesarios+1) });
-                cambios++;
-            }
-        }
-    }
-    for (let bomba of db.equipos.filter(e=>e.tipo==='bomba')) {
-        const lineasConectadas = db.lines.filter(l => l.points3D?.some(p => Math.hypot(p.x-bomba.x, p.y-bomba.y, p.z-bomba.z) < 500));
-        for (let line of lineasConectadas) {
-            if (!line.components) line.components = [];
-            const tieneCheck = line.components.some(c=>c.type==='VALVE' && c.skey==='VCHK');
-            if (!tieneCheck) {
-                line.components.push({ type:'VALVE', tag:`CHK-${bomba.tag}`, param:0.85, skey:'VCHK', size:line.diameter });
-                cambios++;
-            }
-        }
-    }
-    if (cambios) { notify(`Normas aplicadas: ${cambios} elementos añadidos`); render(); }
-    else notify("La planta ya cumple las normas");
-}
-
-function auditarPlanta() {
-    let alertas = [];
-    for (let bomba of db.equipos.filter(e=>e.tipo==='bomba')) {
-        const lineas = db.lines.filter(l => l.points3D?.some(p => Math.hypot(p.x-bomba.x, p.y-bomba.y, p.z-bomba.z) < 500));
-        const tieneCheck = lineas.some(l => l.components?.some(c=>c.type==='VALVE' && c.skey==='VCHK'));
-        if (!tieneCheck) alertas.push(`Bomba ${bomba.tag} sin válvula check`);
-    }
-    for (let line of db.lines) {
-        const diamMM = (line.diameter||4)*25.4;
-        if (diamMM >= 110) {
-            const long = calcularLongitud(line);
-            const necesarios = Math.max(1, Math.floor(long/1500));
-            const actuales = line.components?.filter(c=>c.type==='SOPORTE').length || 0;
-            if (actuales < necesarios) alertas.push(`Línea ${line.tag}: necesita ${necesarios} soportes, tiene ${actuales}`);
-        }
-    }
-    if (alertas.length === 0) notify("✅ Auditoría: sin observaciones");
-    else { alertas.forEach(a=>notify(a,true)); notify(`⚠️ ${alertas.length} observaciones`,true); }
-}
-
-function estimarRecursos() {
-    let totalMetros = db.lines.reduce((s,l)=>s+(calcularLongitud(l)/1000),0);
-    if (totalMetros===0) { notify("No hay líneas para estimar", true); return; }
-    let hh = totalMetros * 4.1;
-    let dias = Math.ceil(hh/40);
-    let costo = hh * 18;
-    let reporte = `📊 ESTIMACIÓN DE RECURSOS\n\n📏 Metraje: ${totalMetros.toFixed(1)} m\n👷 Horas-Hombre: ${hh.toFixed(0)}\n📅 Días: ${dias}\n💰 Costo estimado: USD ${costo.toLocaleString()}`;
-    mostrarReporte(reporte);
-}
-
-function exportarMTO() {
-    let items = [];
-    for (let eq of db.equipos) {
-        let desc = eq.tipo==='tanque_v' ? `Tanque vertical Ø${(eq.diametro/1000).toFixed(1)}m x H${(eq.altura/1000).toFixed(1)}m` : (eq.tipo==='bomba' ? `Bomba centrífuga` : `Equipo ${eq.tipo}`);
-        if (eq.material) desc += ` (${eq.material})`;
-        items.push([eq.tag, desc, "Und", 1]);
-    }
-    for (let line of db.lines) {
-        let long = (calcularLongitud(line)/1000).toFixed(2);
-        items.push([line.tag, `Tubería ${line.material} ${line.diameter}"`, "m", parseFloat(long)]);
-        if (line.components) {
-            for (let comp of line.components) {
-                items.push([comp.tag, `${comp.type} ${comp.skey||''}`, "Und", 1]);
-            }
-        }
-    }
-    if (items.length===0) { notify("No hay elementos", true); return; }
-    const ws = XLSX.utils.aoa_to_sheet([["Tag","Descripción","Unidad","Cantidad"], ...items]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "MTO");
-    XLSX.writeFile(wb, `MTO_${Date.now()}.xlsx`);
-    notify("MTO exportado");
-}
-
-function mostrarReporte(texto) {
-    const modal = document.createElement('div');
-    modal.className = 'modal-reporte';
-    modal.innerHTML = `<div><button class="modal-close">✖</button></div><pre>${texto}</pre>`;
-    document.body.appendChild(modal);
-    modal.querySelector('.modal-close').onclick = () => modal.remove();
+    notify("Función de normas en desarrollo");
 }
 
 // ==================== INTERACCIÓN Y SELECCIÓN ====================
-function pickElement(mouse) {
+function pickElement(mouseCanvas) {
+    // Equipos
     for (let eq of db.equipos) {
         const p = project(eq);
         const w = (eq.diametro/2)*cam.scale;
-        const dist = Math.hypot(mouse.x - p.x, mouse.y - p.y);
-        if (dist < w+5) return { type:'equipment', obj:eq };
+        const dist = Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y);
+        if (dist < w+5) return { type: 'equipment', obj: eq };
     }
+    // Tuberías (solo para selección, no para puntos)
     for (let line of db.lines) {
-        if (!line.points3D) continue;
-        const proj = line.points3D.map(p => project(p));
+        const pts = line._cachedPoints;
+        if (!pts) continue;
+        const proj = pts.map(p => project(p));
         for (let i=0; i<proj.length-1; i++) {
-            const dist = pointToSegmentDistance(mouse, proj[i], proj[i+1]);
-            if (dist < 10) return { type:'line', obj:line };
+            const dist = pointToSegmentDistance(mouseCanvas, proj[i], proj[i+1]);
+            if (dist < 10) return { type: 'line', obj: line };
         }
     }
     return null;
@@ -872,27 +865,107 @@ function pointToSegmentDistance(p, a, b) {
 
 function initCanvasEvents() {
     canvas.addEventListener('mousedown', (e) => {
-        dragging = true;
-        lastPos = { x: e.clientX, y: e.clientY };
-        canvas.style.cursor = 'grabbing';
         const rect = canvas.getBoundingClientRect();
-        const mouseCanvas = { x: (e.clientX - rect.left) * canvas.width / rect.width, y: (e.clientY - rect.top) * canvas.height / rect.height };
+        const mouseCanvas = {
+            x: (e.clientX - rect.left) * canvas.width / rect.width,
+            y: (e.clientY - rect.top) * canvas.height / rect.height
+        };
         const picked = pickElement(mouseCanvas);
-        if (picked) selectedElement = picked;
-        else selectedElement = null;
-        render();
-        e.preventDefault();
+        if (toolMode === 'select') {
+            if (picked) selectedElement = picked;
+            else selectedElement = null;
+            render();
+        } else if (toolMode === 'moveEq') {
+            if (picked && picked.type === 'equipment') {
+                draggingEquipment = true;
+                draggedEquip = picked.obj;
+                dragLastPos = { x: e.clientX, y: e.clientY };
+                canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        } else if (toolMode === 'addPoint') {
+            if (picked && picked.type === 'line') {
+                const line = picked.obj;
+                // Calcular punto sobre la línea más cercano
+                const pts = line._cachedPoints;
+                if (pts) {
+                    let minDist = Infinity;
+                    let bestSeg = 0;
+                    let bestParam = 0;
+                    const proj = pts.map(p => project(p));
+                    for (let i=0; i<proj.length-1; i++) {
+                        const a = proj[i], b = proj[i+1];
+                        const ax = mouseCanvas.x - a.x, ay = mouseCanvas.y - a.y;
+                        const bx = b.x - a.x, by = b.y - a.y;
+                        const dot = ax*bx + ay*by;
+                        const len2 = bx*bx + by*by;
+                        if (len2 === 0) continue;
+                        let t = dot / len2;
+                        t = Math.max(0, Math.min(1, t));
+                        const projX = a.x + t*bx;
+                        const projY = a.y + t*by;
+                        const dist = Math.hypot(mouseCanvas.x - projX, mouseCanvas.y - projY);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            bestSeg = i;
+                            bestParam = t;
+                        }
+                    }
+                    if (minDist < 15) {
+                        const p1 = pts[bestSeg];
+                        const p2 = pts[bestSeg+1];
+                        const newPoint = {
+                            x: p1.x + bestParam * (p2.x - p1.x),
+                            y: p1.y + bestParam * (p2.y - p1.y),
+                            z: p1.z + bestParam * (p2.z - p1.z)
+                        };
+                        if (!line.waypoints) line.waypoints = [];
+                        line.waypoints.push(newPoint);
+                        // Reordenar waypoints? Por simplicidad, se añade al final y luego se recalcula
+                        const pStart = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
+                        const pEnd = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
+                        let puntos = [pStart];
+                        puntos.push(...line.waypoints);
+                        puntos.push(pEnd);
+                        line._cachedPoints = puntos;
+                        saveState();
+                        render();
+                        notify("Waypoint añadido");
+                    }
+                }
+            }
+        }
     });
     window.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        const dx = e.clientX - lastPos.x;
-        const dy = e.clientY - lastPos.y;
-        cam.panX += dx;
-        cam.panY += dy;
-        lastPos = { x: e.clientX, y: e.clientY };
-        render();
+        if (draggingEquipment && draggedEquip) {
+            const dx = (e.clientX - dragLastPos.x) / cam.scale;
+            const dy = (e.clientY - dragLastPos.y) / cam.scale;
+            draggedEquip.x += dx;
+            draggedEquip.z += dy;
+            actualizarTuberiasConectadas(draggedEquip.tag);
+            dragLastPos = { x: e.clientX, y: e.clientY };
+            render();
+        } else if (panning) {
+            const dx = e.clientX - panStart.x;
+            const dy = e.clientY - panStart.y;
+            cam.panX += dx;
+            cam.panY += dy;
+            panStart = { x: e.clientX, y: e.clientY };
+            render();
+        }
     });
-    window.addEventListener('mouseup', () => { dragging = false; canvas.style.cursor = 'grab'; });
+    window.addEventListener('mouseup', () => {
+        if (draggingEquipment) {
+            draggingEquipment = false;
+            draggedEquip = null;
+            saveState();
+            canvas.style.cursor = 'grab';
+        }
+        if (panning) {
+            panning = false;
+            canvas.style.cursor = 'grab';
+        }
+    });
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -900,90 +973,22 @@ function initCanvasEvents() {
         cam.scale = Math.min(Math.max(0.1, cam.scale), 1.5);
         render();
     });
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (e.touches.length === 1) {
-            dragging = true;
-            lastPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-            const rect = canvas.getBoundingClientRect();
-            const touchCanvas = { x: (e.touches[0].clientX - rect.left) * canvas.width / rect.width, y: (e.touches[0].clientY - rect.top) * canvas.height / rect.height };
-            const picked = pickElement(touchCanvas);
-            if (picked) selectedElement = picked;
-            else selectedElement = null;
-            render();
+    // Arrastre de cámara (pan) con botón izquierdo sin selección
+    canvas.addEventListener('mousedown', (e) => {
+        if (toolMode === 'select' && !selectedElement && !draggingEquipment) {
+            panning = true;
+            panStart = { x: e.clientX, y: e.clientY };
+            canvas.style.cursor = 'grabbing';
+            e.preventDefault();
         }
     });
-    window.addEventListener('touchmove', (e) => {
-        if (!dragging || e.touches.length !== 1) return;
-        const dx = e.touches[0].clientX - lastPos.x;
-        const dy = e.touches[0].clientY - lastPos.y;
-        cam.panX += dx;
-        cam.panY += dy;
-        lastPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        render();
-    });
-    window.addEventListener('touchend', () => { dragging = false; });
 }
 
-// ==================== PERSISTENCIA Y EXPORTACIÓN ====================
-function guardarProyecto() {
-    localStorage.setItem('smartflow_pro', JSON.stringify({ equipos: db.equipos, lines: db.lines }));
-    notify("Proyecto guardado");
-}
-function cargarProyecto() {
-    const data = localStorage.getItem('smartflow_pro');
-    if (data) {
-        const p = JSON.parse(data);
-        db.equipos = p.equipos || [];
-        db.lines = p.lines || [];
-        selectedElement = null;
-        render();
-        autoCenter();
-        notify("Proyecto cargado");
-    } else notify("No hay proyecto guardado", true);
-}
-function nuevoProyecto() {
-    if (confirm("¿Borrar todo?")) {
-        db = { equipos: [], lines: [] };
-        selectedElement = null;
-        render();
-        autoCenter();
-        notify("Nuevo proyecto");
-        saveState();
-    }
-}
-function exportPCF() {
-    let pcf = `!PCF v8.3 - SmartFlow Pro\nUNITS MM\n`;
-    for (let line of db.lines) {
-        if (!line.points3D) continue;
-        pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n    DIAMETER ${(line.diameter*25.4).toFixed(2)} MM\n`;
-        line.points3D.forEach(p=>pcf+=`    POINT ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}\n`);
-        pcf += `ENDPIPE\n`;
-    }
-    const blob = new Blob([pcf], {type:'text/plain'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `proyecto.pcf`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    notify("PCF exportado");
-}
-function exportPDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape' });
-    const imgData = canvas.toDataURL('image/png');
-    doc.addImage(imgData, 'PNG', 10, 10, 277, 150);
-    doc.setFontSize(16);
-    doc.text("SmartFlow Pro - Reporte Isométrico", 10, 175);
-    doc.text(`Fecha: ${new Date().toLocaleString()}`, 10, 185);
-    doc.save(`isometrico_${Date.now()}.pdf`);
-    notify("PDF generado");
-}
-function toggleVoice() {
-    voiceEnabled = !voiceEnabled;
-    const btn = document.getElementById('btnVoice');
-    btn.textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF";
-    notify(voiceEnabled ? "Voz activada" : "Voz desactivada");
+function resizeCanvas() {
+    const container = canvas.parentElement;
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+    autoCenter();
 }
 
 // ==================== INICIALIZACIÓN ====================
@@ -991,13 +996,29 @@ function init() {
     resizeCanvas();
     initCanvasEvents();
     // Datos de ejemplo
-    db.equipos.push({ tag: 'TK-01', tipo: 'tanque_v', x: 2000, y: 1250, z: 0, diametro: 2400, altura: 2500 });
-    db.lines.push({ tag: 'L-101', diameter: 4, material: 'PPR', points3D: [{x:2000, y:1500, z:0}, {x:5000, y:1500, z:0}], components: [] });
+    const tk01 = crearEquipoConPuertos('tanque_v', 'TK-01', 0, 1250, 0, { diametro: 2400, altura: 2500 });
+    const b01 = crearEquipoConPuertos('bomba', 'B-01', 5000, 800, 0, { diametro: 800, altura: 800 });
+    db.equipos.push(tk01, b01);
+    // Crear una tubería de ejemplo
+    const lineExample = {
+        tag: 'L-101',
+        diameter: 4,
+        material: 'PPR',
+        anchors: {
+            start: { equipTag: 'TK-01', nozzleId: 'N1' },
+            end: { equipTag: 'B-01', nozzleId: 'SUC' }
+        },
+        waypoints: [],
+        _cachedPoints: null
+    };
+    db.lines.push(lineExample);
+    actualizarTuberiasConectadas('TK-01');
+    actualizarTuberiasConectadas('B-01');
     render();
     autoCenter();
     saveState();
 
-    // Eventos de UI
+    // Eventos UI
     document.getElementById('btnNew').onclick = nuevoProyecto;
     document.getElementById('btnOpen').onclick = cargarProyecto;
     document.getElementById('btnSave').onclick = guardarProyecto;
@@ -1011,33 +1032,29 @@ function init() {
             let cmd = raw.trim();
             if (!cmd || cmd.startsWith('//')) continue;
             saveState();
-            if (!parseCommandCrear(cmd) && !sistemaParametrico(cmd) && !parseNatural(cmd) && !parseClassic(cmd)) {
+            if (!parseConnect(cmd) && !parseEditCommand(cmd) && !parseHelp(cmd)) {
                 notify(`❌ No entendí: "${cmd.substring(0,50)}..."`, true);
             }
         }
         document.getElementById('commandPanel').style.display = 'none';
         render();
-        autoCenter();
     };
     document.getElementById('clearCommand').onclick = () => document.getElementById('commandText').value = '';
-    document.getElementById('btnAddTank').onclick = () => addEquipment('tanque_v', `TK-${db.equipos.filter(e=>e.tipo==='tanque_v').length+1}`);
-    document.getElementById('btnAddPump').onclick = () => addEquipment('bomba', `B-${db.equipos.filter(e=>e.tipo==='bomba').length+1}`);
-    document.getElementById('btnAddPipe').onclick = () => {
-        const tag = prompt("Tag tubería:", `L-${db.lines.length+1}`);
-        if (!tag) return;
-        const diam = parseFloat(prompt("Diámetro (pulg):", "4"));
-        const mat = prompt("Material (PPR/CS/SS):", "PPR");
-        const puntos = [];
-        let cont = true;
-        while (cont) {
-            let x = parseFloat(prompt("X (mm):", puntos.length===0?"0":puntos[puntos.length-1].x+1000));
-            let y = parseFloat(prompt("Y (mm):", "0"));
-            let z = parseFloat(prompt("Z (mm):", "0"));
-            puntos.push({x,y,z});
-            cont = confirm("¿Agregar otro punto?");
-        }
-        if (puntos.length >= 2) addPipe(tag, diam, mat, puntos);
-        else notify("Se necesitan al menos 2 puntos", true);
+    document.getElementById('btnAddTank').onclick = () => {
+        const tag = `TK-${db.equipos.filter(e=>e.tipo==='tanque_v').length+1}`;
+        const newEq = crearEquipoConPuertos('tanque_v', tag, 0, 1250, 0);
+        db.equipos.push(newEq);
+        saveState();
+        render();
+        autoCenter();
+    };
+    document.getElementById('btnAddPump').onclick = () => {
+        const tag = `B-${db.equipos.filter(e=>e.tipo==='bomba').length+1}`;
+        const newEq = crearEquipoConPuertos('bomba', tag, 0, 800, 0);
+        db.equipos.push(newEq);
+        saveState();
+        render();
+        autoCenter();
     };
     document.getElementById('btnMTO').onclick = exportarMTO;
     document.getElementById('btnPDF').onclick = exportPDF;
@@ -1045,17 +1062,27 @@ function init() {
     document.getElementById('btnRedo').onclick = redo;
     document.getElementById('btnVoice').onclick = toggleVoice;
     document.getElementById('btnApplyNorm').onclick = aplicarNormas;
-    document.getElementById('btnSpeakSummary').onclick = () => parseNatural('resumen');
+    document.getElementById('btnSpeakSummary').onclick = resumenProyecto;
+    document.getElementById('btnCatalog').onclick = () => mostrarReporte("Usa 'help equipos' o 'help accesorios' en el panel de comandos.");
+    document.getElementById('btnRecalc').onclick = recalcularTodo;
+    document.getElementById('btnReset').onclick = autoCenter;
+
+    // Herramientas
+    const setTool = (mode) => {
+        toolMode = mode;
+        document.querySelectorAll('#toolsPanel button').forEach(btn => btn.classList.remove('active'));
+        if (mode === 'select') document.getElementById('toolSelect').classList.add('active');
+        else if (mode === 'moveEq') document.getElementById('toolMoveEq').classList.add('active');
+        else if (mode === 'editPipe') document.getElementById('toolEditPipe').classList.add('active');
+        else if (mode === 'addPoint') document.getElementById('toolAddPoint').classList.add('active');
+    };
+    document.getElementById('toolSelect').onclick = () => setTool('select');
+    document.getElementById('toolMoveEq').onclick = () => setTool('moveEq');
+    document.getElementById('toolEditPipe').onclick = () => setTool('editPipe');
+    document.getElementById('toolAddPoint').onclick = () => setTool('addPoint');
 
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v8.3 - Listo | Comandos paramétricos avanzados disponibles");
-}
-
-function resizeCanvas() {
-    const container = canvas.parentElement;
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-    autoCenter();
+    notify("SmartFlow Pro v10.0 - Listo. Usa 'connect' para unir equipos.");
 }
 
 init();
