@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v10.0 - Enrutamiento Inteligente y Codos Redondeados</title>
+<title>SmartFlow Pro v10.1 - Colector Inteligente</title>
 <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -54,11 +54,11 @@
 <div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
 <div id="commandPanel" class="command-panel">
     <div class="command-header"><strong>🤖 Comandos</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;">✖</button></div>
-    <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;connect TK-01 N1 to B-01 SUC diameter 4 material PPR&#10;edit equipment TK-01 move to (5000,0,0)&#10;edit line L-101 add waypoint (3000,1500,1000) after 1&#10;help"></textarea>
+    <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create manifold M-01 at (0,1500,2000) entries 6 spacing 3000 output center diameter 4 material PPR&#10;connect TK-1 N1 to M-01 IN1 diameter 4 material PPR&#10;connect M-01 OUT to B-1 SUC diameter 4 material PPR&#10;help"></textarea>
     <div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div>
 </div>
 <div id="notification" class="notification"></div>
-<div class="status-bar" id="statusMsg">SmartFlow Pro v10.0 - Enrutamiento ortogonal con codos redondeados</div>
+<div class="status-bar" id="statusMsg">SmartFlow Pro v10.1 - Colector inteligente</div>
 <div class="tools-panel" id="toolsPanel">
     <button id="toolSelect" class="active">🔍 Seleccionar</button>
     <button id="toolMoveEq">✋ Mover equipo</button>
@@ -67,17 +67,9 @@
 </div>
 
 <script>
-// ==================== SmartFlow Pro v10.0 ====================
-// Características:
-// - Equipos con puertos (nozzles) con metadatos (posición relativa, diámetro, orientación)
-// - Tuberías con anclajes (anchors) a puertos de equipos
-// - Enrutamiento ortogonal automático respetando orientación de nozzles
-// - Dibujo de codos redondeados con quadraticCurveTo
-// - Arrastre de equipos con actualización dinámica de tuberías conectadas
-// - Comandos: connect, edit equipment, edit line, etc.
-// - MTO automático (codos, bridas, etc.)
-// - Persistencia en localStorage
-// - Sin compatibilidad con versiones anteriores (limpieza total)
+// ==================== SmartFlow Pro v10.1 ====================
+// Nuevo: Colector inteligente (manifold) con puertos de entrada y salida
+// Comando: create manifold M-01 at (x,y,z) entries N spacing D output left|center|right diameter D material M
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
@@ -85,14 +77,11 @@ let cam = { scale: 0.5, panX: 0, panY: 0 };
 let selectedElement = null;
 let voiceEnabled = true;
 let history = { past: [], future: [], maxSize: 30 };
-let toolMode = 'select'; // 'select', 'moveEq', 'editPipe', 'addPoint'
+let toolMode = 'select';
 
-// Arrastre de equipos
 let draggingEquipment = false;
 let draggedEquip = null;
 let dragLastPos = { x: 0, y: 0 };
-
-// Arrastre de cámara
 let panning = false;
 let panStart = { x: 0, y: 0 };
 
@@ -153,7 +142,6 @@ function project(p) {
     return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY };
 }
 
-// Inversa aproximada (suelo, y=0) para arrastrar equipos
 function inverseProject(screenX, screenY) {
     const cos30 = Math.cos(30 * Math.PI / 180);
     const sin30 = Math.sin(30 * Math.PI / 180);
@@ -182,6 +170,9 @@ function crearEquipoConPuertos(tipo, tag, x, y, z, params = {}) {
             { id: 'SUC', label: 'Succión', relX: -500, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0}, material: 'SS', rating: '300#' },
             { id: 'DESC', label: 'Descarga', relX: 500, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'NPT', orientacion: {dx:1, dy:0, dz:0}, material: 'SS', rating: '300#' }
         ];
+    } else if (tipo === 'colector') {
+        // Los puertos se generan en la función crearColector, no aquí
+        puertos = [];
     }
     return {
         tag, tipo, x, y, z,
@@ -212,10 +203,61 @@ function obtenerDireccionSalida(nozzle) {
     return { dx: 1, dy: 0, dz: 0 };
 }
 
-// ==================== ENRUTAMIENTO ORTOGONAL CON RESPETO ====================
+// ==================== COLECTOR INTELIGENTE ====================
+function crearColector(tag, x, y, z, numEntradas, spacing, outputPos, diametro, material) {
+    const puertos = [];
+    // Puertos de entrada (orientación hacia abajo por defecto)
+    for (let i = 0; i < numEntradas; i++) {
+        puertos.push({
+            id: `IN${i+1}`,
+            label: `Entrada ${i+1}`,
+            relX: i * spacing,
+            relY: 0,
+            relZ: 0,
+            diametro: diametro,
+            tipoConexion: 'Flange',
+            orientacion: { dx: 0, dy: -1, dz: 0 },
+            material: material,
+            rating: '150#'
+        });
+    }
+    // Puerto de salida
+    let salidaRelX = 0;
+    if (outputPos === 'left') salidaRelX = 0;
+    else if (outputPos === 'right') salidaRelX = (numEntradas-1) * spacing;
+    else if (outputPos === 'center') salidaRelX = (numEntradas-1) * spacing / 2;
+    puertos.push({
+        id: 'OUT',
+        label: 'Salida',
+        relX: salidaRelX,
+        relY: 0,
+        relZ: 0,
+        diametro: diametro,
+        tipoConexion: 'Flange',
+        orientacion: { dx: 1, dy: 0, dz: 0 },
+        material: material,
+        rating: '150#'
+    });
+    
+    const colector = {
+        tag: tag,
+        tipo: 'colector',
+        x: x,
+        y: y,
+        z: z,
+        diametro: diametro,
+        altura: 0,
+        puertos: puertos
+    };
+    db.equipos.push(colector);
+    notify(`Colector ${tag} creado con ${numEntradas} entradas y salida ${outputPos}`);
+    render();
+    autoCenter();
+}
+
+// ==================== ENRUTAMIENTO ORTOGONAL ====================
 function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetSalida = 300) {
     let puntos = [p1];
-    // Tramo de salida en la dirección del nozzle origen
     if (nozzleStart) {
         const dir = obtenerDireccionSalida(nozzleStart);
         const salida = {
@@ -225,22 +267,18 @@ function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetS
         };
         puntos.push(salida);
     }
-    // Ajustar X
     let current = puntos[puntos.length-1];
     if (current.x !== p2.x) {
         puntos.push({ x: p2.x, y: current.y, z: current.z });
     }
-    // Ajustar Z
     current = puntos[puntos.length-1];
     if (current.z !== p2.z) {
         puntos.push({ x: current.x, y: current.y, z: p2.z });
     }
-    // Ajustar Y
     current = puntos[puntos.length-1];
     if (current.y !== p2.y) {
         puntos.push({ x: current.x, y: p2.y, z: current.z });
     }
-    // Tramo de llegada según orientación del nozzle destino (opcional)
     if (nozzleEnd) {
         const dirEnd = obtenerDireccionSalida(nozzleEnd);
         const llegada = {
@@ -248,10 +286,8 @@ function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetS
             y: p2.y - dirEnd.dy * offsetSalida,
             z: p2.z - dirEnd.dz * offsetSalida
         };
-        // Insertar antes del último punto
         puntos.splice(puntos.length-1, 0, llegada);
     }
-    // Eliminar puntos duplicados consecutivos
     const clean = [];
     for (let i = 0; i < puntos.length; i++) {
         if (i === 0 || puntos[i].x !== puntos[i-1].x || puntos[i].y !== puntos[i-1].y || puntos[i].z !== puntos[i-1].z) {
@@ -261,7 +297,6 @@ function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetS
     return clean;
 }
 
-// ==================== ACTUALIZACIÓN DE TUBERÍAS CONECTADAS ====================
 function actualizarTuberiasConectadas(equipTag) {
     db.lines.forEach(line => {
         if (line.anchors && (line.anchors.start.equipTag === equipTag || line.anchors.end.equipTag === equipTag)) {
@@ -274,7 +309,6 @@ function actualizarTuberiasConectadas(equipTag) {
                 const nozzleEnd = eqEnd?.puertos?.find(n => n.id === line.anchors.end.nozzleId);
                 const puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 300);
                 line._cachedPoints = puntos;
-                // Actualizar contador de codos (opcional para MTO)
                 line.codos = puntos.length - 2;
             }
         }
@@ -363,7 +397,6 @@ function drawTank(eq) {
     ctx.fillStyle = 'white';
     ctx.font = `bold ${Math.max(12, 14 * cam.scale)}px Arial`;
     ctx.fillText(eq.tag, p.x - 18, topY - 10);
-    // Dibujar puertos (opcional, para depuración)
     if (eq.puertos) {
         eq.puertos.forEach(nz => {
             const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
@@ -401,7 +434,6 @@ function drawBomba(eq) {
     ctx.fillStyle = 'white';
     ctx.font = `${Math.max(10, 12 * cam.scale)}px Arial`;
     ctx.fillText(eq.tag, p.x + 15, p.y - 5);
-    // Puertos
     if (eq.puertos) {
         eq.puertos.forEach(nz => {
             const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
@@ -415,6 +447,34 @@ function drawBomba(eq) {
             ctx.fillText(nz.id, proj.x-4, proj.y-4);
         });
     }
+}
+
+function drawColector(eq) {
+    const p = project(eq);
+    const anchoTotal = (eq.puertos.length-1) * (eq.puertos[1]?.relX - eq.puertos[0]?.relX) || 2000;
+    const pIzq = project({ x: eq.x, y: eq.y, z: eq.z });
+    const pDer = project({ x: eq.x + anchoTotal, y: eq.y, z: eq.z });
+    ctx.beginPath();
+    ctx.moveTo(pIzq.x, pIzq.y);
+    ctx.lineTo(pDer.x, pDer.y);
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = Math.max(4, (eq.diametro || 4) * cam.scale);
+    ctx.stroke();
+    // Dibujar círculos en cada puerto
+    eq.puertos.forEach(nz => {
+        const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+        const proj = project(pos);
+        ctx.beginPath();
+        ctx.arc(proj.x, proj.y, 6, 0, 2*Math.PI);
+        ctx.fillStyle = '#ff8800';
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = '8px monospace';
+        ctx.fillText(nz.id, proj.x-4, proj.y-4);
+    });
+    ctx.fillStyle = 'white';
+    ctx.font = `bold ${12 * cam.scale}px Arial`;
+    ctx.fillText(eq.tag, pIzq.x - 15, pIzq.y - 10);
 }
 
 function getPointAtDistance(from, to, dist) {
@@ -463,26 +523,37 @@ function render() {
     drawGrid();
     drawOrigin();
     // Tuberías
-    for (let line of db.lines) {
-        drawPipeWithElbows(line);
-    }
+    for (let line of db.lines) drawPipeWithElbows(line);
     // Equipos
     for (let eq of db.equipos) {
         if (eq.tipo === 'tanque_v') drawTank(eq);
         else if (eq.tipo === 'bomba') drawBomba(eq);
+        else if (eq.tipo === 'colector') drawColector(eq);
     }
     // Resaltar selección
     if (selectedElement) {
         if (selectedElement.type === 'equipment') {
             const eq = selectedElement.obj;
             const p = project(eq);
-            const w = (eq.diametro/2)*cam.scale;
-            const h = eq.altura*cam.scale;
-            ctx.beginPath();
-            ctx.ellipse(p.x, p.y - h/2, w+3, (w+3)*0.5, 0, 0, 2*Math.PI);
-            ctx.strokeStyle = '#facc15';
-            ctx.lineWidth = 3;
-            ctx.stroke();
+            if (eq.tipo === 'colector') {
+                const ancho = (eq.puertos.length-1) * (eq.puertos[1]?.relX - eq.puertos[0]?.relX) || 2000;
+                const pIzq = project({ x: eq.x, y: eq.y, z: eq.z });
+                const pDer = project({ x: eq.x + ancho, y: eq.y, z: eq.z });
+                ctx.beginPath();
+                ctx.moveTo(pIzq.x, pIzq.y);
+                ctx.lineTo(pDer.x, pDer.y);
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = Math.max(6, (eq.diametro||4)*cam.scale);
+                ctx.stroke();
+            } else {
+                const w = (eq.diametro/2)*cam.scale;
+                const h = eq.altura*cam.scale;
+                ctx.beginPath();
+                ctx.ellipse(p.x, p.y - h/2, w+3, (w+3)*0.5, 0, 0, 2*Math.PI);
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
         } else if (selectedElement.type === 'line') {
             const line = selectedElement.obj;
             const pts = line._cachedPoints || line.points3D;
@@ -502,7 +573,6 @@ function render() {
 
 // ==================== COMANDOS ====================
 function parseConnect(cmd) {
-    // Formato: connect TK-01 N1 to B-01 SUC diameter 4 material PPR
     const parts = cmd.split(/\s+/);
     if (parts[0].toLowerCase() !== 'connect') return false;
     let idx = 1;
@@ -518,7 +588,6 @@ function parseConnect(cmd) {
         if (key === 'diameter') diameter = parseFloat(parts[idx++]);
         else if (key === 'material') material = parts[idx++].toUpperCase();
     }
-    // Validar equipos y puertos
     const eqFrom = db.equipos.find(e => e.tag === fromEquip);
     const eqTo = db.equipos.find(e => e.tag === toEquip);
     if (!eqFrom || !eqTo) { notify("Equipo no encontrado", true); return true; }
@@ -547,6 +616,29 @@ function parseConnect(cmd) {
     saveState();
     render();
     notify(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip}.${toNozzle} (${tag})`);
+    return true;
+}
+
+function parseCreateManifold(cmd) {
+    const parts = cmd.split(/\s+/);
+    if (parts[0].toLowerCase() !== 'create' || parts[1].toLowerCase() !== 'manifold') return false;
+    let idx = 2;
+    const tag = parts[idx++];
+    if (parts[idx] !== 'at') return false;
+    idx++;
+    const coords = parts[idx++].match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+    if (!coords) return false;
+    const x = parseFloat(coords[1]), y = parseFloat(coords[2]), z = parseFloat(coords[3]);
+    let numEntradas = 2, spacing = 3000, outputPos = 'center', diametro = 4, material = 'PPR';
+    while (idx < parts.length) {
+        const key = parts[idx++].toLowerCase();
+        if (key === 'entries') numEntradas = parseInt(parts[idx++]);
+        else if (key === 'spacing') spacing = parseFloat(parts[idx++]);
+        else if (key === 'output') outputPos = parts[idx++].toLowerCase();
+        else if (key === 'diameter') diametro = parseFloat(parts[idx++]);
+        else if (key === 'material') material = parts[idx++].toUpperCase();
+    }
+    crearColector(tag, x, y, z, numEntradas, spacing, outputPos, diametro, material);
     return true;
 }
 
@@ -591,7 +683,6 @@ function parseEditCommand(cmd) {
                     if (!line.waypoints) line.waypoints = [];
                     line.waypoints.push(wp);
                 }
-                // Recalcular ruta con waypoints
                 const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
                 const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
                 if (p1 && p2) {
@@ -646,9 +737,10 @@ function parseHelp(cmd) {
 
 function mostrarAyuda() {
     let ayuda = "═══════════════════════════════════════════════════════════\n";
-    ayuda += "               SMARTFLOW PRO v10.0 - AYUDA\n";
+    ayuda += "               SMARTFLOW PRO v10.1 - AYUDA\n";
     ayuda += "═══════════════════════════════════════════════════════════\n\n";
     ayuda += "📌 COMANDOS:\n";
+    ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right diameter D material M\n";
     ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter [num] material [mat]\n";
     ayuda += "  edit equipment [tag] move to (x,y,z)\n";
     ayuda += "  edit line [tag] add waypoint (x,y,z) [after n]\n";
@@ -671,7 +763,9 @@ function mostrarCatalogoEquipos() {
     texto += "   Puertos: N1 (salida fondo, 4\", NPT), N2 (entrada superior, 3\", NPT), N3 (venteo, 1\", NPT)\n\n";
     texto += "⚙️ BOMBA:\n";
     texto += "   Puertos: SUC (succión, 4\", NPT), DESC (descarga, 3\", NPT)\n\n";
-    texto += "Para crear un equipo, usa el botón correspondiente en la barra.\n";
+    texto += "🔧 COLECTOR (manifold):\n";
+    texto += "   Puertos: IN1...INn (entradas), OUT (salida). Creado con 'create manifold'.\n\n";
+    texto += "Para crear un equipo, usa el botón correspondiente o el comando 'create manifold'.\n";
     texto += "═══════════════════════════════════════════════════════════\n";
     mostrarReporte(texto);
 }
@@ -698,21 +792,21 @@ function mostrarReporte(texto) {
 function resumenProyecto() {
     const tanques = db.equipos.filter(e => e.tipo === 'tanque_v');
     const bombas = db.equipos.filter(e => e.tipo === 'bomba');
+    const colectores = db.equipos.filter(e => e.tipo === 'colector');
     const tuberias = db.lines;
     let totalCodos = 0;
     tuberias.forEach(l => { if (l.codos) totalCodos += l.codos; });
-    let mensaje = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${tuberias.length} tuberías, ${totalCodos} codos.`;
+    let mensaje = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${colectores.length} colectores, ${tuberias.length} tuberías, ${totalCodos} codos.`;
     notify(mensaje);
 }
 
 function exportarMTO() {
     let items = [];
     for (let eq of db.equipos) {
-        let desc = eq.tipo === 'tanque_v' ? `Tanque vertical Ø${(eq.diametro/1000).toFixed(1)}m` : `Bomba centrífuga`;
+        let desc = eq.tipo === 'tanque_v' ? `Tanque vertical Ø${(eq.diametro/1000).toFixed(1)}m` : (eq.tipo === 'bomba' ? `Bomba centrífuga` : `Colector ${eq.tag}`);
         items.push([eq.tag, desc, "Und", 1]);
     }
     for (let line of db.lines) {
-        let long = 0; // No calculamos longitud real por simplicidad
         items.push([line.tag, `Tubería ${line.material} ${line.diameter}"`, "m", 0]);
         if (line.codos) {
             items.push([`Codos-${line.tag}`, `Codo 90° ${line.diameter}"`, "Und", line.codos]);
@@ -811,7 +905,7 @@ function exportPDF() {
     notify("PDF generado");
 }
 function exportPCF() {
-    let pcf = `!PCF v10.0 - SmartFlow Pro\nUNITS MM\n`;
+    let pcf = `!PCF v10.1 - SmartFlow Pro\nUNITS MM\n`;
     for (let line of db.lines) {
         if (!line._cachedPoints) continue;
         pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n    DIAMETER ${(line.diameter*25.4).toFixed(2)} MM\n`;
@@ -831,14 +925,20 @@ function aplicarNormas() {
 
 // ==================== INTERACCIÓN Y SELECCIÓN ====================
 function pickElement(mouseCanvas) {
-    // Equipos
     for (let eq of db.equipos) {
         const p = project(eq);
-        const w = (eq.diametro/2)*cam.scale;
-        const dist = Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y);
-        if (dist < w+5) return { type: 'equipment', obj: eq };
+        let radio = (eq.diametro/2)*cam.scale;
+        if (eq.tipo === 'colector') {
+            const ancho = (eq.puertos.length-1) * (eq.puertos[1]?.relX - eq.puertos[0]?.relX) || 2000;
+            const pIzq = project({ x: eq.x, y: eq.y, z: eq.z });
+            const pDer = project({ x: eq.x + ancho, y: eq.y, z: eq.z });
+            const dist = pointToSegmentDistance(mouseCanvas, pIzq, pDer);
+            if (dist < 15) return { type: 'equipment', obj: eq };
+        } else {
+            const dist = Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y);
+            if (dist < radio+5) return { type: 'equipment', obj: eq };
+        }
     }
-    // Tuberías (solo para selección, no para puntos)
     for (let line of db.lines) {
         const pts = line._cachedPoints;
         if (!pts) continue;
@@ -886,7 +986,6 @@ function initCanvasEvents() {
         } else if (toolMode === 'addPoint') {
             if (picked && picked.type === 'line') {
                 const line = picked.obj;
-                // Calcular punto sobre la línea más cercano
                 const pts = line._cachedPoints;
                 if (pts) {
                     let minDist = Infinity;
@@ -921,7 +1020,6 @@ function initCanvasEvents() {
                         };
                         if (!line.waypoints) line.waypoints = [];
                         line.waypoints.push(newPoint);
-                        // Reordenar waypoints? Por simplicidad, se añade al final y luego se recalcula
                         const pStart = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
                         const pEnd = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
                         let puntos = [pStart];
@@ -973,7 +1071,6 @@ function initCanvasEvents() {
         cam.scale = Math.min(Math.max(0.1, cam.scale), 1.5);
         render();
     });
-    // Arrastre de cámara (pan) con botón izquierdo sin selección
     canvas.addEventListener('mousedown', (e) => {
         if (toolMode === 'select' && !selectedElement && !draggingEquipment) {
             panning = true;
@@ -995,25 +1092,10 @@ function resizeCanvas() {
 function init() {
     resizeCanvas();
     initCanvasEvents();
-    // Datos de ejemplo
-    const tk01 = crearEquipoConPuertos('tanque_v', 'TK-01', 0, 1250, 0, { diametro: 2400, altura: 2500 });
-    const b01 = crearEquipoConPuertos('bomba', 'B-01', 5000, 800, 0, { diametro: 800, altura: 800 });
+    // Datos de ejemplo: un tanque y una bomba (para probar)
+    const tk01 = crearEquipoConPuertos('tanque_v', 'TK-1', 0, 1250, 0, { diametro: 2400, altura: 2500 });
+    const b01 = crearEquipoConPuertos('bomba', 'B-1', 5000, 800, 0, { diametro: 800, altura: 800 });
     db.equipos.push(tk01, b01);
-    // Crear una tubería de ejemplo
-    const lineExample = {
-        tag: 'L-101',
-        diameter: 4,
-        material: 'PPR',
-        anchors: {
-            start: { equipTag: 'TK-01', nozzleId: 'N1' },
-            end: { equipTag: 'B-01', nozzleId: 'SUC' }
-        },
-        waypoints: [],
-        _cachedPoints: null
-    };
-    db.lines.push(lineExample);
-    actualizarTuberiasConectadas('TK-01');
-    actualizarTuberiasConectadas('B-01');
     render();
     autoCenter();
     saveState();
@@ -1032,7 +1114,7 @@ function init() {
             let cmd = raw.trim();
             if (!cmd || cmd.startsWith('//')) continue;
             saveState();
-            if (!parseConnect(cmd) && !parseEditCommand(cmd) && !parseHelp(cmd)) {
+            if (!parseConnect(cmd) && !parseCreateManifold(cmd) && !parseEditCommand(cmd) && !parseHelp(cmd)) {
                 notify(`❌ No entendí: "${cmd.substring(0,50)}..."`, true);
             }
         }
@@ -1065,7 +1147,6 @@ function init() {
     document.getElementById('btnSpeakSummary').onclick = resumenProyecto;
     document.getElementById('btnCatalog').onclick = () => mostrarReporte("Usa 'help equipos' o 'help accesorios' en el panel de comandos.");
     document.getElementById('btnRecalc').onclick = recalcularTodo;
-    document.getElementById('btnReset').onclick = autoCenter;
 
     // Herramientas
     const setTool = (mode) => {
@@ -1082,7 +1163,7 @@ function init() {
     document.getElementById('toolAddPoint').onclick = () => setTool('addPoint');
 
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v10.0 - Listo. Usa 'connect' para unir equipos.");
+    notify("SmartFlow Pro v10.1 - Colector inteligente disponible. Ejemplo: create manifold M-01 at (0,1500,2000) entries 6 spacing 3000 output center diameter 4 material PPR");
 }
 
 init();
