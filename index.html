@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v7.9 - Colector y Comandos Clásicos</title>
+<title>SmartFlow Pro v8.0 - Profundidad y Volumen</title>
 <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -54,7 +55,7 @@
     <div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div>
 </div>
 <div id="notification" class="notification"></div>
-<div class="status-bar" id="statusMsg">SmartFlow Pro v7.9 - Listo | Comandos clásicos y naturales</div>
+<div class="status-bar" id="statusMsg">SmartFlow Pro v8.0 - Listo | Orden por profundidad | Sombreado de tanques</div>
 
 <script>
 // ==================== CONFIGURACIÓN GLOBAL ====================
@@ -122,7 +123,7 @@ function project(p) {
     return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY };
 }
 
-// ==================== DIBUJO (igual que antes) ====================
+// ==================== DIBUJO DE ELEMENTOS INDIVIDUALES ====================
 function drawGrid() {
     const step = 1000;
     const minX = -8000, maxX = 20000, minZ = -8000, maxZ = 15000;
@@ -160,6 +161,7 @@ function drawOrigin() {
     ctx.fillText('ORIGEN (0,0,0)', o.x + 15, o.y - 8);
 }
 
+// NUEVO: dibujo de tanque con sombreado lateral y volumen
 function drawTank(eq) {
     const p = project(eq);
     const w = (eq.diametro / 2) * cam.scale;
@@ -167,22 +169,32 @@ function drawTank(eq) {
     const topY = p.y - h/2;
     const bottomY = p.y + h/2;
     ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI);
+    // Sombra lateral (lado izquierdo más oscuro)
+    ctx.fillStyle = '#1e40af';
+    ctx.fillRect(p.x - w, topY, w, h);
+    // Lado derecho más claro (efecto de luz)
     ctx.fillStyle = '#3b82f6';
-    ctx.fill();
-    ctx.fillRect(p.x - w, topY, w*2, h);
+    ctx.fillRect(p.x, topY, w, h);
+    // Tapa superior (elipse más brillante)
     ctx.beginPath();
-    ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI);
+    ctx.ellipse(p.x, topY, w, w * 0.5, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = '#60a5fa';
     ctx.fill();
     ctx.strokeStyle = 'white';
-    ctx.lineWidth = 2;
     ctx.stroke();
+    // Tapa inferior (base)
+    ctx.beginPath();
+    ctx.ellipse(p.x, bottomY, w, w * 0.5, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = '#2563eb';
+    ctx.fill();
+    ctx.stroke();
+    // Etiqueta
     ctx.fillStyle = 'white';
     ctx.font = `bold ${Math.max(12, 14 * cam.scale)}px Arial`;
     ctx.fillText(eq.tag, p.x - 18, topY - 10);
+    // Punto de conexión (boquilla)
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 8, 0, 2*Math.PI);
+    ctx.arc(p.x, p.y, 8, 0, 2 * Math.PI);
     ctx.fillStyle = '#ff8800';
     ctx.fill();
     ctx.strokeStyle = 'white';
@@ -190,45 +202,64 @@ function drawTank(eq) {
     ctx.restore();
 }
 
-function drawPipe(line) {
-    if (!line.points3D || line.points3D.length < 2) return;
+function drawBomba(eq) {
+    const p = project(eq);
+    ctx.save();
     ctx.beginPath();
-    const proj = line.points3D.map(p => project(p));
-    ctx.moveTo(proj[0].x, proj[0].y);
-    for (let i = 1; i < proj.length; i++) ctx.lineTo(proj[i].x, proj[i].y);
+    ctx.arc(p.x, p.y, 12 * cam.scale, 0, 2 * Math.PI);
+    ctx.fillStyle = '#e67e22';
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(p.x - 12 * cam.scale, p.y);
+    ctx.lineTo(p.x + 12 * cam.scale, p.y);
+    ctx.stroke();
+    ctx.fillStyle = 'white';
+    ctx.font = `${Math.max(10, 12 * cam.scale)}px Arial`;
+    ctx.fillText(eq.tag, p.x + 15, p.y - 5);
+    ctx.restore();
+}
+
+function drawPipeSegment(line, segIndex) {
+    if (!line.points3D || line.points3D.length < 2 || segIndex >= line.points3D.length-1) return;
+    const p1 = line.points3D[segIndex];
+    const p2 = line.points3D[segIndex+1];
+    const proj1 = project(p1);
+    const proj2 = project(p2);
+    ctx.beginPath();
+    ctx.moveTo(proj1.x, proj1.y);
+    ctx.lineTo(proj2.x, proj2.y);
     ctx.strokeStyle = '#facc15';
     ctx.lineWidth = Math.max(4, (line.diameter || 4) * cam.scale);
     ctx.stroke();
-    for (let p of proj) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, 2*Math.PI);
-        ctx.fillStyle = '#ef4444';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.stroke();
-    }
+    // Pequeños círculos en los extremos del segmento (opcional, para depuración)
+    // ctx.beginPath(); ctx.arc(proj1.x, proj1.y, 3, 0, 2*Math.PI); ctx.fillStyle = '#ef4444'; ctx.fill();
+    // ctx.beginPath(); ctx.arc(proj2.x, proj2.y, 3, 0, 2*Math.PI); ctx.fill();
 }
 
-function drawComponents(line) {
-    if (!line.components) return;
-    for (let comp of line.components) {
-        const pos = getPositionOnLine(line, comp.param);
-        if (!pos) continue;
-        const p = project(pos);
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.beginPath();
-        if (comp.type === 'VALVE') {
-            ctx.moveTo(-6, -4); ctx.lineTo(0,0); ctx.lineTo(6,-4); ctx.lineTo(0,6); ctx.closePath();
-            ctx.fillStyle = '#ffaa33'; ctx.fill(); ctx.stroke();
-        } else if (comp.type === 'ELBOW') {
-            ctx.arc(0,0,6,0,Math.PI/2); ctx.lineTo(6,0);
-            ctx.fillStyle = '#88aaff'; ctx.fill(); ctx.stroke();
-        } else if (comp.type === 'ADAPTADOR') {
-            ctx.fillRect(-5,-3,10,6); ctx.fillStyle = '#cccc99'; ctx.fill(); ctx.stroke();
-        }
-        ctx.restore();
+function drawComponent(comp, line) {
+    const pos = getPositionOnLine(line, comp.param);
+    if (!pos) return;
+    const p = project(pos);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.beginPath();
+    if (comp.type === 'VALVE') {
+        ctx.moveTo(-6, -4); ctx.lineTo(0,0); ctx.lineTo(6,-4); ctx.lineTo(0,6); ctx.closePath();
+        ctx.fillStyle = '#ffaa33'; ctx.fill(); ctx.stroke();
+    } else if (comp.type === 'ELBOW') {
+        ctx.arc(0,0,6,0,Math.PI/2); ctx.lineTo(6,0);
+        ctx.fillStyle = '#88aaff'; ctx.fill(); ctx.stroke();
+    } else if (comp.type === 'ADAPTADOR') {
+        ctx.fillRect(-5,-3,10,6); ctx.fillStyle = '#cccc99'; ctx.fill(); ctx.stroke();
+    } else if (comp.type === 'SOPORTE') {
+        ctx.fillRect(-4,-2,8,4); ctx.fillStyle = '#ffaa33'; ctx.fill(); ctx.stroke();
     }
+    if (comp.skey) {
+        ctx.font = '7px monospace'; ctx.fillStyle = 'white'; ctx.fillText(comp.skey, -6, -6);
+    }
+    ctx.restore();
 }
 
 function getPositionOnLine(line, t) {
@@ -242,6 +273,7 @@ function getPositionOnLine(line, t) {
     return { x: p1.x + seg*(p2.x-p1.x), y: p1.y + seg*(p2.y-p1.y), z: p1.z + seg*(p2.z-p1.z) };
 }
 
+// ==================== RENDER CON ORDENAMIENTO POR PROFUNDIDAD ====================
 function render() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -250,9 +282,58 @@ function render() {
     ctx.save();
     drawGrid();
     drawOrigin();
-    for (let line of db.lines) drawPipe(line);
-    for (let line of db.lines) drawComponents(line);
-    for (let eq of db.equipos) drawTank(eq);
+    
+    // Recolectar todos los elementos con su profundidad (x+y+z)
+    let drawList = [];
+    
+    // Tuberías: cada segmento por separado
+    for (let line of db.lines) {
+        if (!line.points3D || line.points3D.length < 2) continue;
+        for (let i = 0; i < line.points3D.length - 1; i++) {
+            const p1 = line.points3D[i];
+            const p2 = line.points3D[i+1];
+            const mid = { x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2, z: (p1.z + p2.z)/2 };
+            const depth = mid.x + mid.y + mid.z;
+            drawList.push({ type: 'pipe', data: { line, segIndex: i }, depth });
+        }
+    }
+    
+    // Componentes
+    for (let line of db.lines) {
+        if (line.components) {
+            for (let comp of line.components) {
+                const pos = getPositionOnLine(line, comp.param);
+                if (pos) {
+                    const depth = pos.x + pos.y + pos.z;
+                    drawList.push({ type: 'component', data: { line, comp }, depth });
+                }
+            }
+        }
+    }
+    
+    // Equipos (tanques y bombas)
+    for (let eq of db.equipos) {
+        const depth = eq.x + eq.y + eq.z;
+        drawList.push({ type: 'equipment', data: eq, depth });
+    }
+    
+    // Ordenar por profundidad ascendente (los más lejanos primero)
+    drawList.sort((a, b) => a.depth - b.depth);
+    
+    // Dibujar en orden
+    for (let item of drawList) {
+        if (item.type === 'pipe') {
+            drawPipeSegment(item.data.line, item.data.segIndex);
+        } else if (item.type === 'component') {
+            drawComponent(item.data.comp, item.data.line);
+        } else if (item.type === 'equipment') {
+            if (item.data.tipo === 'tanque_v') drawTank(item.data);
+            else if (item.data.tipo === 'bomba') drawBomba(item.data);
+            else drawTank(item.data); // fallback
+        }
+    }
+    
+    // Resaltar elemento seleccionado (se dibuja encima de todo)
     if (selectedElement) {
         if (selectedElement.type === 'equipment') {
             const eq = selectedElement.obj;
@@ -277,6 +358,7 @@ function render() {
             }
         }
     }
+    
     ctx.restore();
 }
 
@@ -723,7 +805,7 @@ function nuevoProyecto() {
     }
 }
 function exportPCF() {
-    let pcf = `!PCF v7.9 - SmartFlow Pro\nUNITS MM\n`;
+    let pcf = `!PCF v8.0 - SmartFlow Pro\nUNITS MM\n`;
     for (let line of db.lines) {
         if (!line.points3D) continue;
         pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n    DIAMETER ${(line.diameter*25.4).toFixed(2)} MM\n`;
@@ -760,7 +842,7 @@ function toggleVoice() {
 function init() {
     resizeCanvas();
     initCanvasEvents();
-    // Datos de ejemplo
+    // Datos de ejemplo (un tanque y una tubería)
     db.equipos.push({ tag: 'TK-01', tipo: 'tanque_v', x: 2000, y: 1250, z: 0, diametro: 2400, altura: 2500 });
     db.lines.push({ tag: 'L-101', diameter: 4, material: 'PPR', points3D: [{x:2000, y:1500, z:0}, {x:5000, y:1500, z:0}], components: [] });
     render();
@@ -818,7 +900,7 @@ function init() {
     document.getElementById('btnSpeakSummary').onclick = () => parseNatural('resumen');
 
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v7.9 - Listo. Ahora acepta comandos clásicos como 'line ...'");
+    notify("SmartFlow Pro v8.0 - Listo | Profundidad activada | Tanques con volumen");
 }
 
 function resizeCanvas() {
