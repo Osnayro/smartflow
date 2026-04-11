@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v10.3 - Catálogo Industrial Ampliado</title>
+<title>SmartFlow Pro v10.3 - Componentes en Tuberías</title>
 <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -69,7 +69,7 @@
     <div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div>
 </div>
 <div id="notification" class="notification"></div>
-<div class="status-bar" id="statusMsg">SmartFlow Pro v10.3 - Catálogo industrial ampliado</div>
+<div class="status-bar" id="statusMsg">SmartFlow Pro v10.3 - Componentes en tuberías</div>
 <div class="tools-panel" id="toolsPanel">
     <button id="toolSelect" class="active">🔍 Seleccionar</button>
     <button id="toolMoveEq">✋ Mover equipo</button>
@@ -91,9 +91,8 @@
 
 <script>
 // ==================== SmartFlow Pro v10.3 ====================
-// Ampliación masiva de equipos y accesorios por industria, panel flotante, comandos unificados.
-// Base: v10.2 (colisiones + elevaciones). Se añade catálogo dinámico y parser create para todos los tipos.
-// Se restauran los botones "Tanque" y "Bomba" de versiones anteriores.
+// Base: v10.2 (colisiones + elevaciones) + catálogo ampliado + dibujo de componentes en tuberías
+// Nuevo: drawPipeComponents, inverseProject corregido para respetar currentElevation
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
@@ -167,17 +166,23 @@ function project(p) {
     return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY };
 }
 
+// NUEVA inverseProject respetando currentElevation
 function inverseProject(screenX, screenY) {
     const X = (screenX - cam.panX) / cam.scale;
     const Y = (screenY - cam.panY) / cam.scale;
+    // Ajuste por la elevación actual (isometría)
+    const adjY = Y + (currentElevation * 0.5);
     const A = X / 0.866;
-    const B = Y / 0.5;
-    return { x: (A + B) / 2, y: 0, z: (B - A) / 2 };
+    const B = adjY / 0.5;
+    return {
+        x: (A + B) / 2,
+        y: currentElevation,
+        z: (B - A) / 2
+    };
 }
 
 // ==================== DEFINICIÓN DE EQUIPOS (CATÁLOGO) ====================
 const EquiposCatalogo = {
-    // Petrolera / Petroquímica
     tanque_v: { nombre: 'Tanque Vertical', industria: 'petrolera', forma: 'cilindro', puertos: (e) => [
         { id: 'N1', label: 'Salida fondo', relX: 0, relY: -e.altura/2, relZ: 0, diametro: 4, tipoConexion: 'NPT', orientacion: {dx:0, dy:-1, dz:0}, material: e.material || 'CS' },
         { id: 'N2', label: 'Entrada superior', relX: 0, relY: e.altura/2, relZ: 0, diametro: 3, tipoConexion: 'NPT', orientacion: {dx:0, dy:1, dz:0} }
@@ -225,7 +230,6 @@ const EquiposCatalogo = {
         { id: 'GAS', label: 'Salida gas', relX: 0, relY: e.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
         { id: 'LIQ', label: 'Salida líquido', relX: 0, relY: -e.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
     ] },
-    // Tratamiento de agua
     clarificador: { nombre: 'Clarificador', industria: 'agua', forma: 'cilindro', puertos: (e) => [
         { id: 'IN', label: 'Entrada', relX: 0, relY: e.altura*0.3, relZ: e.diametro/2, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:0, dz:1} },
         { id: 'OUT', label: 'Efluente', relX: 0, relY: e.altura*0.1, relZ: -e.diametro/2, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:0, dz:-1} }
@@ -239,7 +243,6 @@ const EquiposCatalogo = {
         { id: 'PERM', label: 'Permeado', relX: e.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} },
         { id: 'CONC', label: 'Concentrado', relX: 0, relY: -e.altura/2, relZ: e.largo/2, diametro: 3, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
     ] },
-    // Alimentos
     tanque_acero: { nombre: 'Tanque Acero Inox (CIP)', industria: 'alimentos', forma: 'cilindro', puertos: (e) => [
         { id: 'IN', label: 'Entrada', relX: 0, relY: e.altura*0.2, relZ: e.diametro/2, diametro: 4, tipoConexion: 'Clamp', orientacion: {dx:0, dy:0, dz:1}, material: 'SS304' },
         { id: 'OUT', label: 'Salida', relX: 0, relY: -e.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Clamp', orientacion: {dx:0, dy:-1, dz:0} }
@@ -252,7 +255,6 @@ const EquiposCatalogo = {
         { id: 'IN', label: 'Entrada', relX: -300, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'Clamp', orientacion: {dx:-1, dy:0, dz:0} },
         { id: 'OUT', label: 'Salida', relX: 300, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'Clamp', orientacion: {dx:1, dy:0, dz:0} }
     ] },
-    // Colector especial
     colector: { nombre: 'Colector (Manifold)', industria: 'general', forma: 'linea', puertos: (e) => e.puertos }
 };
 
@@ -404,7 +406,7 @@ function checkCollisions() {
     });
 }
 
-// ==================== DIBUJO (con soporte para todos los equipos) ====================
+// ==================== DIBUJO (con soporte para componentes en tuberías) ====================
 function drawGrid(elevation = 0) {
     const step = 1000;
     const minX = -8000, maxX = 20000, minZ = -8000, maxZ = 15000;
@@ -491,6 +493,7 @@ function drawRectEquip(eq, color) {
 }
 
 function getPointAtDistance(from,to,dist){ const d=Math.hypot(to.x-from.x,to.y-from.y,to.z-from.z); const t=Math.min(dist/d,0.5); return{x:from.x+(to.x-from.x)*t, y:from.y+(to.y-from.y)*t, z:from.z+(to.z-from.z)*t};}
+
 function drawPipeWithElbows(line){
     const pts=line._cachedPoints||line.points3D; if(!pts||pts.length<2) return;
     const radio=Math.min((line.diameter||4)*25.4*1.5,500);
@@ -507,6 +510,101 @@ function drawPipeWithElbows(line){
     ctx.stroke();
 }
 
+// NUEVO: Dibujar componentes sobre tuberías (válvulas, bridas, instrumentos)
+function drawPipeComponents(line) {
+    const pts = line._cachedPoints || line.points3D;
+    if (!pts || pts.length < 2 || !line.components) return;
+
+    // Calcular longitudes acumuladas para mapear param (0-1) a posición real
+    let lengths = [];
+    let totalLen = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+        let d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+        lengths.push(d);
+        totalLen += d;
+    }
+    if (totalLen === 0) return;
+
+    line.components.forEach(comp => {
+        let targetLen = totalLen * Math.min(1, Math.max(0, comp.param));
+        let currentAccum = 0;
+        let p1, p2, t = 0;
+
+        for (let i = 0; i < lengths.length; i++) {
+            if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) {
+                p1 = pts[i];
+                p2 = pts[i+1];
+                let segLen = lengths[i];
+                if (segLen > 0) t = (targetLen - currentAccum) / segLen;
+                else t = 0;
+                t = Math.min(1, Math.max(0, t));
+                break;
+            }
+            currentAccum += lengths[i];
+        }
+        if (!p1 || !p2) return;
+
+        const pos3D = {
+            x: p1.x + (p2.x - p1.x) * t,
+            y: p1.y + (p2.y - p1.y) * t,
+            z: p1.z + (p2.z - p1.z) * t
+        };
+        const proj = project(pos3D);
+        const projP1 = project(p1);
+        const projP2 = project(p2);
+        const angle = Math.atan2(projP2.y - projP1.y, projP2.x - projP1.x);
+
+        drawSymbol(proj.x, proj.y, angle, comp);
+    });
+}
+
+function drawSymbol(x, y, angle, comp) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = '#1e1e2e';
+    const s = 8; // tamaño base
+
+    switch (comp.type) {
+        case 'VALVE':
+            ctx.beginPath();
+            ctx.moveTo(-s, -s); ctx.lineTo(s, s); ctx.lineTo(s, -s); ctx.lineTo(-s, s); ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            if (comp.subtype === 'bola') {
+                ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+            } else if (comp.subtype === 'check') {
+                ctx.beginPath(); ctx.moveTo(-2, -s); ctx.lineTo(2, 0); ctx.lineTo(-2, s); ctx.stroke();
+            } else if (comp.subtype === 'compuerta') {
+                ctx.fillRect(-2, -s, 4, s*2);
+            }
+            break;
+        case 'FLANGE':
+            ctx.beginPath();
+            ctx.moveTo(-2, -s); ctx.lineTo(-2, s);
+            ctx.moveTo(2, -s); ctx.lineTo(2, s);
+            ctx.stroke();
+            break;
+        case 'INSTRUMENT':
+            ctx.beginPath();
+            ctx.arc(0, -s*2, s, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -s); ctx.stroke();
+            break;
+        case 'REDUCER':
+            ctx.beginPath();
+            ctx.moveTo(-s, -s); ctx.lineTo(s, -s/2); ctx.lineTo(s, s/2); ctx.lineTo(-s, s); ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            break;
+        default:
+            ctx.fillRect(-4, -4, 8, 8);
+            ctx.strokeRect(-4, -4, 8, 8);
+            break;
+    }
+    ctx.restore();
+}
+
 function render(){
     if(!ctx) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -514,7 +612,10 @@ function render(){
     ctx.save();
     drawGrid(currentElevation);
     drawOrigin();
-    for(let line of db.lines) drawPipeWithElbows(line);
+    for(let line of db.lines) {
+        drawPipeWithElbows(line);
+        drawPipeComponents(line);  // <-- NUEVO: dibuja componentes sobre la tubería
+    }
     for(let eq of db.equipos){
         if(eq.tipo==='tanque_v') drawTank(eq);
         else if(eq.tipo==='bomba') drawBomba(eq);
@@ -723,6 +824,13 @@ function exportarMTO() {
     for (let line of db.lines) {
         items.push([line.tag, `Tubería ${line.material} ${line.diameter}"`, "m", 0]);
         if (line.codos) items.push([`Codos-${line.tag}`, `Codo 90° ${line.diameter}"`, "Und", line.codos]);
+        if (line.components) {
+            line.components.forEach(comp => {
+                let tipoComp = comp.type;
+                if (comp.type === 'VALVE') tipoComp += ` (${comp.subtype || 'genérica'})`;
+                items.push([comp.tag, tipoComp, "Und", 1]);
+            });
+        }
     }
     if (items.length === 0) { notify("No hay elementos", true); return; }
     const ws = XLSX.utils.aoa_to_sheet([["Tag","Descripción","Unidad","Cantidad"], ...items]);
@@ -778,7 +886,7 @@ function buildCatalogPanel() {
         }
         html += `</div></div>`;
     }
-    // Sección de accesorios
+    // Sección de accesorios (componentes)
     html += `<div class="catalog-category"><h4>🔧 Válvulas y Accesorios</h4><div class="catalog-buttons">
         <button onclick="crearComponente('VALVE','bola')">Válvula Bola</button>
         <button onclick="crearComponente('VALVE','compuerta')">Válvula Compuerta</button>
@@ -978,7 +1086,6 @@ function init() {
     };
     document.getElementById('clearCommand').onclick = () => document.getElementById('commandText').value = '';
     
-    // Botones de creación rápida
     document.getElementById('btnAddTank').onclick = () => {
         const tag = `TK-${db.equipos.filter(e => e.tipo === 'tanque_v').length+1}`;
         const ult = db.equipos[db.equipos.length-1];
@@ -1024,7 +1131,7 @@ function init() {
     document.getElementById('toolAddPoint').onclick = () => setTool('addPoint');
     
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v10.3 - Catálogo industrial ampliado. Botones 'Tanque' y 'Bomba' restaurados.");
+    notify("SmartFlow Pro v10.3 - Componentes en tuberías activados. Use el catálogo para añadir válvulas e instrumentos.");
 }
 
 init();
