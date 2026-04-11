@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -80,8 +79,8 @@
 
 <script>
 // ==================== SmartFlow Pro v10.2 (Completa) ====================
-// Integra: equipos con puertos, enrutamiento ortogonal, codos redondeados,
-// panel flotante de equipos, comandos create, create manifold, connect, edit.
+// Incluye: catálogo industrial, panel flotante, comandos create, create manifold, connect,
+// enrutamiento ortogonal, codos redondeados, herramientas manuales, persistencia, MTO, PDF, PCF.
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
@@ -176,11 +175,60 @@ const EquiposCatalogo = {
         { id: 'SUC', label: 'Succión', relX: -500, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0}, material: eq.material || 'SS' },
         { id: 'DESC', label: 'Descarga', relX: 500, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'NPT', orientacion: {dx:1, dy:0, dz:0} }
     ] },
-    'intercambiador': { nombre: 'Intercambiador', industria: 'petroquimica', puertos: (eq) => [
+    'intercambiador': { nombre: 'Intercambiador de Calor', industria: 'petroquimica', puertos: (eq) => [
         { id: 'E1', label: 'Entrada tubos', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
-        { id: 'E2', label: 'Salida tubos', relX: eq.largo/2, relY: 0, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} }
+        { id: 'E2', label: 'Salida tubos', relX: eq.largo/2, relY: 0, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} },
+        { id: 'C1', label: 'Entrada coraza', relX: 0, relY: eq.altura/2, relZ: -eq.diametro/2, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'C2', label: 'Salida coraza', relX: 0, relY: -eq.altura/2, relZ: eq.diametro/2, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
     ] },
-    'colector': { nombre: 'Colector', industria: 'general', puertos: (eq) => eq.puertos }
+    'torre': { nombre: 'Torre de Destilación', industria: 'petroquimica', puertos: (eq) => [
+        { id: 'FEED', label: 'Alimentación', relX: 0, relY: eq.altura*0.3, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} },
+        { id: 'TOPS', label: 'Destilado', relX: 0, relY: eq.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'BOT', label: 'Fondo', relX: 0, relY: -eq.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    'reactor': { nombre: 'Reactor Químico', industria: 'petroquimica', puertos: (eq) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: eq.altura*0.2, relZ: eq.diametro/2, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:0, dz:1} },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -eq.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    'caldera': { nombre: 'Caldera Industrial', industria: 'petrolera', puertos: (eq) => [
+        { id: 'GAS', label: 'Entrada gas', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'VAPOR', label: 'Salida vapor', relX: eq.largo/2, relY: eq.altura/2, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    'compresor': { nombre: 'Compresor', industria: 'petrolera', puertos: (eq) => [
+        { id: 'SUC', label: 'Succión', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'DESC', label: 'Descarga', relX: eq.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    'separador': { nombre: 'Separador Bifásico', industria: 'petrolera', puertos: (eq) => [
+        { id: 'IN', label: 'Entrada', relX: -eq.diametro/2, relY: 0, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'GAS', label: 'Salida gas', relX: 0, relY: eq.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'LIQ', label: 'Salida líquido', relX: 0, relY: -eq.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    'clarificador': { nombre: 'Clarificador', industria: 'agua', puertos: (eq) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: eq.altura*0.3, relZ: eq.diametro/2, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:0, dz:1} },
+        { id: 'OUT', label: 'Efluente', relX: 0, relY: eq.altura*0.1, relZ: -eq.diametro/2, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:0, dz:-1} }
+    ] },
+    'filtro_arena': { nombre: 'Filtro de Arena', industria: 'agua', puertos: (eq) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: eq.altura/2, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -eq.altura/2, relZ: 0, diametro: 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    'osmosis': { nombre: 'Ósmosis Inversa', industria: 'agua', puertos: (eq) => [
+        { id: 'FEED', label: 'Alimentación', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'PERM', label: 'Permeado', relX: eq.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} },
+        { id: 'CONC', label: 'Concentrado', relX: 0, relY: -eq.altura/2, relZ: eq.largo/2, diametro: 3, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    'tanque_acero': { nombre: 'Tanque Acero Inox (CIP)', industria: 'alimentos', puertos: (eq) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: eq.altura*0.2, relZ: eq.diametro/2, diametro: 4, tipoConexion: 'Clamp', orientacion: {dx:0, dy:0, dz:1}, material: 'SS304' },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -eq.altura/2, relZ: 0, diametro: 4, tipoConexion: 'Clamp', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    'pasteurizador': { nombre: 'Pasteurizador', industria: 'alimentos', puertos: (eq) => [
+        { id: 'IN', label: 'Producto frío', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Clamp', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'OUT', label: 'Producto pasteurizado', relX: eq.largo/2, relY: 0, relZ: 0, diametro: 4, tipoConexion: 'Clamp', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    'homogeneizador': { nombre: 'Homogeneizador', industria: 'alimentos', puertos: (eq) => [
+        { id: 'IN', label: 'Entrada', relX: -300, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'Clamp', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: 300, relY: 0, relZ: 0, diametro: 3, tipoConexion: 'Clamp', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    'colector': { nombre: 'Colector (Manifold)', industria: 'general', puertos: (eq) => eq.puertos }
 };
 
 function crearEquipo(tipo, tag, x, y, z, params = {}) {
@@ -521,7 +569,7 @@ function parseEditCommand(cmd) {
                 eq.x = parseFloat(m[1]); eq.y = parseFloat(m[2]); eq.z = parseFloat(m[3]);
                 actualizarTuberiasConectadas(tag);
                 saveState(); render();
-                notify(`Equipo ${tag} movido`);
+                notify(`Equipo ${tag} movido a (${eq.x},${eq.y},${eq.z})`);
                 return true;
             }
         }
@@ -659,19 +707,21 @@ function resizeCanvas(){ const container=canvas.parentElement; canvas.width=cont
 // ==================== PANEL FLOTANTE ====================
 function buildEquipmentPanel(){
     const categorias = {
-        'petrolera': ['tanque_v','bomba'],
+        'petrolera': ['tanque_v', 'tanque_h', 'bomba', 'intercambiador', 'torre', 'reactor', 'caldera', 'compresor', 'separador'],
+        'agua': ['clarificador', 'filtro_arena', 'osmosis'],
+        'alimentos': ['tanque_acero', 'pasteurizador', 'homogeneizador'],
         'otros': ['colector']
     };
     let html='';
     for(let [cat, tipos] of Object.entries(categorias)){
-        html+=`<div class="equipment-category"><h4>${cat==='petrolera'?'🛢️ Petrolera':'📌 Otros'}</h4><div class="equipment-buttons">`;
+        html+=`<div class="equipment-category"><h4>${cat==='petrolera'?'🛢️ Petrolera/Petroquímica':cat==='agua'?'💧 Tratamiento de Agua':cat==='alimentos'?'🍎 Alimentos':'📌 Otros'}</h4><div class="equipment-buttons">`;
         for(let tipo of tipos){
             const nombre=EquiposCatalogo[tipo]?.nombre||tipo;
             html+=`<button onclick="crearEquipoPorTipo('${tipo}')">${nombre}</button>`;
         }
         html+=`</div></div>`;
     }
-    html+=`<div class="component-category"><h4>🔧 Válvulas y Accesorios</h4><div class="equipment-buttons"><button onclick="crearComponente('VALVE','bola')">Válvula Bola</button><button onclick="crearComponente('ELBOW')">Codo 90°</button><button onclick="crearComponente('FLANGE')">Brida</button></div></div>`;
+    html+=`<div class="component-category"><h4>🔧 Válvulas y Accesorios</h4><div class="equipment-buttons"><button onclick="crearComponente('VALVE','bola')">Válvula Bola</button><button onclick="crearComponente('VALVE','compuerta')">Válvula Compuerta</button><button onclick="crearComponente('VALVE','mariposa')">Válvula Mariposa</button><button onclick="crearComponente('ELBOW')">Codo 90°</button><button onclick="crearComponente('FLANGE')">Brida</button><button onclick="crearComponente('REDUCER')">Reductor</button><button onclick="crearComponente('INSTRUMENT','presostato')">Presostato</button><button onclick="crearComponente('INSTRUMENT','termometro')">Termómetro</button></div></div>`;
     document.getElementById('eqPanelContent').innerHTML=html;
 }
 function crearEquipoPorTipo(tipo){
@@ -682,7 +732,9 @@ function crearEquipoPorTipo(tipo){
     let y = 1250;
     let params = {};
     if(tipo==='tanque_v'){ params.diametro=2400; params.altura=2500; y=1250; }
+    else if(tipo==='tanque_h'){ params.diametro=2000; params.altura=2000; params.largo=4000; y=1000; }
     else if(tipo==='bomba'){ params.diametro=800; params.altura=800; y=800; }
+    else if(['intercambiador','torre','reactor','caldera','compresor','separador','clarificador','filtro_arena','osmosis','tanque_acero','pasteurizador','homogeneizador'].includes(tipo)){ params.diametro=2000; params.altura=3000; params.largo=4000; y=1500; }
     else if(tipo==='colector'){ crearColector(tag, x, y, 2000, 4, 3000, 'center', 4, 'PPR'); return; }
     crearEquipo(tipo, tag, x, y, z, params);
 }
@@ -758,10 +810,9 @@ function init(){
     document.getElementById('toolEditPipe').onclick=()=>setTool('editPipe');
     document.getElementById('toolAddPoint').onclick=()=>setTool('addPoint');
     window.addEventListener('resize',()=>{ resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v10.2 - Completa. Usa 'create manifold' para colectores.");
+    notify("SmartFlow Pro v10.2 - Completa. Use 'create manifold' para colectores.");
 }
 init();
 </script>
 </body>
 </html>
- 
