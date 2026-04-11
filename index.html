@@ -50,6 +50,8 @@
     <button id="btnSave">💾 Guardar</button>
     <button id="btnReset">🔄 Centrar</button>
     <button id="btnCommand" class="btn-primary">🤖 Comandos</button>
+    <button id="btnAddTank">🏭 Tanque</button>
+    <button id="btnAddPump">⚙️ Bomba</button>
     <button id="btnMTO">📊 MTO</button>
     <button id="btnPDF">📄 PDF</button>
     <button id="btnUndo" class="btn-warning">↩️ Undo</button>
@@ -91,6 +93,7 @@
 // ==================== SmartFlow Pro v10.3 ====================
 // Ampliación masiva de equipos y accesorios por industria, panel flotante, comandos unificados.
 // Base: v10.2 (colisiones + elevaciones). Se añade catálogo dinámico y parser create para todos los tipos.
+// Se restauran los botones "Tanque" y "Bomba" de versiones anteriores.
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
@@ -775,7 +778,7 @@ function buildCatalogPanel() {
         }
         html += `</div></div>`;
     }
-    // Sección de accesorios (simulados como equipos de tipo accesorio - no tienen puertos reales)
+    // Sección de accesorios
     html += `<div class="catalog-category"><h4>🔧 Válvulas y Accesorios</h4><div class="catalog-buttons">
         <button onclick="crearComponente('VALVE','bola')">Válvula Bola</button>
         <button onclick="crearComponente('VALVE','compuerta')">Válvula Compuerta</button>
@@ -952,6 +955,7 @@ function init() {
     crearEquipo('bomba', 'B-1', 5000, 800, 0, { diametro: 800, altura: 800 });
     render(); autoCenter(); saveState();
 
+    // Botones
     document.getElementById('btnNew').onclick = nuevoProyecto;
     document.getElementById('btnOpen').onclick = cargarProyecto;
     document.getElementById('btnSave').onclick = guardarProyecto;
@@ -973,6 +977,21 @@ function init() {
         render();
     };
     document.getElementById('clearCommand').onclick = () => document.getElementById('commandText').value = '';
+    
+    // Botones de creación rápida
+    document.getElementById('btnAddTank').onclick = () => {
+        const tag = `TK-${db.equipos.filter(e => e.tipo === 'tanque_v').length+1}`;
+        const ult = db.equipos[db.equipos.length-1];
+        let x = ult ? ult.x + 3000 : 0;
+        crearEquipo('tanque_v', tag, x, 1250, 0, { diametro: 2400, altura: 2500 });
+    };
+    document.getElementById('btnAddPump').onclick = () => {
+        const tag = `B-${db.equipos.filter(e => e.tipo === 'bomba').length+1}`;
+        const ult = db.equipos[db.equipos.length-1];
+        let x = ult ? ult.x + 3000 : 5000;
+        crearEquipo('bomba', tag, x, 800, 0, { diametro: 800, altura: 800 });
+    };
+    
     document.getElementById('btnMTO').onclick = exportarMTO;
     document.getElementById('btnPDF').onclick = exportPDF;
     document.getElementById('btnUndo').onclick = undo;
@@ -990,6 +1009,7 @@ function init() {
         content.style.display = content.style.display === 'none' ? 'flex' : 'none';
     };
     document.getElementById('btnSetElev').onclick = () => { const val = parseInt(document.getElementById('customElev').value); if (!isNaN(val)) setElevation(val); };
+    
     const setTool = (mode) => {
         toolMode = mode;
         document.querySelectorAll('#toolsPanel button').forEach(btn => btn.classList.remove('active'));
@@ -1002,12 +1022,12 @@ function init() {
     document.getElementById('toolMoveEq').onclick = () => setTool('moveEq');
     document.getElementById('toolEditPipe').onclick = () => setTool('editPipe');
     document.getElementById('toolAddPoint').onclick = () => setTool('addPoint');
+    
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v10.3 - Catálogo industrial ampliado. Usa el botón 'Catálogo' para ver todos los equipos.");
+    notify("SmartFlow Pro v10.3 - Catálogo industrial ampliado. Botones 'Tanque' y 'Bomba' restaurados.");
 }
 
 init();
 </script>
 </body>
 </html>
- 
