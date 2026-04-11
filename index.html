@@ -90,9 +90,9 @@
 </div>
 
 <script>
-// ==================== SmartFlow Pro v10.3 ====================
-// Base: v10.2 (colisiones + elevaciones) + catálogo ampliado + dibujo de componentes en tuberías
-// Nuevo: drawPipeComponents, inverseProject corregido para respetar currentElevation
+// ==================== SmartFlow Pro v10.3 (corregido) ====================
+// Corrección: parseCreateManifold ahora se ejecuta antes que parseCreate
+// Todas las funciones anteriores se mantienen
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
@@ -1077,7 +1077,8 @@ function init() {
             let cmd = raw.trim();
             if (!cmd || cmd.startsWith('//')) continue;
             saveState();
-            if (!parseCreate(cmd) && !parseConnect(cmd) && !parseCreateManifold(cmd) && !parseEditCommand(cmd) && !parseHelp(cmd)) {
+            // IMPORTANTE: parseCreateManifold debe ir primero que parseCreate
+            if (!parseCreateManifold(cmd) && !parseCreate(cmd) && !parseConnect(cmd) && !parseEditCommand(cmd) && !parseHelp(cmd)) {
                 notify(`❌ No entendí: "${cmd.substring(0,50)}..."`, true);
             }
         }
