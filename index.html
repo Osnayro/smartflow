@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SmartFlow Pro v10.5 - Edición de puertos</title>
+<title>SmartFlow Pro v10.7 - Puertos Avanzados</title>
 <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -38,13 +38,22 @@
     .catalog-buttons{display:flex;flex-wrap:wrap;gap:6px}
     .catalog-buttons button{background:#2c3e66;padding:4px 8px;font-size:11px;border-radius:4px}
     .catalog-buttons button:hover{background:#7c3aed}
-    .property-panel{position:fixed;right:20px;top:100px;width:320px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:900;display:none;flex-direction:column;max-height:80vh;overflow-y:auto}
+    .property-panel{position:fixed;right:20px;top:100px;width:380px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:900;display:none;flex-direction:column;max-height:80vh;overflow-y:auto}
     .property-header{background:#2c3e66;padding:10px;font-weight:bold;text-align:center;cursor:pointer}
     .property-content{padding:12px}
-    .property-row{margin-bottom:8px;display:flex;align-items:center;gap:8px}
+    .property-row{margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .property-row label{width:80px;font-size:12px}
-    .property-row input{flex:1;background:#0f0f17;border:1px solid #3a3a4a;color:white;border-radius:4px;padding:4px}
-    @media (max-width:768px){.property-panel{width:260px;right:10px;top:80px}}
+    .property-row input{flex:1;background:#0f0f17;border:1px solid #3a3a4a;color:white;border-radius:4px;padding:4px;min-width:60px}
+    .property-row select{background:#0f0f17;border:1px solid #3a3a4a;color:white;border-radius:4px;padding:4px;flex:1}
+    .puerto-section{border:1px solid #3a3a4a;border-radius:8px;padding:10px;margin-bottom:12px;background:#1a1a2e}
+    .puerto-title{color:#7c3aed;font-weight:bold;margin-bottom:8px;display:flex;justify-content:space-between}
+    .coord-group{display:flex;gap:4px;margin-top:5px}
+    .coord-group input{width:70px}
+    .preset-buttons{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+    .preset-buttons button{padding:4px 8px;font-size:10px;background:#3a3a5a}
+    .angle-control{display:flex;align-items:center;gap:8px;margin-top:8px}
+    .angle-control input{width:80px}
+    @media (max-width:768px){.property-panel{width:300px;right:10px;top:80px}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -71,11 +80,11 @@
 <div class="canvas-container"><canvas id="isoCanvas"></canvas></div>
 <div id="commandPanel" class="command-panel">
     <div class="command-header"><strong>🤖 Comandos</strong><button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;">✖</button></div>
-    <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1250,0) diam 2.4 height 2.5 material CS N1=3&#10;create manifold M-01 at (0,1500,2000) entries 2 spacing 3000 output center diameter 4 material PPR&#10;connect TK-01 N1 to M-01 IN1 diameter 3 material PPR&#10;edit equipment TK-01 set puerto N1 diam 4&#10;help"></textarea>
+    <textarea id="commandText" rows="6" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1250,0) diam 2.4 height 2.5 material CS&#10;edit equipment TK-01 set puerto N1 pos (1200,-1050,0)&#10;edit equipment TK-01 set puerto N1 dir (1,0,0)&#10;edit equipment TK-01 set puerto N1 diam 4&#10;help"></textarea>
     <div class="command-buttons"><button id="runCommands" class="btn-primary">Ejecutar</button><button id="clearCommand">Limpiar</button></div>
 </div>
 <div id="notification" class="notification"></div>
-<div class="status-bar" id="statusMsg">SmartFlow Pro v10.5 - Edición de puertos</div>
+<div class="status-bar" id="statusMsg">SmartFlow Pro v10.7 - Edición Avanzada de Puertos | Salida lateral de fondo: pos (1200,-1050,0) dir (1,0,0)</div>
 <div class="tools-panel" id="toolsPanel">
     <button id="toolSelect" class="active">🔍 Seleccionar</button>
     <button id="toolMoveEq">✋ Mover equipo</button>
@@ -100,8 +109,9 @@
 </div>
 
 <script>
-// ==================== SmartFlow Pro v10.5 ====================
-// Nuevo: Panel de propiedades para editar puertos de equipos y comando edit equipment set puerto
+// ==================== SmartFlow Pro v10.7 ====================
+// NUEVO: Edición avanzada de puertos - posición, orientación y curvas Bézier
+// Mantiene TODAS las funciones de v10.6
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
 let db = { equipos: [], lines: [] };
@@ -175,32 +185,78 @@ function project(p) {
     return { x: x * cam.scale + cam.panX, y: y * cam.scale + cam.panY };
 }
 
-function inverseProject(screenX, screenY) {
-    const X = (screenX - cam.panX) / cam.scale;
-    const Y = (screenY - cam.panY) / cam.scale;
-    const adjY = Y + (currentElevation * 0.5);
-    const A = X / 0.866;
-    const B = adjY / 0.5;
-    return { x: (A + B) / 2, y: currentElevation, z: (B - A) / 2 };
-}
-
-// ==================== DEFINICIÓN DE EQUIPOS (CATÁLOGO) ====================
+// ==================== DEFINICIÓN DE EQUIPOS (CATÁLOGO COMPLETO) ====================
 const EquiposCatalogo = {
     tanque_v: { nombre: 'Tanque Vertical', industria: 'petrolera', forma: 'cilindro', puertos: (e) => [
         { id: 'N1', label: 'Salida fondo', relX: 0, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.N1 ?? 4, tipoConexion: 'NPT', orientacion: {dx:0, dy:-1, dz:0}, material: e.material || 'CS' },
         { id: 'N2', label: 'Entrada superior', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.N2 ?? 3, tipoConexion: 'NPT', orientacion: {dx:0, dy:1, dz:0} }
     ] },
     tanque_h: { nombre: 'Tanque Horizontal', industria: 'petrolera', forma: 'cilindro', puertos: (e) => [
-        { id: 'N1', label: 'Salida', relX: e.diametro/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.N1 ?? 4, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} },
-        { id: 'N2', label: 'Entrada', relX: -e.diametro/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.N2 ?? 4, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} }
+        { id: 'N1', label: 'Salida', relX: e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.N1 ?? 4, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} },
+        { id: 'N2', label: 'Entrada', relX: -e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.N2 ?? 4, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} }
     ] },
     bomba: { nombre: 'Bomba Centrífuga', industria: 'general', forma: 'circulo', puertos: (e) => [
         { id: 'SUC', label: 'Succión', relX: -500, relY: 0, relZ: 0, diametro: e.puertoDiams?.SUC ?? 4, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0}, material: e.material || 'SS' },
         { id: 'DESC', label: 'Descarga', relX: 500, relY: 0, relZ: 0, diametro: e.puertoDiams?.DESC ?? 3, tipoConexion: 'NPT', orientacion: {dx:1, dy:0, dz:0} }
     ] },
-    // Resto de equipos (intercambiador, torre, etc.) con la misma lógica (simplificado para brevedad)
+    intercambiador: { nombre: 'Intercambiador de Calor', industria: 'petrolera', forma: 'rect', puertos: (e) => [
+        { id: 'IN1', label: 'Entrada Caliente', relX: -e.largo/2, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.IN1 ?? 6, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'OUT1', label: 'Salida Caliente', relX: e.largo/2, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.OUT1 ?? 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    torre: { nombre: 'Torre de Destilación', industria: 'petrolera', forma: 'cilindro', puertos: (e) => [
+        { id: 'FEED', label: 'Alimentación', relX: 0, relY: 0, relZ: e.diametro/2, diametro: e.puertoDiams?.FEED ?? 8, tipoConexion: 'Flange', orientacion: {dx:0, dy:0, dz:1} },
+        { id: 'TOP', label: 'Tope', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.TOP ?? 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} }
+    ] },
+    reactor: { nombre: 'Reactor', industria: 'quimica', forma: 'cilindro', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.IN ?? 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.OUT ?? 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    caldera: { nombre: 'Caldera', industria: 'petrolera', forma: 'rect', puertos: (e) => [
+        { id: 'AGUA', label: 'Entrada Agua', relX: -e.largo/2, relY: e.altura/4, relZ: 0, diametro: e.puertoDiams?.AGUA ?? 4, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'VAPOR', label: 'Salida Vapor', relX: e.largo/2, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.VAPOR ?? 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:1, dz:0} }
+    ] },
+    compresor: { nombre: 'Compresor', industria: 'petrolera', forma: 'rect', puertos: (e) => [
+        { id: 'SUC', label: 'Succión', relX: -e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.SUC ?? 6, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'DESC', label: 'Descarga', relX: e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.DESC ?? 4, tipoConexion: 'Flange', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    separador: { nombre: 'Separador', industria: 'petrolera', forma: 'cilindro', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: -e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.IN ?? 8, tipoConexion: 'Flange', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'GAS', label: 'Salida Gas', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.GAS ?? 4, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'LIQ', label: 'Salida Líquido', relX: e.largo/2, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.LIQ ?? 6, tipoConexion: 'Flange', orientacion: {dx:1, dy:-1, dz:0} }
+    ] },
+    clarificador: { nombre: 'Clarificador', industria: 'agua', forma: 'cilindro', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.IN ?? 8, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.OUT ?? 8, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    filtro_arena: { nombre: 'Filtro de Arena', industria: 'agua', forma: 'cilindro', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.IN ?? 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.OUT ?? 6, tipoConexion: 'Flange', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    osmosis: { nombre: 'Ósmosis Inversa', industria: 'agua', forma: 'rect', puertos: (e) => [
+        { id: 'FEED', label: 'Alimentación', relX: -e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.FEED ?? 4, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'PERM', label: 'Permeado', relX: e.largo/2, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.PERM ?? 2, tipoConexion: 'NPT', orientacion: {dx:1, dy:1, dz:0} }
+    ] },
+    bomba_sumergible: { nombre: 'Bomba Sumergible', industria: 'agua', forma: 'circulo', puertos: (e) => [
+        { id: 'DESC', label: 'Descarga', relX: 0, relY: 500, relZ: 0, diametro: e.puertoDiams?.DESC ?? 4, tipoConexion: 'NPT', orientacion: {dx:0, dy:1, dz:0} }
+    ] },
+    tanque_acero: { nombre: 'Tanque Acero Inox', industria: 'alimentos', forma: 'cilindro', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: 0, relY: e.altura/2, relZ: 0, diametro: e.puertoDiams?.IN ?? 3, tipoConexion: 'Tri-Clamp', orientacion: {dx:0, dy:1, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: 0, relY: -e.altura/2, relZ: 0, diametro: e.puertoDiams?.OUT ?? 3, tipoConexion: 'Tri-Clamp', orientacion: {dx:0, dy:-1, dz:0} }
+    ] },
+    pasteurizador: { nombre: 'Pasteurizador', industria: 'alimentos', forma: 'rect', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: -e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.IN ?? 4, tipoConexion: 'Tri-Clamp', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.OUT ?? 4, tipoConexion: 'Tri-Clamp', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    homogeneizador: { nombre: 'Homogeneizador', industria: 'alimentos', forma: 'rect', puertos: (e) => [
+        { id: 'IN', label: 'Entrada', relX: -e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.IN ?? 3, tipoConexion: 'Tri-Clamp', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'OUT', label: 'Salida', relX: e.largo/2, relY: 0, relZ: 0, diametro: e.puertoDiams?.OUT ?? 3, tipoConexion: 'Tri-Clamp', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    bomba_dosificacion: { nombre: 'Bomba Dosificadora', industria: 'quimica', forma: 'rect', puertos: (e) => [
+        { id: 'SUC', label: 'Succión', relX: -300, relY: 0, relZ: 0, diametro: e.puertoDiams?.SUC ?? 1, tipoConexion: 'NPT', orientacion: {dx:-1, dy:0, dz:0} },
+        { id: 'DESC', label: 'Descarga', relX: 300, relY: 0, relZ: 0, diametro: e.puertoDiams?.DESC ?? 1, tipoConexion: 'NPT', orientacion: {dx:1, dy:0, dz:0} }
+    ] },
+    colector: { nombre: 'Colector / Manifold', industria: 'otros', forma: 'colector', puertos: (e) => [] }
 };
-// Se pueden añadir más equipos manteniendo la estructura.
 
 // ==================== FUNCIONES DE CREACIÓN Y EDICIÓN ====================
 function crearEquipo(tipo, tag, x, y, z, params = {}) {
@@ -212,7 +268,7 @@ function crearEquipo(tipo, tag, x, y, z, params = {}) {
     let material = params.material || 'CS';
     let puertoDiams = {};
     for (let key in params) {
-        if (key.startsWith('puerto_') || ['N1','N2','SUC','DESC','IN','OUT'].includes(key)) {
+        if (key.startsWith('puerto_') || ['N1','N2','SUC','DESC','IN','OUT','FEED','TOP','GAS','LIQ'].includes(key)) {
             let puertoId = key.replace('puerto_', '');
             puertoDiams[puertoId] = params[key];
         }
@@ -228,25 +284,46 @@ function crearEquipo(tipo, tag, x, y, z, params = {}) {
     return equipo;
 }
 
-function actualizarPuertoEquipo(equipTag, puertoId, nuevoDiametro) {
+// ==================== NUEVO: Configuración Avanzada de Puertos ====================
+function configurarPuerto(equipTag, puertoId, cambios = {}) {
     const eq = db.equipos.find(e => e.tag === equipTag);
     if (!eq) { notify(`Equipo ${equipTag} no encontrado`, true); return false; }
     const puerto = eq.puertos?.find(p => p.id === puertoId);
-    if (!puerto) { notify(`Puerto ${puertoId} no encontrado en ${equipTag}`, true); return false; }
-    if (puerto.diametro === nuevoDiametro) return true;
-    puerto.diametro = nuevoDiametro;
-    // Actualizar tuberías conectadas a este puerto
-    db.lines.forEach(line => {
-        if (line.anchors && ((line.anchors.start.equipTag === equipTag && line.anchors.start.nozzleId === puertoId) ||
-            (line.anchors.end.equipTag === equipTag && line.anchors.end.nozzleId === puertoId))) {
-            // Forzar recálculo de la ruta
-            actualizarTuberiasConectadas(equipTag);
+    if (!puerto) { notify(`Puerto ${puertoId} no encontrado`, true); return false; }
+
+    // Aplicar cambios de dimensión, posición o dirección
+    if (cambios.diametro !== undefined) puerto.diametro = cambios.diametro;
+    if (cambios.pos) {
+        puerto.relX = cambios.pos.x;
+        puerto.relY = cambios.pos.y;
+        puerto.relZ = cambios.pos.z;
+    }
+    if (cambios.dir) {
+        let { dx, dy, dz } = cambios.dir;
+        // Normalizar el vector de dirección
+        const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (len > 0) {
+            puerto.orientacion = { dx: dx/len, dy: dy/len, dz: dz/len };
+        } else {
+            puerto.orientacion = { dx: 1, dy: 0, dz: 0 };
         }
-    });
-    render();
+    }
+
+    actualizarTuberiasConectadas(equipTag);
     saveState();
-    notify(`Puerto ${puertoId} de ${equipTag} cambiado a ${nuevoDiametro}"`);
+    render();
+    
+    let msg = `Puerto ${puertoId} de ${equipTag} actualizado`;
+    if (cambios.pos) msg += ` | Pos: (${cambios.pos.x.toFixed(0)}, ${cambios.pos.y.toFixed(0)}, ${cambios.pos.z.toFixed(0)})`;
+    if (cambios.dir) msg += ` | Dir: (${puerto.orientacion.dx.toFixed(3)}, ${puerto.orientacion.dy.toFixed(3)}, ${puerto.orientacion.dz.toFixed(3)})`;
+    if (cambios.diametro) msg += ` | Diam: ${cambios.diametro}"`;
+    notify(msg);
     return true;
+}
+
+// Compatibilidad con versión anterior
+function actualizarPuertoEquipo(equipTag, puertoId, nuevoDiametro) {
+    return configurarPuerto(equipTag, puertoId, { diametro: nuevoDiametro });
 }
 
 function crearColector(tag, x, y, z, numEntradas, spacing, outputPos, diametro, material) {
@@ -255,12 +332,23 @@ function crearColector(tag, x, y, z, numEntradas, spacing, outputPos, diametro, 
         puertos.push({ id: `IN${i+1}`, label: `Entrada ${i+1}`, relX: i*spacing, relY:0, relZ:0, diametro, tipoConexion:'Flange', orientacion:{dx:0, dy:-1, dz:0}, material });
     }
     let salidaRelX = outputPos==='left' ? 0 : (outputPos==='right' ? (numEntradas-1)*spacing : (numEntradas-1)*spacing/2);
-    puertos.push({ id:'OUT', label:'Salida', relX:salidaRelX, relY:0, relZ:0, diametro, tipoConexion:'Flange', orientacion:{dx:1, dy:0, dz:0}, material });
+    puertos.push({ 
+        id:'OUT', 
+        label:'Salida', 
+        relX:salidaRelX, 
+        relY:0, 
+        relZ:0, 
+        diametro, 
+        tipoConexion:'Flange', 
+        orientacion:{dx:1, dy:0, dz:0}, 
+        material 
+    });
     const colector = { tag, tipo:'colector', x, y, z, diametro, altura:0, largo: (numEntradas-1)*spacing, material, puertos };
     db.equipos.push(colector);
     notify(`Colector ${tag} creado con ${numEntradas} entradas y salida ${outputPos}`);
     render();
     autoCenter();
+    return colector;
 }
 
 // ==================== FUNCIONES DE PUERTOS Y ENRUTAMIENTO ====================
@@ -271,39 +359,119 @@ function obtenerPosicionPuerto(equipTag, nozzleId) {
     if (!nz) return null;
     return { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
 }
+
 function obtenerDireccionSalida(nozzle) {
     if (nozzle?.orientacion) {
         const { dx, dy, dz } = nozzle.orientacion;
-        const len = Math.hypot(dx, dy, dz);
-        if (len > 0) return { dx: dx/len, dy: dy/len, dz: dz/len };
+        return { dx, dy, dz };
     }
     return { dx: 1, dy: 0, dz: 0 };
 }
-function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetSalida = 300) {
-    let puntos = [p1];
+
+// ==================== NUEVO: Enrutamiento con Curvas Bézier ====================
+function esDireccionOrtogonal(dir) {
+    // Una dirección es ortogonal si solo un componente es ±1 y los otros 0
+    const comps = [Math.abs(dir.dx), Math.abs(dir.dy), Math.abs(dir.dz)];
+    const unos = comps.filter(c => Math.abs(c - 1) < 0.001).length;
+    const ceros = comps.filter(c => Math.abs(c) < 0.001).length;
+    return unos === 1 && ceros === 2;
+}
+
+function calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, offsetSalida = 400) {
+    let puntos = [{ ...p1 }];
+    
+    // Gestión de salida con posible curva
     if (nozzleStart) {
         const dir = obtenerDireccionSalida(nozzleStart);
-        puntos.push({ x: p1.x + dir.dx * offsetSalida, y: p1.y + dir.dy * offsetSalida, z: p1.z + dir.dz * offsetSalida });
-    }
-    let cur = puntos[puntos.length-1];
-    if (cur.y !== p2.y) puntos.push({ x: cur.x, y: p2.y, z: cur.z });
-    cur = puntos[puntos.length-1];
-    if (cur.x !== p2.x) puntos.push({ x: p2.x, y: cur.y, z: cur.z });
-    cur = puntos[puntos.length-1];
-    if (cur.z !== p2.z) puntos.push({ x: cur.x, y: cur.y, z: p2.z });
-    if (nozzleEnd) {
-        const dirEnd = obtenerDireccionSalida(nozzleEnd);
-        const llegada = { x: p2.x - dirEnd.dx * offsetSalida, y: p2.y - dirEnd.dy * offsetSalida, z: p2.z - dirEnd.dz * offsetSalida };
-        puntos.splice(puntos.length-1, 0, llegada);
-    }
-    const clean = [];
-    for (let i = 0; i < puntos.length; i++) {
-        if (i === 0 || puntos[i].x !== puntos[i-1].x || puntos[i].y !== puntos[i-1].y || puntos[i].z !== puntos[i-1].z) {
-            clean.push(puntos[i]);
+        const cp = { 
+            x: p1.x + dir.dx * offsetSalida, 
+            y: p1.y + dir.dy * offsetSalida, 
+            z: p1.z + dir.dz * offsetSalida 
+        };
+        
+        // Si la dirección no es puramente ortogonal, marcamos como punto de control para curva Bézier
+        const esOblicuo = !esDireccionOrtogonal(dir);
+        
+        if (esOblicuo) {
+            puntos.push({ ...cp, isControlPoint: true });
+        } else {
+            puntos.push(cp);
         }
     }
+    
+    let cur = puntos[puntos.length-1];
+    
+    // Puntos intermedios para ruta ortogonal
+    if (Math.abs(cur.y - p2.y) > 1) {
+        const p = { x: cur.x, y: p2.y, z: cur.z };
+        if (p.x !== cur.x || p.y !== cur.y || p.z !== cur.z) puntos.push(p);
+        cur = p;
+    }
+    if (Math.abs(cur.x - p2.x) > 1) {
+        const p = { x: p2.x, y: cur.y, z: cur.z };
+        if (p.x !== cur.x || p.y !== cur.y || p.z !== cur.z) puntos.push(p);
+        cur = p;
+    }
+    if (Math.abs(cur.z - p2.z) > 1) {
+        const p = { x: cur.x, y: cur.y, z: p2.z };
+        if (p.x !== cur.x || p.y !== cur.y || p.z !== cur.z) puntos.push(p);
+    }
+    
+    // Gestión de llegada con posible curva
+    if (nozzleEnd) {
+        const dirEnd = obtenerDireccionSalida(nozzleEnd);
+        const llegada = { 
+            x: p2.x - dirEnd.dx * offsetSalida, 
+            y: p2.y - dirEnd.dy * offsetSalida, 
+            z: p2.z - dirEnd.dz * offsetSalida 
+        };
+        
+        const esOblicuoEnd = !esDireccionOrtogonal(dirEnd);
+        
+        if (esOblicuoEnd) {
+            // Insertar como punto de control antes del último punto
+            const lastIdx = puntos.length - 1;
+            puntos.splice(lastIdx, 0, { ...llegada, isControlPoint: true });
+        } else {
+            // Verificar si ya existe un punto similar
+            const last = puntos[puntos.length-1];
+            if (Math.abs(last.x - llegada.x) > 1 || Math.abs(last.y - llegada.y) > 1 || Math.abs(last.z - llegada.z) > 1) {
+                puntos.push(llegada);
+            }
+        }
+    }
+    
+    // Añadir punto final
+    if (nozzleEnd) {
+        const last = puntos[puntos.length-1];
+        if (Math.abs(last.x - p2.x) > 1 || Math.abs(last.y - p2.y) > 1 || Math.abs(last.z - p2.z) > 1) {
+            puntos.push({ ...p2 });
+        }
+    } else {
+        puntos.push({ ...p2 });
+    }
+    
+    // Limpiar puntos duplicados
+    const clean = [];
+    for (let i = 0; i < puntos.length; i++) {
+        if (i === 0) {
+            clean.push(puntos[i]);
+        } else {
+            const prev = clean[clean.length-1];
+            const curr = puntos[i];
+            // Mantener puntos de control aunque estén cerca
+            if (curr.isControlPoint || 
+                Math.abs(prev.x - curr.x) > 1 || 
+                Math.abs(prev.y - curr.y) > 1 || 
+                Math.abs(prev.z - curr.z) > 1) {
+                clean.push(curr);
+            }
+        }
+    }
+    
     return clean;
 }
+
 function actualizarTuberiasConectadas(equipTag) {
     db.lines.forEach(line => {
         if (line.anchors && (line.anchors.start.equipTag === equipTag || line.anchors.end.equipTag === equipTag)) {
@@ -314,14 +482,21 @@ function actualizarTuberiasConectadas(equipTag) {
                 const nozzleStart = eqStart?.puertos?.find(n => n.id === line.anchors.start.nozzleId);
                 const eqEnd = db.equipos.find(e => e.tag === line.anchors.end.equipTag);
                 const nozzleEnd = eqEnd?.puertos?.find(n => n.id === line.anchors.end.nozzleId);
-                const puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 300);
+                let puntos;
+                if (line.waypoints && line.waypoints.length > 0) {
+                    puntos = [p1, ...line.waypoints, p2];
+                } else {
+                    puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 400);
+                }
                 line._cachedPoints = puntos;
-                line.codos = puntos.length - 2;
+                // Contar codos (puntos que no son de control)
+                line.codos = puntos.filter(p => !p.isControlPoint).length - 2;
             }
         }
     });
     checkCollisions();
 }
+
 function recalcularTodo() {
     db.lines.forEach(line => {
         if (line.anchors) {
@@ -332,22 +507,30 @@ function recalcularTodo() {
                 const nozzleStart = eqStart?.puertos?.find(n => n.id === line.anchors.start.nozzleId);
                 const eqEnd = db.equipos.find(e => e.tag === line.anchors.end.equipTag);
                 const nozzleEnd = eqEnd?.puertos?.find(n => n.id === line.anchors.end.nozzleId);
-                const puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 300);
+                let puntos;
+                if (line.waypoints && line.waypoints.length > 0) {
+                    puntos = [p1, ...line.waypoints, p2];
+                } else {
+                    puntos = calcularRutaOrtogonalConRespeto(p1, p2, nozzleStart, nozzleEnd, 400);
+                }
                 line._cachedPoints = puntos;
-                line.codos = puntos.length - 2;
+                line.codos = puntos.filter(p => !p.isControlPoint).length - 2;
             }
         }
     });
     checkCollisions();
     render();
 }
+
 function pointInBox(p, box) {
     return p.x >= box.xMin && p.x <= box.xMax && p.y >= box.yMin && p.y <= box.yMax && p.z >= box.zMin && p.z <= box.zMax;
 }
+
 function segmentIntersectsBox(p1, p2, box) {
     if (pointInBox(p1, box) || pointInBox(p2, box)) return true;
     return false;
 }
+
 function checkCollisions() {
     db.lines.forEach(line => {
         line.hasClash = false;
@@ -371,6 +554,8 @@ function checkCollisions() {
         });
     });
 }
+
+// ==================== FUNCIONES DE DIBUJO ====================
 function drawGrid(elevation = 0) {
     const step = 1000;
     const minX = -8000, maxX = 20000, minZ = -8000, maxZ = 15000;
@@ -382,16 +567,16 @@ function drawGrid(elevation = 0) {
         const p2 = project({ x, y: elevation, z: maxZ });
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
     }
     for (let z = minZ; z <= maxZ; z += step) {
         const p1 = project({ x: minX, y: elevation, z });
         const p2 = project({ x: maxX, y: elevation, z });
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
     }
+    ctx.stroke();
 }
+
 function drawOrigin() {
     const o = project({ x: 0, y: currentElevation, z: 0 });
     ctx.beginPath();
@@ -406,94 +591,316 @@ function drawOrigin() {
     ctx.font = '14px monospace';
     ctx.fillText(`ORIGEN (0,${currentElevation/1000}m,0)`, o.x + 15, o.y - 8);
 }
+
 function drawTank(eq) {
     const p = project(eq);
     const w = (eq.diametro / 2) * cam.scale;
     const h = eq.altura * cam.scale;
     const topY = p.y - h/2;
     const bottomY = p.y + h/2;
+    
     ctx.fillStyle = '#1e40af';
     ctx.fillRect(p.x - w, topY, w, h);
     ctx.fillStyle = '#3b82f6';
     ctx.fillRect(p.x, topY, w, h);
-    ctx.beginPath(); ctx.ellipse(p.x, topY, w, w*0.5,0,0,2*Math.PI); ctx.fillStyle='#60a5fa'; ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(p.x, bottomY, w, w*0.5,0,0,2*Math.PI); ctx.fillStyle='#2563eb'; ctx.fill(); ctx.stroke();
-    ctx.fillStyle='white'; ctx.font=`bold ${Math.max(12,14*cam.scale)}px Arial`; ctx.fillText(eq.tag, p.x-18, topY-10);
-    if(eq.puertos) eq.puertos.forEach(nz=>{
-        const pos={x:eq.x+nz.relX,y:eq.y+nz.relY,z:eq.z+nz.relZ};
-        const proj=project(pos);
-        ctx.beginPath(); ctx.arc(proj.x,proj.y,5,0,2*Math.PI); ctx.fillStyle='#ff8800'; ctx.fill();
-        ctx.fillStyle='white'; ctx.font='8px monospace'; ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
+    
+    ctx.beginPath(); 
+    ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI); 
+    ctx.fillStyle = '#60a5fa'; 
+    ctx.fill(); 
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    
+    ctx.beginPath(); 
+    ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI); 
+    ctx.fillStyle = '#2563eb'; 
+    ctx.fill(); 
+    ctx.stroke();
+    
+    ctx.fillStyle = 'white'; 
+    ctx.font = `bold ${Math.max(12, 14*cam.scale)}px Arial`; 
+    ctx.fillText(eq.tag, p.x-18, topY-10);
+    
+    if(eq.puertos) eq.puertos.forEach(nz => {
+        const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+        const proj = project(pos);
+        
+        // Dibujar dirección del puerto (flecha)
+        if (nz.orientacion) {
+            const dir = nz.orientacion;
+            const endPos = {
+                x: pos.x + dir.dx * 300,
+                y: pos.y + dir.dy * 300,
+                z: pos.z + dir.dz * 300
+            };
+            const projEnd = project(endPos);
+            ctx.beginPath();
+            ctx.moveTo(proj.x, proj.y);
+            ctx.lineTo(projEnd.x, projEnd.y);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Cabeza de flecha
+            const angle = Math.atan2(projEnd.y - proj.y, projEnd.x - proj.x);
+            const arrowSize = 10;
+            ctx.beginPath();
+            ctx.moveTo(projEnd.x, projEnd.y);
+            ctx.lineTo(projEnd.x - arrowSize * Math.cos(angle - 0.5), projEnd.y - arrowSize * Math.sin(angle - 0.5));
+            ctx.lineTo(projEnd.x - arrowSize * Math.cos(angle + 0.5), projEnd.y - arrowSize * Math.sin(angle + 0.5));
+            ctx.closePath();
+            ctx.fillStyle = '#ffaa00';
+            ctx.fill();
+        }
+        
+        ctx.beginPath(); 
+        ctx.arc(proj.x, proj.y, 6, 0, 2*Math.PI); 
+        ctx.fillStyle = '#ff8800'; 
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = 'white'; 
+        ctx.font = '9px monospace'; 
+        ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-12, proj.y-6);
     });
-    ctx.restore();
 }
+
 function drawBomba(eq) {
     const p = project(eq);
-    const rad = 12*cam.scale;
-    const grad = ctx.createRadialGradient(p.x-3,p.y-3,2,p.x,p.y,rad);
-    grad.addColorStop(0,'#f39c12'); grad.addColorStop(1,'#b85c00');
-    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(p.x,p.y,rad,0,2*Math.PI); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p.x-rad,p.y); ctx.lineTo(p.x+rad,p.y); ctx.stroke();
-    ctx.fillStyle='white'; ctx.fillText(eq.tag, p.x+15, p.y-5);
-    if(eq.puertos) eq.puertos.forEach(nz=>{
-        const pos={x:eq.x+nz.relX,y:eq.y+nz.relY,z:eq.z+nz.relZ};
-        const proj=project(pos);
-        ctx.beginPath(); ctx.arc(proj.x,proj.y,5,0,2*Math.PI); ctx.fillStyle='#ff8800'; ctx.fill();
-        ctx.fillStyle='white'; ctx.font='8px monospace'; ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
+    const rad = 12 * cam.scale;
+    const grad = ctx.createRadialGradient(p.x-3, p.y-3, 2, p.x, p.y, rad);
+    grad.addColorStop(0, '#f39c12');
+    grad.addColorStop(1, '#b85c00');
+    ctx.fillStyle = grad; 
+    ctx.beginPath(); 
+    ctx.arc(p.x, p.y, rad, 0, 2*Math.PI); 
+    ctx.fill(); 
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    ctx.beginPath(); 
+    ctx.moveTo(p.x-rad, p.y); 
+    ctx.lineTo(p.x+rad, p.y); 
+    ctx.stroke();
+    ctx.fillStyle = 'white'; 
+    ctx.fillText(eq.tag, p.x+15, p.y-5);
+    
+    if(eq.puertos) eq.puertos.forEach(nz => {
+        const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+        const proj = project(pos);
+        
+        // Flecha de dirección
+        if (nz.orientacion) {
+            const dir = nz.orientacion;
+            const endPos = {
+                x: pos.x + dir.dx * 250,
+                y: pos.y + dir.dy * 250,
+                z: pos.z + dir.dz * 250
+            };
+            const projEnd = project(endPos);
+            ctx.beginPath();
+            ctx.moveTo(proj.x, proj.y);
+            ctx.lineTo(projEnd.x, projEnd.y);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        
+        ctx.beginPath(); 
+        ctx.arc(proj.x, proj.y, 6, 0, 2*Math.PI); 
+        ctx.fillStyle = '#ff8800'; 
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.fillStyle = 'white'; 
+        ctx.font = '9px monospace'; 
+        ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-12, proj.y-6);
     });
 }
+
 function drawColector(eq) {
-    const p = project(eq);
-    const ancho = eq.largo;
-    const pIzq = project({x:eq.x, y:eq.y, z:eq.z});
-    const pDer = project({x:eq.x+ancho, y:eq.y, z:eq.z});
-    ctx.beginPath(); ctx.moveTo(pIzq.x,pIzq.y); ctx.lineTo(pDer.x,pDer.y);
-    ctx.strokeStyle='#facc15'; ctx.lineWidth=Math.max(4,(eq.diametro||4)*cam.scale); ctx.stroke();
-    eq.puertos.forEach(nz=>{
-        const pos={x:eq.x+nz.relX,y:eq.y+nz.relY,z:eq.z+nz.relZ};
-        const proj=project(pos);
-        ctx.beginPath(); ctx.arc(proj.x,proj.y,6,0,2*Math.PI); ctx.fillStyle='#ff8800'; ctx.fill();
-        ctx.fillStyle='white'; ctx.font='8px monospace'; ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
+    const pIzq = project({ x: eq.x, y: eq.y, z: eq.z });
+    const pDer = project({ x: eq.x + eq.largo, y: eq.y, z: eq.z });
+    ctx.beginPath(); 
+    ctx.moveTo(pIzq.x, pIzq.y); 
+    ctx.lineTo(pDer.x, pDer.y);
+    ctx.strokeStyle = '#facc15'; 
+    ctx.lineWidth = Math.max(4, (eq.diametro || 4) * cam.scale); 
+    ctx.stroke();
+    
+    eq.puertos.forEach(nz => {
+        const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+        const proj = project(pos);
+        
+        if (nz.orientacion) {
+            const dir = nz.orientacion;
+            const endPos = {
+                x: pos.x + dir.dx * 300,
+                y: pos.y + dir.dy * 300,
+                z: pos.z + dir.dz * 300
+            };
+            const projEnd = project(endPos);
+            ctx.beginPath();
+            ctx.moveTo(proj.x, proj.y);
+            ctx.lineTo(projEnd.x, projEnd.y);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        
+        ctx.beginPath(); 
+        ctx.arc(proj.x, proj.y, 6, 0, 2*Math.PI); 
+        ctx.fillStyle = '#ff8800'; 
+        ctx.fill();
+        ctx.fillStyle = 'white'; 
+        ctx.font = '9px monospace'; 
+        ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
     });
-    ctx.fillStyle='white'; ctx.fillText(eq.tag, pIzq.x-15, pIzq.y-10);
+    ctx.fillStyle = 'white'; 
+    ctx.fillText(eq.tag, pIzq.x-15, pIzq.y-10);
 }
+
 function drawRectEquip(eq, color) {
     const p = project(eq);
-    const w = eq.largo*cam.scale/2;
-    const h = eq.altura*cam.scale/2;
-    ctx.fillStyle=color; ctx.fillRect(p.x-w, p.y-h, w*2, h*2);
-    ctx.strokeStyle='white'; ctx.strokeRect(p.x-w, p.y-h, w*2, h*2);
-    ctx.fillStyle='white'; ctx.fillText(eq.tag, p.x-15, p.y-10);
-    if(eq.puertos) eq.puertos.forEach(nz=>{
-        const pos={x:eq.x+nz.relX,y:eq.y+nz.relY,z:eq.z+nz.relZ};
-        const proj=project(pos);
-        ctx.beginPath(); ctx.arc(proj.x,proj.y,5,0,2*Math.PI); ctx.fillStyle='#ff8800'; ctx.fill();
-        ctx.fillStyle='white'; ctx.font='8px monospace'; ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
+    const w = eq.largo * cam.scale / 2;
+    const h = eq.altura * cam.scale / 2;
+    ctx.fillStyle = color; 
+    ctx.fillRect(p.x-w, p.y-h, w*2, h*2);
+    ctx.strokeStyle = 'white'; 
+    ctx.strokeRect(p.x-w, p.y-h, w*2, h*2);
+    ctx.fillStyle = 'white'; 
+    ctx.fillText(eq.tag, p.x-15, p.y-10);
+    
+    if(eq.puertos) eq.puertos.forEach(nz => {
+        const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+        const proj = project(pos);
+        
+        if (nz.orientacion) {
+            const dir = nz.orientacion;
+            const endPos = {
+                x: pos.x + dir.dx * 250,
+                y: pos.y + dir.dy * 250,
+                z: pos.z + dir.dz * 250
+            };
+            const projEnd = project(endPos);
+            ctx.beginPath();
+            ctx.moveTo(proj.x, proj.y);
+            ctx.lineTo(projEnd.x, projEnd.y);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        
+        ctx.beginPath(); 
+        ctx.arc(proj.x, proj.y, 5, 0, 2*Math.PI); 
+        ctx.fillStyle = '#ff8800'; 
+        ctx.fill();
+        ctx.fillStyle = 'white'; 
+        ctx.font = '8px monospace'; 
+        ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
     });
 }
-function getPointAtDistance(from,to,dist){ const d=Math.hypot(to.x-from.x,to.y-from.y,to.z-from.z); const t=Math.min(dist/d,0.5); return{x:from.x+(to.x-from.x)*t, y:from.y+(to.y-from.y)*t, z:from.z+(to.z-from.z)*t};}
-function drawPipeWithElbows(line){
-    const pts=line._cachedPoints||line.points3D; if(!pts||pts.length<2) return;
-    const radio=Math.min((line.diameter||4)*25.4*1.5,500);
-    ctx.beginPath(); let first=project(pts[0]); ctx.moveTo(first.x,first.y);
-    for(let i=1;i<pts.length-1;i++){
-        const pPrev=pts[i-1],pCurr=pts[i],pNext=pts[i+1];
-        const pIn=getPointAtDistance(pCurr,pPrev,radio), pOut=getPointAtDistance(pCurr,pNext,radio);
-        const projIn=project(pIn), projOut=project(pOut), projCurr=project(pCurr);
-        ctx.lineTo(projIn.x,projIn.y); ctx.quadraticCurveTo(projCurr.x,projCurr.y,projOut.x,projOut.y);
+
+function drawCilindroHorizontal(eq, color) {
+    const p = project(eq);
+    const w = eq.largo * cam.scale / 2;
+    const h = (eq.diametro / 2) * cam.scale;
+    
+    ctx.fillStyle = color;
+    ctx.fillRect(p.x-w, p.y-h, w*2, h*2);
+    ctx.strokeStyle = 'white';
+    ctx.strokeRect(p.x-w, p.y-h, w*2, h*2);
+    
+    ctx.beginPath();
+    ctx.ellipse(p.x-w, p.y, h, h*0.5, 0, 0, 2*Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.ellipse(p.x+w, p.y, h, h*0.5, 0, 0, 2*Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.stroke();
+    
+    ctx.fillStyle = 'white'; 
+    ctx.fillText(eq.tag, p.x-15, p.y-10);
+    
+    if(eq.puertos) eq.puertos.forEach(nz => {
+        const pos = { x: eq.x + nz.relX, y: eq.y + nz.relY, z: eq.z + nz.relZ };
+        const proj = project(pos);
+        
+        if (nz.orientacion) {
+            const dir = nz.orientacion;
+            const endPos = {
+                x: pos.x + dir.dx * 250,
+                y: pos.y + dir.dy * 250,
+                z: pos.z + dir.dz * 250
+            };
+            const projEnd = project(endPos);
+            ctx.beginPath();
+            ctx.moveTo(proj.x, proj.y);
+            ctx.lineTo(projEnd.x, projEnd.y);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        
+        ctx.beginPath(); 
+        ctx.arc(proj.x, proj.y, 5, 0, 2*Math.PI); 
+        ctx.fillStyle = '#ff8800'; 
+        ctx.fill();
+        ctx.fillStyle = 'white'; 
+        ctx.font = '8px monospace'; 
+        ctx.fillText(`${nz.id} ${nz.diametro}"`, proj.x-10, proj.y-4);
+    });
+}
+
+// ==================== NUEVO: Dibujo de Tuberías con Curvas Bézier ====================
+function drawPipeWithElbows(line) {
+    const pts = line._cachedPoints || line.points3D;
+    if (!pts || pts.length < 2) return;
+    
+    ctx.beginPath();
+    let start = project(pts[0]);
+    ctx.moveTo(start.x, start.y);
+    
+    for (let i = 1; i < pts.length; i++) {
+        const p = pts[i];
+        if (p.isControlPoint && i + 1 < pts.length) {
+            const cp = project(p);
+            const nextP = project(pts[i + 1]);
+            ctx.quadraticCurveTo(cp.x, cp.y, nextP.x, nextP.y);
+            i++; // Saltamos el punto final de la curva ya procesado
+        } else {
+            const proj = project(p);
+            ctx.lineTo(proj.x, proj.y);
+        }
     }
-    const last=project(pts[pts.length-1]); ctx.lineTo(last.x,last.y);
-    if(line.hasClash){ ctx.strokeStyle='#ff0000'; ctx.lineWidth=Math.max(6,(line.diameter||4)*cam.scale*1.5); if(!line._notifiedClash){ notify(`⚠️ COLISIÓN: ${line.tag} interfiere`,true); line._notifiedClash=true; } }
-    else{ ctx.strokeStyle='#facc15'; ctx.lineWidth=Math.max(4,(line.diameter||4)*cam.scale); if(line._notifiedClash) line._notifiedClash=false; }
+    
+    if(line.hasClash) { 
+        ctx.strokeStyle = '#ff0000'; 
+        ctx.lineWidth = Math.max(6, (line.diameter || 4) * cam.scale * 1.5); 
+        if(!line._notifiedClash) { 
+            notify(`⚠️ COLISIÓN: ${line.tag} interfiere`, true); 
+            line._notifiedClash = true; 
+        } 
+    } else { 
+        ctx.strokeStyle = '#facc15'; 
+        ctx.lineWidth = Math.max(4, (line.diameter || 4) * cam.scale); 
+        if(line._notifiedClash) line._notifiedClash = false; 
+    }
     ctx.stroke();
 }
+
 function drawPipeComponents(line) {
     const pts = line._cachedPoints || line.points3D;
     if (!pts || pts.length < 2 || !line.components) return;
     let lengths = [], totalLen = 0;
     for (let i = 0; i < pts.length - 1; i++) {
         let d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
-        lengths.push(d); totalLen += d;
+        lengths.push(d); 
+        totalLen += d;
     }
     if (totalLen === 0) return;
     line.components.forEach(comp => {
@@ -501,7 +908,8 @@ function drawPipeComponents(line) {
         let currentAccum = 0, p1, p2, t = 0;
         for (let i = 0; i < lengths.length; i++) {
             if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) {
-                p1 = pts[i]; p2 = pts[i+1];
+                p1 = pts[i]; 
+                p2 = pts[i+1];
                 let segLen = lengths[i];
                 if (segLen > 0) t = (targetLen - currentAccum) / segLen;
                 else t = 0;
@@ -518,47 +926,145 @@ function drawPipeComponents(line) {
         drawSymbol(proj.x, proj.y, angle, comp);
     });
 }
+
 function drawSymbol(x, y, angle, comp) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.fillStyle = '#1e1e2e'; const s = 8;
+    ctx.save(); 
+    ctx.translate(x, y); 
+    ctx.rotate(angle); 
+    ctx.strokeStyle = '#fff'; 
+    ctx.lineWidth = 2; 
+    ctx.fillStyle = '#1e1e2e'; 
+    const s = 8;
     switch (comp.type) {
-        case 'VALVE': ctx.beginPath(); ctx.moveTo(-s,-s); ctx.lineTo(s,s); ctx.lineTo(s,-s); ctx.lineTo(-s,s); ctx.closePath(); ctx.fill(); ctx.stroke();
-            if (comp.subtype === 'bola') { ctx.beginPath(); ctx.arc(0,0,3,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill(); ctx.stroke(); }
-            else if (comp.subtype === 'check') { ctx.beginPath(); ctx.moveTo(-2,-s); ctx.lineTo(2,0); ctx.lineTo(-2,s); ctx.stroke(); }
-            else if (comp.subtype === 'compuerta') { ctx.fillRect(-2,-s,4,s*2); } break;
-        case 'FLANGE': ctx.beginPath(); ctx.moveTo(-2,-s); ctx.lineTo(-2,s); ctx.moveTo(2,-s); ctx.lineTo(2,s); ctx.stroke(); break;
-        case 'INSTRUMENT': ctx.beginPath(); ctx.arc(0,-s*2,s,0,2*Math.PI); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-s); ctx.stroke(); break;
-        case 'REDUCER': ctx.beginPath(); ctx.moveTo(-s,-s); ctx.lineTo(s,-s/2); ctx.lineTo(s,s/2); ctx.lineTo(-s,s); ctx.closePath(); ctx.fill(); ctx.stroke(); break;
-        default: ctx.fillRect(-4,-4,8,8); ctx.strokeRect(-4,-4,8,8);
+        case 'VALVE': 
+            ctx.beginPath(); 
+            ctx.moveTo(-s,-s); 
+            ctx.lineTo(s,s); 
+            ctx.lineTo(s,-s); 
+            ctx.lineTo(-s,s); 
+            ctx.closePath(); 
+            ctx.fill(); 
+            ctx.stroke();
+            if (comp.subtype === 'bola') { 
+                ctx.beginPath(); 
+                ctx.arc(0,0,3,0,2*Math.PI); 
+                ctx.fillStyle='#fff'; 
+                ctx.fill(); 
+                ctx.stroke(); 
+            } else if (comp.subtype === 'check') { 
+                ctx.beginPath(); 
+                ctx.moveTo(-2,-s); 
+                ctx.lineTo(2,0); 
+                ctx.lineTo(-2,s); 
+                ctx.stroke(); 
+            } else if (comp.subtype === 'compuerta') { 
+                ctx.fillRect(-2,-s,4,s*2); 
+            } 
+            break;
+        case 'FLANGE': 
+            ctx.beginPath(); 
+            ctx.moveTo(-2,-s); 
+            ctx.lineTo(-2,s); 
+            ctx.moveTo(2,-s); 
+            ctx.lineTo(2,s); 
+            ctx.stroke(); 
+            break;
+        case 'INSTRUMENT': 
+            ctx.beginPath(); 
+            ctx.arc(0,-s*2,s,0,2*Math.PI); 
+            ctx.fill(); 
+            ctx.stroke(); 
+            ctx.beginPath(); 
+            ctx.moveTo(0,0); 
+            ctx.lineTo(0,-s); 
+            ctx.stroke(); 
+            break;
+        case 'REDUCER': 
+            ctx.beginPath(); 
+            ctx.moveTo(-s,-s); 
+            ctx.lineTo(s,-s/2); 
+            ctx.lineTo(s,s/2); 
+            ctx.lineTo(-s,s); 
+            ctx.closePath(); 
+            ctx.fill(); 
+            ctx.stroke(); 
+            break;
+        case 'ELBOW':
+            ctx.beginPath();
+            ctx.arc(0, 0, s, 0, Math.PI/2);
+            ctx.stroke();
+            break;
+        default: 
+            ctx.fillRect(-4,-4,8,8); 
+            ctx.strokeRect(-4,-4,8,8);
     }
     ctx.restore();
 }
-function render(){
+
+function render() {
     if(!ctx) return;
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle='#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000'; 
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
+    
     drawGrid(currentElevation);
     drawOrigin();
-    for(let line of db.lines) { drawPipeWithElbows(line); drawPipeComponents(line); }
-    for(let eq of db.equipos){
-        if(eq.tipo==='tanque_v') drawTank(eq);
-        else if(eq.tipo==='bomba') drawBomba(eq);
-        else if(eq.tipo==='colector') drawColector(eq);
-        else drawRectEquip(eq, '#3b82f6');
+    
+    for(let line of db.lines) { 
+        drawPipeWithElbows(line); 
+        drawPipeComponents(line); 
     }
-    if(selectedElement){
-        if(selectedElement.type==='equipment'){
-            const eq=selectedElement.obj;
-            if(eq.tipo==='colector'){
-                const ancho=eq.largo, pIzq=project({x:eq.x,y:eq.y,z:eq.z}), pDer=project({x:eq.x+ancho,y:eq.y,z:eq.z});
-                ctx.beginPath(); ctx.moveTo(pIzq.x,pIzq.y); ctx.lineTo(pDer.x,pDer.y); ctx.strokeStyle='#facc15'; ctx.lineWidth=6; ctx.stroke();
+    
+    for(let eq of db.equipos) {
+        if(eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor' || eq.tipo === 'separador' || 
+           eq.tipo === 'clarificador' || eq.tipo === 'filtro_arena' || eq.tipo === 'tanque_acero') {
+            drawTank(eq);
+        } else if(eq.tipo === 'tanque_h') {
+            drawCilindroHorizontal(eq, '#3b82f6');
+        } else if(eq.tipo === 'bomba' || eq.tipo === 'bomba_sumergible') {
+            drawBomba(eq);
+        } else if(eq.tipo === 'colector') {
+            drawColector(eq);
+        } else if(eq.tipo === 'intercambiador' || eq.tipo === 'caldera' || eq.tipo === 'compresor' ||
+                  eq.tipo === 'osmosis' || eq.tipo === 'pasteurizador' || eq.tipo === 'homogeneizador' ||
+                  eq.tipo === 'bomba_dosificacion') {
+            drawRectEquip(eq, '#3b82f6');
+        } else {
+            drawRectEquip(eq, '#3b82f6');
+        }
+    }
+    
+    if(selectedElement) {
+        if(selectedElement.type === 'equipment') {
+            const eq = selectedElement.obj;
+            if(eq.tipo === 'colector') {
+                const ancho = eq.largo, pIzq = project({x: eq.x, y: eq.y, z: eq.z}), pDer = project({x: eq.x+ancho, y: eq.y, z: eq.z});
+                ctx.beginPath(); 
+                ctx.moveTo(pIzq.x, pIzq.y); 
+                ctx.lineTo(pDer.x, pDer.y); 
+                ctx.strokeStyle = '#facc15'; 
+                ctx.lineWidth = 6; 
+                ctx.stroke();
             } else {
-                const p=project(eq), w=(eq.diametro/2)*cam.scale, h=eq.altura*cam.scale;
-                ctx.beginPath(); ctx.ellipse(p.x, p.y-h/2, w+3, (w+3)*0.5,0,0,2*Math.PI); ctx.strokeStyle='#facc15'; ctx.lineWidth=3; ctx.stroke();
+                const p = project(eq), w = (eq.diametro/2) * cam.scale, h = eq.altura * cam.scale;
+                ctx.beginPath(); 
+                ctx.ellipse(p.x, p.y-h/2, w+3, (w+3)*0.5, 0, 0, 2*Math.PI); 
+                ctx.strokeStyle = '#facc15'; 
+                ctx.lineWidth = 3; 
+                ctx.stroke();
             }
-        } else if(selectedElement.type==='line'){
-            const line=selectedElement.obj, pts=line._cachedPoints||line.points3D;
-            if(pts&&pts.length){ ctx.beginPath(); const proj=pts.map(p=>project(p)); ctx.moveTo(proj[0].x,proj[0].y); for(let i=1;i<proj.length;i++) ctx.lineTo(proj[i].x,proj[i].y); ctx.strokeStyle='#facc15'; ctx.lineWidth=6; ctx.stroke(); }
+        } else if(selectedElement.type === 'line') {
+            const line = selectedElement.obj, pts = line._cachedPoints || line.points3D;
+            if(pts && pts.length) { 
+                ctx.beginPath(); 
+                const proj = pts.map(p => project(p)); 
+                ctx.moveTo(proj[0].x, proj[0].y); 
+                for(let i=1; i<proj.length; i++) ctx.lineTo(proj[i].x, proj[i].y); 
+                ctx.strokeStyle = '#facc15'; 
+                ctx.lineWidth = 6; 
+                ctx.stroke(); 
+            }
         }
     }
     ctx.restore();
@@ -584,16 +1090,13 @@ function parseCreate(cmd) {
         else if (key.includes('=')) {
             let [k, v] = key.split('=');
             params[k] = parseFloat(v);
-        } else if (i+1 < parts.length && parts[i+1].includes('=')) {
-            // ya procesado
-        } else {
-            // posible parámetro sin '=', lo ignoramos
         }
     }
     if (EquiposCatalogo[tipo]) crearEquipo(tipo, tag, x, y, z, params);
     else notify(`Tipo de equipo desconocido: ${tipo}`, true);
     return true;
 }
+
 function parseConnect(cmd) {
     const parts = cmd.split(/\s+/);
     if (parts[0] !== 'connect') return false;
@@ -619,10 +1122,12 @@ function parseConnect(cmd) {
     db.lines.push({ tag, diameter, material, anchors: { start: { equipTag: fromEquip, nozzleId: fromNozzle }, end: { equipTag: toEquip, nozzleId: toNozzle } }, waypoints: [], _cachedPoints: null });
     actualizarTuberiasConectadas(fromEquip);
     actualizarTuberiasConectadas(toEquip);
-    saveState(); render();
+    saveState(); 
+    render();
     notify(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip}.${toNozzle} (${tag})`);
     return true;
 }
+
 function parseCreateManifold(cmd) {
     const parts = cmd.split(/\s+/);
     if (parts[0] !== 'create' || parts[1] !== 'manifold') return false;
@@ -645,6 +1150,8 @@ function parseCreateManifold(cmd) {
     crearColector(tag, x, y, z, numEntradas, spacing, outputPos, diametro, material);
     return true;
 }
+
+// ==================== NUEVO: Parser Extendido para pos y dir ====================
 function parseEditCommand(cmd) {
     const parts = cmd.split(/\s+/);
     if (parts[0] !== 'edit') return false;
@@ -659,20 +1166,43 @@ function parseEditCommand(cmd) {
                 if (!eq) { notify(`Equipo ${tag} no encontrado`, true); return true; }
                 eq.x = parseFloat(m[1]); eq.y = parseFloat(m[2]); eq.z = parseFloat(m[3]);
                 actualizarTuberiasConectadas(tag);
-                saveState(); render();
+                saveState(); 
+                render();
                 notify(`Equipo ${tag} movido a (${eq.x},${eq.y},${eq.z})`);
                 return true;
             }
         } else if (action === 'set' && parts[4] === 'puerto') {
             const puertoId = parts[5];
-            const param = parts[6];
-            if (param === 'diam') {
-                const nuevoDiam = parseFloat(parts[7]);
+            const subParam = parts[6]; // 'diam', 'pos' o 'dir'
+            const valor = parts[7];
+            
+            if (subParam === 'diam') {
+                const nuevoDiam = parseFloat(valor);
                 if (!isNaN(nuevoDiam)) {
-                    actualizarPuertoEquipo(tag, puertoId, nuevoDiam);
+                    configurarPuerto(tag, puertoId, { diametro: nuevoDiam });
+                    return true;
+                }
+            } 
+            else if (subParam === 'pos' || subParam === 'dir') {
+                // Buscar coordenadas en el resto del comando
+                let coordStr = '';
+                for (let i = 7; i < parts.length; i++) {
+                    coordStr += parts[i];
+                }
+                const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+                if (m) {
+                    const x = parseFloat(m[1]), y = parseFloat(m[2]), z = parseFloat(m[3]);
+                    
+                    if (subParam === 'pos') {
+                        configurarPuerto(tag, puertoId, { pos: { x, y, z } });
+                    } else {
+                        configurarPuerto(tag, puertoId, { dir: { dx: x, dy: y, dz: z } });
+                    }
                     return true;
                 }
             }
+            notify(`Formato: edit equipment TAG set puerto ID pos (x,y,z) o dir (dx,dy,dz) o diam N`, true);
+            return true;
         }
     } else if (parts[1] === 'line') {
         const tag = parts[2];
@@ -680,32 +1210,43 @@ function parseEditCommand(cmd) {
         if (!line) { notify(`Línea ${tag} no encontrada`, true); return true; }
         const action = parts[3];
         if (action === 'add' && parts[4] === 'waypoint') {
-            const coords = parts[5];
-            const m = coords.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+            let coordStr = '';
+            for (let i = 5; i < parts.length; i++) {
+                coordStr += parts[i];
+            }
+            const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
             if (m) {
                 const wp = { x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) };
                 let after = null;
-                if (parts[6] === 'after') after = parseInt(parts[7]);
-                if (after !== null && after >= 0 && after < (line.waypoints?.length || 0)) line.waypoints.splice(after+1, 0, wp);
-                else { if (!line.waypoints) line.waypoints = []; line.waypoints.push(wp); }
-                const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
-                const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
-                if (p1 && p2) { let puntos = [p1]; if (line.waypoints) puntos.push(...line.waypoints); puntos.push(p2); line._cachedPoints = puntos; }
-                saveState(); render(); notify(`Waypoint añadido a ${tag}`); return true;
+                const afterIdx = parts.indexOf('after');
+                if (afterIdx !== -1) after = parseInt(parts[afterIdx + 1]);
+                if (!line.waypoints) line.waypoints = [];
+                if (after !== null && !isNaN(after) && after >= 0 && after < line.waypoints.length) {
+                    line.waypoints.splice(after + 1, 0, wp);
+                } else {
+                    line.waypoints.push(wp);
+                }
+                actualizarTuberiasConectadas(line.anchors.start.equipTag);
+                saveState(); 
+                render(); 
+                notify(`Waypoint añadido a ${tag}`); 
+                return true;
             }
         } else if (action === 'remove' && parts[4] === 'waypoint') {
             const idx = parseInt(parts[5]) - 1;
             if (line.waypoints && idx >= 0 && idx < line.waypoints.length) {
                 line.waypoints.splice(idx, 1);
-                const p1 = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
-                const p2 = obtenerPosicionPuerto(line.anchors.end.equipTag, line.anchors.end.nozzleId);
-                if (p1 && p2) { let puntos = [p1]; if (line.waypoints) puntos.push(...line.waypoints); puntos.push(p2); line._cachedPoints = puntos; }
-                saveState(); render(); notify(`Waypoint eliminado de ${tag}`); return true;
+                actualizarTuberiasConectadas(line.anchors.start.equipTag);
+                saveState(); 
+                render(); 
+                notify(`Waypoint eliminado de ${tag}`); 
+                return true;
             }
         }
     }
     return false;
 }
+
 function parseHelp(cmd) {
     if (cmd.toLowerCase() === 'help') {
         mostrarAyuda();
@@ -713,25 +1254,36 @@ function parseHelp(cmd) {
     }
     return false;
 }
+
 function mostrarAyuda() {
     let ayuda = "═══════════════════════════════════════════════════════════\n";
-    ayuda += "               SMARTFLOW PRO v10.5 - AYUDA\n";
+    ayuda += "               SMARTFLOW PRO v10.7 - AYUDA\n";
     ayuda += "═══════════════════════════════════════════════════════════\n\n";
-    ayuda += "📌 COMANDOS:\n";
-    ayuda += "  create [tipo] [tag] at (x,y,z) [diam N] [height N] [largo N] [material M] [N1=3] [puerto_N1_diam=3]\n";
-    ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right diameter D material M\n";
-    ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter D material M\n";
-    ayuda += "  edit equipment [tag] move to (x,y,z)\n";
-    ayuda += "  edit equipment [tag] set puerto [id] diam [valor]\n";
-    ayuda += "  edit line [tag] add waypoint (x,y,z) [after n]\n";
-    ayuda += "  edit line [tag] remove waypoint n\n";
-    ayuda += "  help\n\n";
-    ayuda += "🖱️ SELECCIÓN: Haz clic en un equipo para abrir el panel de propiedades y editar sus puertos.\n";
-    ayuda += "📦 CATÁLOGO: botón 'Catálogo'.\n";
-    ayuda += "📐 ELEVACIONES: panel inferior derecho.\n";
+    ayuda += "📌 COMANDOS BÁSICOS:\n";
+    ayuda += "  create [tipo] [tag] at (x,y,z) [diam N] [height N] [largo N]\n";
+    ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n";
+    ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter D material M\n\n";
+    ayuda += "🆕 COMANDOS AVANZADOS DE PUERTOS (NUEVO v10.7):\n";
+    ayuda += "  edit equipment [tag] set puerto [id] pos (x,y,z)\n";
+    ayuda += "  edit equipment [tag] set puerto [id] dir (dx,dy,dz)\n";
+    ayuda += "  edit equipment [tag] set puerto [id] diam [valor]\n\n";
+    ayuda += "📐 EJEMPLOS PARA TANQUE VERTICAL (2400mm diam, 2500mm altura):\n";
+    ayuda += "  // Salida lateral derecha a 200mm del fondo:\n";
+    ayuda += "  edit equipment TK-01 set puerto N1 pos (1200,-1050,0)\n";
+    ayuda += "  edit equipment TK-01 set puerto N1 dir (1,0,0)\n\n";
+    ayuda += "  // Salida a 45° en plano XZ:\n";
+    ayuda += "  edit equipment TK-01 set puerto N1 pos (848,-1050,848)\n";
+    ayuda += "  edit equipment TK-01 set puerto N1 dir (0.707,0,0.707)\n\n";
+    ayuda += "🧭 PRESETS DE DIRECCIÓN:\n";
+    ayuda += "  ↓ Abajo: (0,-1,0)    ↑ Arriba: (0,1,0)\n";
+    ayuda += "  ← Izquierda: (-1,0,0)  → Derecha: (1,0,0)\n";
+    ayuda += "  ↙ Frente: (0,0,-1)   ↗ Atrás: (0,0,1)\n";
+    ayuda += "  ↘ 45° XZ: (0.707,0,0.707)\n\n";
+    ayuda += "🖱️ PANEL DE PROPIEDADES: Selecciona un equipo para editar sus puertos visualmente.\n";
     ayuda += "═══════════════════════════════════════════════════════════\n";
     mostrarReporte(ayuda);
 }
+
 function mostrarReporte(texto) {
     const modal = document.createElement('div');
     modal.className = 'modal-reporte';
@@ -739,15 +1291,33 @@ function mostrarReporte(texto) {
     document.body.appendChild(modal);
     modal.querySelector('.modal-close').onclick = () => modal.remove();
 }
+
 function resumenProyecto() {
-    const tanques = db.equipos.filter(e => e.tipo === 'tanque_v');
-    const bombas = db.equipos.filter(e => e.tipo === 'bomba');
+    const tanques = db.equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
+    const bombas = db.equipos.filter(e => e.tipo.includes('bomba'));
     const colectores = db.equipos.filter(e => e.tipo === 'colector');
+    const otros = db.equipos.filter(e => !['tanque_v', 'tanque_h', 'colector'].includes(e.tipo) && !e.tipo.includes('bomba'));
     const tuberias = db.lines;
     let totalCodos = 0;
     tuberias.forEach(l => { if (l.codos) totalCodos += l.codos; });
-    notify(`Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${colectores.length} colectores, ${tuberias.length} tuberías, ${totalCodos} codos.`);
+    let resumen = `📊 RESUMEN DEL PROYECTO\n`;
+    resumen += `═══════════════════════════════\n`;
+    resumen += `Tanques: ${tanques.length}\n`;
+    resumen += `Bombas: ${bombas.length}\n`;
+    resumen += `Colectores: ${colectores.length}\n`;
+    resumen += `Otros equipos: ${otros.length}\n`;
+    resumen += `Tuberías: ${tuberias.length}\n`;
+    resumen += `Codos: ${totalCodos}\n`;
+    resumen += `═══════════════════════════════\n`;
+    mostrarReporte(resumen);
+    if (voiceEnabled && window.speechSynthesis) {
+        const u = new SpeechSynthesisUtterance(`Proyecto con ${tanques.length} tanques, ${bombas.length} bombas, ${tuberias.length} tuberías.`);
+        u.lang = 'es-ES';
+        window.speechSynthesis.speak(u);
+    }
+    notify(`Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${tuberias.length} tuberías.`);
 }
+
 function exportarMTO() {
     let items = [];
     for (let eq of db.equipos) {
@@ -761,7 +1331,7 @@ function exportarMTO() {
             line.components.forEach(comp => {
                 let tipoComp = comp.type;
                 if (comp.type === 'VALVE') tipoComp += ` (${comp.subtype || 'genérica'})`;
-                items.push([comp.tag, tipoComp, "Und", 1]);
+                items.push([comp.tag || `${tipoComp}-${line.tag}`, tipoComp, "Und", 1]);
             });
         }
     }
@@ -772,9 +1342,35 @@ function exportarMTO() {
     XLSX.writeFile(wb, `MTO_${Date.now()}.xlsx`);
     notify("MTO exportado");
 }
-function guardarProyecto() { localStorage.setItem('smartflow_v10', JSON.stringify(db)); notify("Proyecto guardado"); }
-function cargarProyecto() { const data = localStorage.getItem('smartflow_v10'); if (data) { db = JSON.parse(data); selectedElement = null; recalcularTodo(); render(); autoCenter(); notify("Proyecto cargado"); } else notify("No hay proyecto guardado", true); }
-function nuevoProyecto() { if (confirm("¿Borrar todo?")) { db = { equipos: [], lines: [] }; selectedElement = null; render(); autoCenter(); notify("Nuevo proyecto"); saveState(); } }
+
+function guardarProyecto() { 
+    localStorage.setItem('smartflow_v10', JSON.stringify(db)); 
+    notify("Proyecto guardado"); 
+}
+
+function cargarProyecto() { 
+    const data = localStorage.getItem('smartflow_v10'); 
+    if (data) { 
+        db = JSON.parse(data); 
+        selectedElement = null; 
+        recalcularTodo(); 
+        render(); 
+        autoCenter(); 
+        notify("Proyecto cargado"); 
+    } else notify("No hay proyecto guardado", true); 
+}
+
+function nuevoProyecto() { 
+    if (confirm("¿Borrar todo?")) { 
+        db = { equipos: [], lines: [] }; 
+        selectedElement = null; 
+        render(); 
+        autoCenter(); 
+        notify("Nuevo proyecto"); 
+        saveState(); 
+    } 
+}
+
 function autoCenter() {
     if (!canvas) return;
     let points = [];
@@ -782,7 +1378,13 @@ function autoCenter() {
     db.lines.forEach(line => { if (line._cachedPoints) points.push(...line._cachedPoints); });
     if (points.length === 0) points = [{ x: -2000, y: 0, z: -2000 }, { x: 2000, y: 2000, z: 2000 }];
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    points.forEach(p => { const rx = (p.x - p.z) * 0.866, ry = (p.x + p.z) * 0.5 - p.y; if (rx < minX) minX = rx; if (rx > maxX) maxX = rx; if (ry < minY) minY = ry; if (ry > maxY) maxY = ry; });
+    points.forEach(p => { 
+        const rx = (p.x - p.z) * 0.866, ry = (p.x + p.z) * 0.5 - p.y; 
+        if (rx < minX) minX = rx; 
+        if (rx > maxX) maxX = rx; 
+        if (ry < minY) minY = ry; 
+        if (ry > maxY) maxY = ry; 
+    });
     const mx = (maxX - minX) * 0.15, my = (maxY - minY) * 0.15;
     minX -= mx; maxX += mx; minY -= my; maxY += my;
     const worldW = maxX - minX, worldH = maxY - minY;
@@ -793,11 +1395,35 @@ function autoCenter() {
     cam.panY = canvas.height / 2 - ((minY + maxY) / 2) * sc;
     render();
 }
-function toggleVoice() { voiceEnabled = !voiceEnabled; document.getElementById('btnVoice').textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF"; notify(voiceEnabled ? "Voz activada" : "Voz desactivada"); }
-function exportPDF() { const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape' }); const imgData = canvas.toDataURL('image/png'); doc.addImage(imgData, 'PNG', 10, 10, 277, 150); doc.setFontSize(16); doc.text("SmartFlow Pro - Reporte Isométrico", 10, 175); doc.text(`Fecha: ${new Date().toLocaleString()}`, 10, 185); doc.save(`isometrico_${Date.now()}.pdf`); notify("PDF generado"); }
-function exportPCF() { let pcf = `!PCF v10.5 - SmartFlow Pro\nUNITS MM\n`; for (let line of db.lines) { if (!line._cachedPoints) continue; pcf += `PIPE\n    COMPONENT-IDENTIFIER ${line.tag}\n    DIAMETER ${(line.diameter*25.4).toFixed(2)} MM\n`; line._cachedPoints.forEach(p=>pcf+=`    POINT ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}\n`); pcf += `ENDPIPE\n`; } const blob = new Blob([pcf], {type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `proyecto.pcf`; a.click(); notify("PCF exportado"); }
-function aplicarNormas() { notify("Función de normas en desarrollo"); }
-function setElevation(level) { currentElevation = level; document.getElementById('customElev').value = level; notify(`Elevación actual: ${level/1000} m`); render(); }
+
+function toggleVoice() { 
+    voiceEnabled = !voiceEnabled; 
+    document.getElementById('btnVoice').textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF"; 
+    notify(voiceEnabled ? "Voz activada" : "Voz desactivada"); 
+}
+
+function exportPDF() { 
+    const { jsPDF } = window.jspdf; 
+    const doc = new jsPDF({ orientation: 'landscape' }); 
+    const imgData = canvas.toDataURL('image/png'); 
+    doc.addImage(imgData, 'PNG', 10, 10, 277, 150); 
+    doc.setFontSize(16); 
+    doc.text("SmartFlow Pro - Reporte Isométrico", 10, 175); 
+    doc.text(`Fecha: ${new Date().toLocaleString()}`, 10, 185); 
+    doc.save(`isometrico_${Date.now()}.pdf`); 
+    notify("PDF generado"); 
+}
+
+function aplicarNormas() { 
+    notify("Función de normas en desarrollo"); 
+}
+
+function setElevation(level) { 
+    currentElevation = level; 
+    document.getElementById('customElev').value = level; 
+    notify(`Elevación actual: ${level/1000} m`); 
+    render(); 
+}
 
 // ==================== PANEL FLOTANTE DE CATÁLOGO ====================
 function buildCatalogPanel() {
@@ -810,7 +1436,10 @@ function buildCatalogPanel() {
     };
     let html = '';
     for (let [cat, tipos] of Object.entries(categorias)) {
-        let titulo = cat === 'petrolera' ? '🛢️ Petrolera/Petroquímica' : (cat === 'agua' ? '💧 Tratamiento de Agua' : (cat === 'alimentos' ? '🍎 Alimentos' : (cat === 'quimica' ? '🧪 Industria Química' : '📌 Otros')));
+        let titulo = cat === 'petrolera' ? '🛢️ Petrolera/Petroquímica' : 
+                    (cat === 'agua' ? '💧 Tratamiento de Agua' : 
+                    (cat === 'alimentos' ? '🍎 Alimentos' : 
+                    (cat === 'quimica' ? '🧪 Industria Química' : '📌 Otros')));
         html += `<div class="catalog-category"><h4>${titulo}</h4><div class="catalog-buttons">`;
         for (let tipo of tipos) {
             const nombre = EquiposCatalogo[tipo]?.nombre || tipo;
@@ -833,6 +1462,7 @@ function buildCatalogPanel() {
     </div></div>`;
     document.getElementById('catalogContent').innerHTML = html;
 }
+
 function crearEquipoDesdePanel(tipo) {
     let tag = `${tipo.toUpperCase()}-${db.equipos.filter(e => e.tipo === tipo).length+1}`;
     let x = 0, z = 0;
@@ -842,54 +1472,208 @@ function crearEquipoDesdePanel(tipo) {
     if (tipo === 'tanque_v') { params.diametro = 2400; params.altura = 2500; y = 1250; }
     else if (tipo === 'tanque_h') { params.diametro = 2000; params.altura = 2000; params.largo = 4000; y = 1000; }
     else if (tipo === 'bomba') { params.diametro = 800; params.altura = 800; y = 800; }
+    else if (tipo === 'torre') { params.diametro = 3000; params.altura = 6000; y = 3000; }
+    else if (tipo === 'reactor') { params.diametro = 2500; params.altura = 4000; y = 2000; }
+    else if (tipo === 'intercambiador') { params.diametro = 1500; params.altura = 2000; params.largo = 4000; y = 1000; }
     else if (tipo === 'bomba_dosificacion') { params.diametro = 500; params.altura = 600; y = 600; }
     else if (tipo === 'bomba_sumergible') { params.diametro = 600; params.altura = 800; y = 400; }
     else if (tipo === 'colector') { crearColector(tag, x, y, 2000, 4, 3000, 'center', 4, 'PPR'); return; }
     else { params.diametro = 2000; params.altura = 3000; params.largo = 4000; y = 1500; }
     crearEquipo(tipo, tag, x, y, z, params);
 }
+
 function crearComponente(tipo, subtipo = null) {
-    if (!selectedElement || selectedElement.type !== 'line') { notify("Selecciona una tubería primero", true); return; }
+    if (!selectedElement || selectedElement.type !== 'line') { 
+        notify("Selecciona una tubería primero", true); 
+        return; 
+    }
     const line = selectedElement.obj;
-    const tag = `${tipo}-${Date.now()}`;
+    const tag = `${tipo}-${Date.now().toString().slice(-6)}`;
     const param = parseFloat(prompt("Posición en la tubería (0-1):", "0.5"));
-    if (isNaN(param)) return;
+    if (isNaN(param) || param < 0 || param > 1) { notify("Posición inválida", true); return; }
     const comp = { type: tipo, tag: tag, param: param, size: line.diameter };
     if (tipo === 'VALVE' && subtipo) comp.subtype = subtipo;
+    if (tipo === 'INSTRUMENT' && subtipo) comp.subtype = subtipo;
     if (!line.components) line.components = [];
     line.components.push(comp);
-    saveState(); render();
+    saveState(); 
+    render();
     notify(`Componente ${tag} añadido a ${line.tag}`);
 }
 
-// ==================== PANEL DE PROPIEDADES ====================
+// ==================== NUEVO: Panel de Propiedades Mejorado ====================
 function showPropertyPanel(eq) {
     const panel = document.getElementById('propertyPanel');
     const content = document.getElementById('propertyContent');
     if (!eq || !eq.puertos) { panel.style.display = 'none'; return; }
-    let html = `<h4 style="margin-bottom:8px;">${eq.tag} (${eq.tipo})</h4>`;
+    
+    let html = `<h4 style="margin-bottom:8px;">${eq.tag} (${EquiposCatalogo[eq.tipo]?.nombre || eq.tipo})</h4>`;
+    html += `<p style="font-size:11px; color:#aaa; margin-bottom:10px;">Posición: (${eq.x.toFixed(0)}, ${eq.y.toFixed(0)}, ${eq.z.toFixed(0)}) mm</p>`;
+    
     eq.puertos.forEach(p => {
+        const dir = p.orientacion || {dx:1, dy:0, dz:0};
+        html += `<div class="puerto-section">`;
+        html += `<div class="puerto-title">🔌 Puerto ${p.id} <span style="color:#aaa;font-size:11px;">${p.label}</span></div>`;
+        
+        // Diámetro
         html += `<div class="property-row">
-            <label>${p.id}:</label>
-            <input type="number" step="0.5" value="${p.diametro}" data-puerto="${p.id}" class="puerto-diam" style="width:70px;"> pulg
-            <span style="font-size:10px; color:#aaa;">${p.label}</span>
+            <label>Diámetro:</label>
+            <input type="number" step="0.5" value="${p.diametro}" data-puerto="${p.id}" data-field="diam" style="width:80px;"> pulg
         </div>`;
+        
+        // Posición relativa
+        html += `<div class="property-row">
+            <label>Posición (mm):</label>
+            <div class="coord-group">
+                <input type="number" value="${p.relX.toFixed(0)}" data-puerto="${p.id}" data-field="relX" placeholder="X" step="10">
+                <input type="number" value="${p.relY.toFixed(0)}" data-puerto="${p.id}" data-field="relY" placeholder="Y" step="10">
+                <input type="number" value="${p.relZ.toFixed(0)}" data-puerto="${p.id}" data-field="relZ" placeholder="Z" step="10">
+            </div>
+        </div>`;
+        
+        // Dirección
+        html += `<div class="property-row">
+            <label>Dirección:</label>
+            <div class="coord-group">
+                <input type="number" value="${dir.dx.toFixed(3)}" data-puerto="${p.id}" data-field="dx" placeholder="dX" step="0.1" min="-1" max="1">
+                <input type="number" value="${dir.dy.toFixed(3)}" data-puerto="${p.id}" data-field="dy" placeholder="dY" step="0.1" min="-1" max="1">
+                <input type="number" value="${dir.dz.toFixed(3)}" data-puerto="${p.id}" data-field="dz" placeholder="dZ" step="0.1" min="-1" max="1">
+            </div>
+        </div>`;
+        
+        // Presets de dirección
+        html += `<div class="preset-buttons">
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', 0,-1,0)">↓ Abajo</button>
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', 0,1,0)">↑ Arriba</button>
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', -1,0,0)">← Izq</button>
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', 1,0,0)">→ Der</button>
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', 0,0,-1)">↙ Frente</button>
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', 0,0,1)">↗ Atrás</button>
+            <button onclick="applyDirPreset('${eq.tag}', '${p.id}', 0.707,0,0.707)">↘ 45°</button>
+        </div>`;
+        
+        // Si es tanque vertical, mostrar opción de salida lateral de fondo
+        if (eq.tipo === 'tanque_v' && p.id === 'N1') {
+            const radio = eq.diametro / 2;
+            const fondo = -eq.altura / 2;
+            html += `<div class="preset-buttons" style="margin-top:5px;">
+                <button onclick="setLateralFondo('${eq.tag}', '${p.id}', 0)">→ Lateral Der</button>
+                <button onclick="setLateralFondo('${eq.tag}', '${p.id}', 90)">↗ Lateral 90°</button>
+                <button onclick="setLateralFondo('${eq.tag}', '${p.id}', 180)">← Lateral Izq</button>
+                <button onclick="setLateralFondo('${eq.tag}', '${p.id}', 45)">↘ Lateral 45°</button>
+            </div>`;
+            html += `<div class="angle-control">
+                <label>Altura/fondo:</label>
+                <input type="number" id="alturaFondo_${p.id}" value="200" style="width:70px;"> mm
+                <button onclick="setLateralFondoCustom('${eq.tag}', '${p.id}')">Aplicar</button>
+            </div>`;
+        }
+        
+        html += `</div>`;
     });
-    html += `<button id="applyPuertos" class="btn-primary" style="margin-top:8px;">Aplicar cambios</button>`;
+    
+    html += `<button id="applyPuertos" class="btn-primary" style="margin-top:10px; width:100%;">Aplicar todos los cambios</button>`;
     content.innerHTML = html;
     panel.style.display = 'flex';
+    
     document.getElementById('applyPuertos').onclick = () => {
-        const inputs = document.querySelectorAll('#propertyContent .puerto-diam');
-        inputs.forEach(inp => {
-            const puertoId = inp.dataset.puerto;
-            const nuevoDiam = parseFloat(inp.value);
-            if (!isNaN(nuevoDiam)) {
-                actualizarPuertoEquipo(eq.tag, puertoId, nuevoDiam);
+        const sections = document.querySelectorAll('.puerto-section');
+        eq.puertos.forEach((p, idx) => {
+            const section = sections[idx];
+            if (!section) return;
+            
+            const diamInput = section.querySelector('[data-field="diam"]');
+            const relXInput = section.querySelector('[data-field="relX"]');
+            const relYInput = section.querySelector('[data-field="relY"]');
+            const relZInput = section.querySelector('[data-field="relZ"]');
+            const dxInput = section.querySelector('[data-field="dx"]');
+            const dyInput = section.querySelector('[data-field="dy"]');
+            const dzInput = section.querySelector('[data-field="dz"]');
+            
+            const nuevoDiam = diamInput ? parseFloat(diamInput.value) : null;
+            const nuevaPos = relXInput ? { 
+                x: parseFloat(relXInput.value), 
+                y: parseFloat(relYInput.value), 
+                z: parseFloat(relZInput.value) 
+            } : null;
+            const nuevaDir = dxInput ? { 
+                dx: parseFloat(dxInput.value), 
+                dy: parseFloat(dyInput.value), 
+                dz: parseFloat(dzInput.value) 
+            } : null;
+            
+            if (nuevoDiam && !isNaN(nuevoDiam) && nuevoDiam > 0) {
+                p.diametro = nuevoDiam;
+            }
+            if (nuevaPos && !isNaN(nuevaPos.x) && !isNaN(nuevaPos.y) && !isNaN(nuevaPos.z)) {
+                p.relX = nuevaPos.x;
+                p.relY = nuevaPos.y;
+                p.relZ = nuevaPos.z;
+            }
+            if (nuevaDir && !isNaN(nuevaDir.dx) && !isNaN(nuevaDir.dy) && !isNaN(nuevaDir.dz)) {
+                const len = Math.sqrt(nuevaDir.dx**2 + nuevaDir.dy**2 + nuevaDir.dz**2);
+                if (len > 0) {
+                    p.orientacion = { 
+                        dx: nuevaDir.dx/len, 
+                        dy: nuevaDir.dy/len, 
+                        dz: nuevaDir.dz/len 
+                    };
+                }
             }
         });
+        actualizarTuberiasConectadas(eq.tag);
+        saveState();
+        render();
         panel.style.display = 'none';
+        notify(`Propiedades de ${eq.tag} actualizadas`);
     };
 }
+
+// Funciones helper para el panel
+function applyDirPreset(equipTag, puertoId, dx, dy, dz) {
+    configurarPuerto(equipTag, puertoId, { dir: { dx, dy, dz } });
+    const eq = db.equipos.find(e => e.tag === equipTag);
+    if (eq) showPropertyPanel(eq);
+}
+
+function setLateralFondo(equipTag, puertoId, anguloGrados) {
+    const eq = db.equipos.find(e => e.tag === equipTag);
+    if (!eq) return;
+    const radio = eq.diametro / 2;
+    const fondo = -eq.altura / 2;
+    const alturaSobreFondo = 200;
+    const angulo = anguloGrados * Math.PI / 180;
+    const posX = radio * Math.cos(angulo);
+    const posZ = radio * Math.sin(angulo);
+    const posY = fondo + alturaSobreFondo;
+    
+    configurarPuerto(equipTag, puertoId, { 
+        pos: { x: posX, y: posY, z: posZ },
+        dir: { dx: Math.cos(angulo), dy: 0, dz: Math.sin(angulo) }
+    });
+    if (eq) showPropertyPanel(eq);
+}
+
+function setLateralFondoCustom(equipTag, puertoId) {
+    const eq = db.equipos.find(e => e.tag === equipTag);
+    if (!eq) return;
+    const alturaInput = document.getElementById(`alturaFondo_${puertoId}`);
+    const alturaSobreFondo = alturaInput ? parseFloat(alturaInput.value) : 200;
+    const radio = eq.diametro / 2;
+    const fondo = -eq.altura / 2;
+    
+    // Por defecto, dirección derecha (0°)
+    const posX = radio;
+    const posZ = 0;
+    const posY = fondo + alturaSobreFondo;
+    
+    configurarPuerto(equipTag, puertoId, { 
+        pos: { x: posX, y: posY, z: posZ },
+        dir: { dx: 1, dy: 0, dz: 0 }
+    });
+    if (eq) showPropertyPanel(eq);
+}
+
 function closePropertyPanel() {
     document.getElementById('propertyPanel').style.display = 'none';
 }
@@ -907,6 +1691,7 @@ function pointToSegmentDistance(p, a, b) {
     const projY = a.y + t * by;
     return Math.hypot(p.x - projX, p.y - projY);
 }
+
 function pickElement(mouseCanvas) {
     for (let eq of db.equipos) {
         const p = project(eq);
@@ -917,7 +1702,7 @@ function pickElement(mouseCanvas) {
             if (pointToSegmentDistance(mouseCanvas, pIzq, pDer) < 15) return { type: 'equipment', obj: eq };
         } else {
             const w = (eq.diametro / 2) * cam.scale;
-            if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < w + 5) return { type: 'equipment', obj: eq };
+            if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < w + 10) return { type: 'equipment', obj: eq };
         }
     }
     for (let line of db.lines) {
@@ -925,11 +1710,12 @@ function pickElement(mouseCanvas) {
         if (!pts) continue;
         const proj = pts.map(p => project(p));
         for (let i = 0; i < proj.length - 1; i++) {
-            if (pointToSegmentDistance(mouseCanvas, proj[i], proj[i+1]) < 10) return { type: 'line', obj: line };
+            if (pointToSegmentDistance(mouseCanvas, proj[i], proj[i+1]) < 12) return { type: 'line', obj: line };
         }
     }
     return null;
 }
+
 function initCanvasEvents() {
     let panLocal = false, panStartLocal = { x: 0, y: 0 };
     canvas.addEventListener('mousedown', (e) => {
@@ -973,9 +1759,13 @@ function initCanvasEvents() {
                     const dist = Math.hypot(mouse.x - projX, mouse.y - projY);
                     if (dist < minDist) { minDist = dist; bestSeg = i; bestParam = t; }
                 }
-                if (minDist < 15) {
+                if (minDist < 20) {
                     const p1 = pts[bestSeg], p2 = pts[bestSeg+1];
-                    const newPoint = { x: p1.x + bestParam * (p2.x - p1.x), y: p1.y + bestParam * (p2.y - p1.y), z: p1.z + bestParam * (p2.z - p1.z) };
+                    const newPoint = { 
+                        x: p1.x + bestParam * (p2.x - p1.x), 
+                        y: p1.y + bestParam * (p2.y - p1.y), 
+                        z: p1.z + bestParam * (p2.z - p1.z) 
+                    };
                     if (!line.waypoints) line.waypoints = [];
                     line.waypoints.push(newPoint);
                     const pStart = obtenerPosicionPuerto(line.anchors.start.equipTag, line.anchors.start.nozzleId);
@@ -984,7 +1774,9 @@ function initCanvasEvents() {
                     if (line.waypoints) puntos.push(...line.waypoints);
                     puntos.push(pEnd);
                     line._cachedPoints = puntos;
-                    saveState(); render();
+                    line.codos = puntos.filter(p => !p.isControlPoint).length - 2;
+                    saveState(); 
+                    render();
                     notify("Waypoint añadido");
                 }
             }
@@ -995,6 +1787,7 @@ function initCanvasEvents() {
             e.preventDefault();
         }
     });
+    
     window.addEventListener('mousemove', (e) => {
         if (draggingEquipment && draggedEquip) {
             const dx = (e.clientX - dragLastPos.x) / cam.scale;
@@ -1013,22 +1806,75 @@ function initCanvasEvents() {
             render();
         }
     });
-    window.addEventListener('mouseup', () => { draggingEquipment = false; panLocal = false; canvas.style.cursor = 'grab'; if (draggingEquipment) saveState(); });
-    canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.scale *= e.deltaY > 0 ? 0.9 : 1.1; cam.scale = Math.min(Math.max(0.1, cam.scale), 1.5); render(); });
-    // Cerrar panel de propiedades al hacer clic en su header
+    
+    window.addEventListener('mouseup', () => { 
+        if (draggingEquipment) saveState();
+        draggingEquipment = false; 
+        panLocal = false; 
+        canvas.style.cursor = 'grab'; 
+    });
+    
+    canvas.addEventListener('wheel', (e) => { 
+        e.preventDefault(); 
+        cam.scale *= e.deltaY > 0 ? 0.9 : 1.1; 
+        cam.scale = Math.min(Math.max(0.05, cam.scale), 1.5); 
+        render(); 
+    });
+    
     document.querySelector('#propertyPanel .property-header').onclick = () => closePropertyPanel();
 }
-function resizeCanvas() { const container = canvas.parentElement; canvas.width = container.clientWidth; canvas.height = container.clientHeight; autoCenter(); }
+
+function resizeCanvas() { 
+    const container = canvas.parentElement; 
+    canvas.width = container.clientWidth; 
+    canvas.height = container.clientHeight; 
+    autoCenter(); 
+}
 
 // ==================== INICIALIZACIÓN ====================
 function init() {
     resizeCanvas();
     initCanvasEvents();
     buildCatalogPanel();
-    // Datos de ejemplo: un tanque y una bomba
-    crearEquipo('tanque_v', 'TK-1', 0, 1250, 0, { diametro: 2400, altura: 2500 });
-    crearEquipo('bomba', 'B-1', 5000, 800, 0, { diametro: 800, altura: 800 });
-    render(); autoCenter(); saveState();
+    
+    // Datos de ejemplo con salida lateral de fondo
+    const tk1 = crearEquipo('tanque_v', 'TK-01', 0, 1250, 0, { diametro: 2400, altura: 2500, material: 'CS' });
+    // Configurar salida lateral de fondo a 200mm
+    if (tk1) {
+        configurarPuerto('TK-01', 'N1', { 
+            pos: { x: 1200, y: -1050, z: 0 },
+            dir: { dx: 1, dy: 0, dz: 0 }
+        });
+    }
+    crearEquipo('bomba', 'B-01', 5000, 800, 0, { diametro: 800, altura: 800, material: 'SS' });
+    
+    // Conectar el tanque a la bomba
+    setTimeout(() => {
+        const eqFrom = db.equipos.find(e => e.tag === 'TK-01');
+        const eqTo = db.equipos.find(e => e.tag === 'B-01');
+        if (eqFrom && eqTo) {
+            const tag = `L-${db.lines.length+1}`;
+            db.lines.push({ 
+                tag, 
+                diameter: 4, 
+                material: 'CS', 
+                anchors: { 
+                    start: { equipTag: 'TK-01', nozzleId: 'N1' }, 
+                    end: { equipTag: 'B-01', nozzleId: 'SUC' } 
+                }, 
+                waypoints: [], 
+                _cachedPoints: null 
+            });
+            actualizarTuberiasConectadas('TK-01');
+            actualizarTuberiasConectadas('B-01');
+        }
+        render();
+        autoCenter();
+    }, 100);
+    
+    render(); 
+    autoCenter(); 
+    saveState();
 
     // Botones
     document.getElementById('btnNew').onclick = nuevoProyecto;
@@ -1059,7 +1905,7 @@ function init() {
         crearEquipo('tanque_v', tag, x, 1250, 0, { diametro: 2400, altura: 2500 });
     };
     document.getElementById('btnAddPump').onclick = () => {
-        const tag = `B-${db.equipos.filter(e => e.tipo === 'bomba').length+1}`;
+        const tag = `B-${db.equipos.filter(e => e.tipo.includes('bomba')).length+1}`;
         const ult = db.equipos[db.equipos.length-1];
         let x = ult ? ult.x + 3000 : 5000;
         crearEquipo('bomba', tag, x, 800, 0, { diametro: 800, altura: 800 });
@@ -1080,7 +1926,11 @@ function init() {
         const content = document.querySelector('#catalogPanel .catalog-content');
         content.style.display = content.style.display === 'none' ? 'flex' : 'none';
     };
-    document.getElementById('btnSetElev').onclick = () => { const val = parseInt(document.getElementById('customElev').value); if (!isNaN(val)) setElevation(val); };
+    document.getElementById('btnSetElev').onclick = () => { 
+        const val = parseInt(document.getElementById('customElev').value); 
+        if (!isNaN(val)) setElevation(val); 
+    };
+    
     const setTool = (mode) => {
         toolMode = mode;
         document.querySelectorAll('#toolsPanel button').forEach(btn => btn.classList.remove('active'));
@@ -1093,9 +1943,19 @@ function init() {
     document.getElementById('toolMoveEq').onclick = () => setTool('moveEq');
     document.getElementById('toolEditPipe').onclick = () => setTool('editPipe');
     document.getElementById('toolAddPoint').onclick = () => setTool('addPoint');
+    
     window.addEventListener('resize', () => { resizeCanvas(); autoCenter(); });
-    notify("SmartFlow Pro v10.5 - Edición de puertos. Selecciona un equipo para modificar sus diámetros.");
+    notify("SmartFlow Pro v10.7 - ¡Puertos Avanzados! Ejemplo: TK-01 con salida lateral derecha a 200mm del fondo.");
 }
+
+// Exponer funciones globales
+window.setElevation = setElevation;
+window.crearEquipoDesdePanel = crearEquipoDesdePanel;
+window.crearComponente = crearComponente;
+window.applyDirPreset = applyDirPreset;
+window.setLateralFondo = setLateralFondo;
+window.setLateralFondoCustom = setLateralFondoCustom;
+
 init();
 </script>
 </body>
