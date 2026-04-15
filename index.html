@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SmartFlow Pro v12.0 - Catálogo Industrial Extendido</title>
+    
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}
+        .toolbar{background:#1a1a2e;padding:8px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;border-bottom:1px solid #2a2a4a}
+        button{background:#2c3e66;border:none;color:white;padding:8px 14px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:13px;transition:background 0.2s}
+        button:hover{background:#3b5a8c}
+        .btn-primary{background:#238636}
+        .btn-primary:hover{background:#2ea043}
+        .btn-warning{background:#d29922;color:#1f1f1f}
+        .btn-warning:hover{background:#e2a83a}
+        .btn-speak{background:#7c3aed;color:white}
+        .btn-speak:hover{background:#8b5cf6}
+        .canvas-container{flex:1;position:relative;background:#000}
+        canvas{display:block;width:100%;height:100%;cursor:grab}
+        canvas:active{cursor:grabbing}
+        .command-panel{position:fixed;left:10px;bottom:10px;width:90%;max-width:500px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:1000;display:none;box-shadow:0 4px 20px rgba(0,0,0,0.5)}
+        .command-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #3a3a4a}
+        .command-header strong{color:#7c3aed}
+        .command-buttons{display:flex;gap:8px;padding:12px}
+        textarea{width:calc(100% - 24px);margin:12px;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:12px;font-family:'Courier New',monospace;font-size:14px;resize:vertical;outline:none}
+        textarea:focus{border-color:#7c3aed}
+        .notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#238636;padding:10px 20px;border-radius:8px;z-index:2000;display:none;text-align:center;font-weight:bold;box-shadow:0 2px 10px rgba(0,0,0,0.3)}
+        .status-bar{background:#111;padding:6px 12px;font-size:12px;text-align:center;border-top:1px solid #2a2a4a;color:#aaa}
+        .tools-panel{position:fixed;left:20px;top:100px;background:#1a1a2e;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:900;border:1px solid #7c3aed}
+        .tools-panel button{background:#2c3e66;padding:6px 12px;font-size:12px}
+        .tools-panel button.active{background:#7c3aed;color:white}
+        .elevation-panel{position:fixed;bottom:20px;right:20px;background:#1e1e2e;padding:8px 12px;border-radius:8px;border:1px solid #7c3aed;z-index:900;display:flex;gap:6px;align-items:center}
+        .elevation-panel input{width:70px;background:#0f0f17;border:1px solid #3a3a4a;color:white;border-radius:4px;padding:4px 6px;outline:none}
+        .elevation-panel input:focus{border-color:#7c3aed}
+        .catalog-panel{position:fixed;right:20px;top:100px;width:300px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:900;display:none;flex-direction:column;max-height:80vh;overflow-y:auto}
+        .catalog-header{background:#2c3e66;padding:12px;font-weight:bold;text-align:center;cursor:pointer;border-radius:12px 12px 0 0}
+        .catalog-content{padding:12px;display:flex;flex-direction:column;gap:12px}
+        .catalog-category{margin-bottom:8px}
+        .catalog-category h4{color:#7c3aed;margin-bottom:6px;font-size:13px;border-left:3px solid #7c3aed;padding-left:6px}
+        .catalog-buttons{display:flex;flex-wrap:wrap;gap:6px}
+        .catalog-buttons button{background:#2c3e66;padding:4px 8px;font-size:11px;border-radius:4px}
+        .catalog-buttons button:hover{background:#7c3aed}
+        .property-panel{position:fixed;right:20px;top:100px;width:380px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:900;display:none;flex-direction:column;max-height:80vh;overflow-y:auto}
+        .property-header{background:#2c3e66;padding:12px;font-weight:bold;text-align:center;cursor:pointer}
+        .property-content{padding:12px}
+    </style>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+    <div class="toolbar">
+        <button id="btnNew" class="btn-primary">📄 Nuevo</button>
+        <button id="btnOpen">📂 Abrir</button>
+        <button id="btnSave">💾 Guardar</button>
+        <button id="btnReset">🔄 Centrar</button>
+        <button id="btnCommand" class="btn-primary">🤖 Comandos</button>
+        <button id="btnAddTank">🏭 Tanque</button>
+        <button id="btnAddPump">⚙️ Bomba</button>
+        <button id="btnMTO">📊 MTO</button>
+        <button id="btnPDF">📄 PDF</button>
+        <button id="btnUndo" class="btn-warning">↩️ Undo</button>
+        <button id="btnRedo" class="btn-warning">↪️ Redo</button>
+        <button id="btnVoice" style="background:#7c3aed">🔊 Voz ON</button>
+        <button id="btnApplyNorm">📐 Normas</button>
+        <button id="btnSpeakSummary" class="btn-speak">📢 Resumen</button>
+        <button id="btnRecalc">🔄 Recalcular</button>
+        <button id="btnToggleCatalog" class="btn-speak">📦 Catálogo</button>
+    </div>
+    
+    <div class="canvas-container">
+        <canvas id="isoCanvas"></canvas>
+    </div>
+    
+    <div id="commandPanel" class="command-panel">
+        <div class="command-header">
+            <strong>🤖 Comandos SmartFlow</strong>
+            <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;height:30px;">✖</button>
+        </div>
+        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE&#10;connect TK-01 N1 to M-SUCC IN1 diameter 3 material PPR&#10;edit equipment TK-01 set puerto N1 pos (0,-1250,1190) dir (0,0,1)&#10;help"></textarea>
+        <div class="command-buttons">
+            <button id="runCommands" class="btn-primary">Ejecutar</button>
+            <button id="clearCommand">Limpiar</button>
+        </div>
+    </div>
+    
+    <div id="notification" class="notification"></div>
+    
+    <div class="status-bar" id="statusMsg">SmartFlow Pro v12.0 - Catálogo Industrial Extendido | Listo</div>
+    
+    <div class="tools-panel" id="toolsPanel">
+        <button id="toolSelect" class="active">🔍 Seleccionar</button>
+        <button id="toolMoveEq">✋ Mover equipo</button>
+        <button id="toolEditPipe">✏️ Editar tubería</button>
+        <button id="toolAddPoint">➕ Añadir punto</button>
+    </div>
+    
+    <div class="elevation-panel" id="elevationPanel">
+        <span style="font-size:12px;">📐 Elev. (mm):</span>
+        <button onclick="setElevation(0)" style="padding:2px 8px;">0</button>
+        <button onclick="setElevation(2500)" style="padding:2px 8px;">2.5m</button>
+        <button onclick="setElevation(5000)" style="padding:2px 8px;">5.0m</button>
+        <input type="number" id="customElev" value="0" step="100">
+        <button id="btnSetElev" style="padding:2px 8px;">Set</button>
+    </div>
+    
+    <div id="catalogPanel" class="catalog-panel" style="display:none">
+        <div class="catalog-header">📦 Catálogo Industrial <span style="float:right">▼</span></div>
+        <div class="catalog-content" id="catalogContent">
+            <div class="catalog-category">
+                <h4>🛢️ Tanques</h4>
+                <div class="catalog-buttons">
+                    <button onclick="SmartFlowCommands.executeCommand('create tanque_v TK-V at (0,1450,0) diam 2380 height 2900 material PE')">Tanque Vertical PE</button>
+                    <button onclick="SmartFlowCommands.executeCommand('create tanque_h TK-H at (0,1000,0) diam 2000 height 2000 largo 4000')">Tanque Horizontal</button>
+                </div>
+            </div>
+            <div class="catalog-category">
+                <h4>⚙️ Bombas</h4>
+                <div class="catalog-buttons">
+                    <button onclick="SmartFlowCommands.executeCommand('create bomba B-CEN at (0,800,0) diam 800 height 800 material SS')">Bomba Centrífuga</button>
+                    <button onclick="SmartFlowCommands.executeCommand('create bomba_dosificacion B-DOS at (0,600,0) diam 500 height 600')">Bomba Dosificadora</button>
+                </div>
+            </div>
+            <div class="catalog-category">
+                <h4>🔥 Proceso</h4>
+                <div class="catalog-buttons">
+                    <button onclick="SmartFlowCommands.executeCommand('create intercambiador E-01 at (0,1000,0) diam 1500 height 2000 largo 4000')">Intercambiador</button>
+                    <button onclick="SmartFlowCommands.executeCommand('create torre T-01 at (0,3000,0) diam 3000 height 6000')">Torre Destilación</button>
+                    <button onclick="SmartFlowCommands.executeCommand('create reactor R-01 at (0,2000,0) diam 2500 height 4000')">Reactor</button>
+                </div>
+            </div>
+            <div class="catalog-category">
+                <h4>🔀 Distribución</h4>
+                <div class="catalog-buttons">
+                    <button onclick="SmartFlowCommands.executeCommand('create manifold M-01 at (0,0,0) entries 4 spacing 3000 output center diameter 4 material PPR')">Colector 4"</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="propertyPanel" class="property-panel" style="display:none">
+        <div class="property-header">📋 Propiedades del equipo <span style="float:right">✖</span></div>
+        <div class="property-content" id="propertyContent">
+            <p style="color:#aaa;text-align:center;padding:20px;">Seleccione un equipo para ver sus propiedades</p>
+        </div>
+    </div>
+
+    <script src="js/core.js"></script>
+    <script src="js/catalog.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/commands.js"></script>
+    <script src="js/main.js"></script>
+    
+    <script>
+        function setElevation(level) {
+            if (typeof SmartFlowCore !== 'undefined' && typeof SmartFlowRenderer !== 'undefined') {
+                SmartFlowCore.setElevation(level);
+                SmartFlowRenderer.setElevation(level);
+                document.getElementById('customElev').value = level;
+            }
+        }
+    </script>
+
+</body>
+</html>
