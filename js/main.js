@@ -381,79 +381,68 @@
         });
     }
     
-    // -------------------- 9. CABLEADO DE BOTONES --------------------
+
+    // -------------------- 9. CABLEADO DE BOTONES (Versión Robusta) --------------------
     function bindEvents() {
-        if (btnNew) btnNew.onclick = nuevoProyecto;
-        if (btnOpen) btnOpen.onclick = cargarProyecto;
-        if (btnSave) btnSave.onclick = guardarProyecto;
-        if (btnReset) btnReset.onclick = autoCenter;
-        if (btnCommand) btnCommand.onclick = () => { if (commandPanel) commandPanel.style.display = 'block'; };
-        if (btnCloseCommand) btnCloseCommand.onclick = () => { if (commandPanel) commandPanel.style.display = 'none'; };
-        if (btnClearCommand) btnClearCommand.onclick = () => { if (commandText) commandText.value = ''; };
+        // Función protectora: Solo asigna el evento si el elemento existe
+        const vincular = (id, accion) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.onclick = accion;
+            } else {
+                console.warn("Advertencia: No se encontró el botón con ID: " + id);
+            }
+        };
+
+        // Grupos de botones
+        vincular('btnNew', nuevoProyecto);
+        vincular('btnOpen', cargarProyecto);
+        vincular('btnSave', guardarProyecto);
+        vincular('btnReset', autoCenter);
         
-        if (btnRunCommands) {
-            btnRunCommands.onclick = () => {
-                if (commandText) {
-                    SmartFlowCommands.executeBatch(commandText.value);
-                    if (commandPanel) commandPanel.style.display = 'none';
-                }
-            };
-        }
-        
-        if (btnAddTank) {
-            btnAddTank.onclick = () => {
-                const equipos = SmartFlowCore.getEquipos();
-                const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
-                const ult = equipos[equipos.length - 1];
-                const x = ult ? ult.posX + 3000 : 0;
-                SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2400 height 2900 material CS`);
-            };
-        }
-        
-        if (btnAddPump) {
-            btnAddPump.onclick = () => {
-                const equipos = SmartFlowCore.getEquipos();
-                const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
-                const ult = equipos[equipos.length - 1];
-                const x = ult ? ult.posX + 3000 : 5000;
-                SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800 material SS`);
-            };
-        }
-        
-        if (btnMTO) btnMTO.onclick = exportarMTO;
-        if (btnPDF) btnPDF.onclick = () => SmartFlowRenderer.exportPDF();
-        if (btnUndo) btnUndo.onclick = () => { SmartFlowCore.undo(); render(); };
-        if (btnRedo) btnRedo.onclick = () => { SmartFlowCore.redo(); render(); };
-        if (btnVoice) btnVoice.onclick = toggleVoice;
-        if (btnApplyNorm) btnApplyNorm.onclick = () => notify("Función de normas en desarrollo.", false);
-        if (btnSpeakSummary) btnSpeakSummary.onclick = resumenProyecto;
-        if (btnRecalc) btnRecalc.onclick = () => { SmartFlowCore.syncPhysicalData(); render(); notify("Recalculando...", false); };
-        
-        if (btnToggleCatalog) {
-            btnToggleCatalog.onclick = () => {
-                if (catalogPanel) {
-                    catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
-                }
-            };
-        }
-        
-        if (btnSetElev) {
-            btnSetElev.onclick = () => {
-                const val = parseInt(customElev?.value);
-                if (!isNaN(val)) setElevation(val);
-            };
-        }
-        
-        if (toolSelect) toolSelect.onclick = () => setTool('select');
-        if (toolMoveEq) toolMoveEq.onclick = () => setTool('moveEq');
-        if (toolEditPipe) toolEditPipe.onclick = () => setTool('editPipe');
-        if (toolAddPoint) toolAddPoint.onclick = () => setTool('addPoint');
-        
+        // Panel de comandos
+        vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
+        vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
+        vincular('clearCommand', () => { if (commandText) commandText.value = ''; });
+        vincular('runCommands', () => {
+            if (commandText) {
+                SmartFlowCommands.executeBatch(commandText.value);
+                if (commandPanel) commandPanel.style.display = 'none';
+            }
+        });
+
+        // Creación de Equipos
+        vincular('btnAddTank', () => {
+            SmartFlowCommands.executeCommand("create tanque_v TK-NEW at (0,1450,0) diam 2400 height 2900 material CS");
+        });
+        vincular('btnAddPump', () => {
+            SmartFlowCommands.executeCommand("create bomba B-NEW at (5000,800,0) diam 800 height 800 material SS");
+        });
+
+        // Herramientas de la izquierda
+        vincular('toolSelect', () => setTool('select'));
+        vincular('toolMoveEq', () => setTool('moveEq'));
+        vincular('toolEditPipe', () => setTool('editPipe'));
+        vincular('toolAddPoint', () => setTool('addPoint'));
+
+        // Exportación y Extras
+        vincular('btnMTO', exportarMTO);
+        vincular('btnPDF', () => { if(SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF(); });
+        vincular('btnToggleCatalog', () => {
+            if (catalogPanel) catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
+        });
+        vincular('btnUndo', () => { SmartFlowCore.undo(); render(); });
+        vincular('btnRedo', () => { SmartFlowCore.redo(); render(); });
+        vincular('btnVoice', toggleVoice);
+        vincular('btnSpeakSummary', resumenProyecto);
+        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); render(); });
+
         window.addEventListener('resize', () => {
             SmartFlowRenderer.resizeCanvas();
             autoCenter();
         });
     }
+
     
     // -------------------- 10. ARRANQUE DE LA APLICACIÓN --------------------
     function init() {
