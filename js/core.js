@@ -1,3 +1,4 @@
+
 const SmartFlowCore = (function() {
     // -------------------- ESTADO INTERNO (PRIVADO) --------------------
     let _db = { 
@@ -5,7 +6,9 @@ const SmartFlowCore = (function() {
         lines: [], 
         specs: {
             "A1A": { mat: "Acero al Carbono", rating: 150, sch: "STD" },
-            "A3B": { mat: "Acero Inoxidable", rating: 300, sch: "40S" }
+            "A3B": { mat: "Acero Inoxidable", rating: 300, sch: "40S" },
+            "PPR_PN12_5": { mat: "PPR", norma: "IRAM 13471", presion: "PN 12.5" },
+            "ACERO_SCH80": { mat: "Acero al Carbono", schedule: "SCH 80" }
         } 
     };
     
@@ -56,7 +59,6 @@ const SmartFlowCore = (function() {
                 return _notifyUI(`Error: La línea ${linea.tag} ya existe.`, true);
             }
 
-            // Aplicar Spec automáticamente
             if (linea.spec && _db.specs[linea.spec]) {
                 const s = _db.specs[linea.spec];
                 linea.material = s.mat;
@@ -71,7 +73,7 @@ const SmartFlowCore = (function() {
             return true;
         },
 
-        // --- CONECTIVIDAD E INTELIGENCIA (NUEVO) ---
+        // --- CONECTIVIDAD E INTELIGENCIA ---
 
         connectLineToPort: function(lineTag, equipTag, puertoId) {
             const line = _db.lines.find(l => l.tag === lineTag);
@@ -82,40 +84,126 @@ const SmartFlowCore = (function() {
             const puerto = equip.puertos?.find(p => p.id === puertoId);
             if (!puerto) return _notifyUI("El puerto no existe en el equipo.", true);
 
-            // Registro bidireccional
             line.origin = {
                 equipTag: equipTag,
                 portId: puertoId
             };
             puerto.connectedLine = lineTag;
 
-            this.syncPhysicalData(); // Sincronizar coordenadas inmediatamente
+            this.syncPhysicalData();
             this._saveState();
             _notifyUI(`Conexión exitosa: ${lineTag} unido a ${equipTag}`, false);
             _renderUI();
         },
 
-        /**
-         * Sincronización Global: Propaga cambios de posición de equipos a las líneas.
-         * Esto garantiza que el modelo siempre esté actualizado.
-         */
         syncPhysicalData: function() {
             _db.lines.forEach(line => {
                 if (line.origin) {
                     const eq = _db.equipos.find(e => e.tag === line.origin.equipTag);
-                    const puerto = eq.puertos.find(p => p.id === line.origin.portId);
-                    
-                    // Actualizar punto de inicio de la línea basado en la posición real del equipo
-                    line.x1 = eq.posX + (puerto.relX || 0);
-                    line.y1 = eq.posY + (puerto.relY || 0);
-                    line.z1 = eq.posZ + (puerto.relZ || 0);
-                    line.dir1 = { ...puerto.orientacion };
+                    if (eq) {
+                        const puerto = eq.puertos?.find(p => p.id === line.origin.portId);
+                        if (puerto) {
+                            line.x1 = eq.posX + (puerto.relX || 0);
+                            line.y1 = eq.posY + (puerto.relY || 0);
+                            line.z1 = eq.posZ + (puerto.relZ || 0);
+                            line.dir1 = { ...puerto.orientacion };
+                        }
+                    }
                 }
             });
             _renderUI();
         },
 
-        // --- HISTORIAL OPTIMIZADO ---
+        // --- ACTUALIZACIONES ---
+
+        updateEquipment: function(tag, datos) {
+            const eq = _db.equipos.find(e => e.tag === tag);
+            if (!eq) {
+                _notifyUI(`Equipo ${tag} no encontrado.`, true);
+                return false;
+            }
+            Object.assign(eq, datos);
+            this._saveState();
+            _renderUI();
+            return true;
+        },
+
+        updateLine: function(tag, datos) {
+            const line = _db.lines.find(l => l.tag === tag);
+            if (!line) {
+                _notifyUI(`Línea ${tag} no encontrada.`, true);
+                return false;
+            }
+            Object.assign(line, datos);
+            this._saveState();
+            _renderUI();
+            return true;
+        },
+
+        updatePuerto: function(equipTag, puertoId, cambios) {
+            const eq = _db.equipos.find(e => e.tag === equipTag);
+            if (!eq) {
+                _notifyUI(`Equipo ${equipTag} no encontrado.`, true);
+                return false;
+            }
+            const puerto = eq.puertos?.find(p => p.id === puertoId);
+            if (!puerto) {
+                _notifyUI(`Puerto ${puertoId} no encontrado en ${equipTag}.`, true);
+                return false;
+            }
+
+            if (cambios.diametro !== undefined) puerto.diametro = cambios.diametro;
+            if (cambios.pos) {
+                puerto.relX = cambios.pos.x;
+                puerto.relY = cambios.pos.y;
+                puerto.relZ = cambios.pos.z;
+            }
+            if (cambios.dir) {
+                const { dx, dy, dz } = cambios.dir;
+                const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                if (len > 0) puerto.orientacion = { dx: dx/len, dy: dy/len, dz: dz/len };
+            }
+
+            this._saveState();
+            _renderUI();
+            return true;
+        },
+
+        // --- GESTIÓN DE PROYECTO ---
+
+        nuevoProyecto: function() {
+            const oldSpecs = _db.specs;
+            _db = { equipos: [], lines: [], specs: oldSpecs };
+            _selectedElement = null;
+            _history = { past: [], future: [], maxSize: 50 };
+            this._saveState();
+            _renderUI();
+            _notifyUI("Nuevo proyecto creado.", false);
+        },
+
+        importState: function(state) {
+            if (state && state.equipos && state.lines) {
+                _db.equipos = _deepClone(state.equipos);
+                _db.lines = _deepClone(state.lines);
+                _selectedElement = null;
+                this._saveState();
+                _renderUI();
+                _notifyUI("Proyecto importado correctamente.", false);
+                return true;
+            }
+            _notifyUI("Error: Formato de proyecto inválido.", true);
+            return false;
+        },
+
+        exportProject: function() {
+            return JSON.stringify({
+                version: "1.2",
+                date: new Date().toISOString(),
+                data: _db
+            });
+        },
+
+        // --- HISTORIAL ---
 
         _saveState: function() {
             const state = _deepClone({ equipos: _db.equipos, lines: _db.lines });
@@ -125,30 +213,63 @@ const SmartFlowCore = (function() {
         },
 
         undo: function() {
-            if (_history.past.length <= 1) return _notifyUI("Nada que deshacer.", true);
+            if (_history.past.length <= 1) {
+                _notifyUI("Nada que deshacer.", true);
+                return;
+            }
             const current = _deepClone({ equipos: _db.equipos, lines: _db.lines });
             _history.future.push(current);
-            _history.past.pop(); // Eliminar estado actual
+            _history.past.pop();
             const prev = _history.past[_history.past.length - 1];
             
             _db.equipos = _deepClone(prev.equipos);
             _db.lines = _deepClone(prev.lines);
+            _selectedElement = null;
             _renderUI();
             _notifyUI("Acción deshecha.", false);
         },
 
-        // --- ACCESO A DATOS (GETTERS) ---
+        redo: function() {
+            if (_history.future.length === 0) {
+                _notifyUI("Nada que rehacer.", true);
+                return;
+            }
+            const next = _history.future.pop();
+            _history.past.push(_deepClone(next));
+            _db.equipos = _deepClone(next.equipos);
+            _db.lines = _deepClone(next.lines);
+            _selectedElement = null;
+            _renderUI();
+            _notifyUI("Acción rehecha.", false);
+        },
+
+        // --- ACCESO A DATOS (GETTERS Y SETTERS) ---
+
         getDb: function() { return _db; },
+        getEquipos: function() { return _db.equipos; },
+        getLines: function() { return _db.lines; },
         getSpecs: function() { return Object.keys(_db.specs); },
         getSelected: function() { return _selectedElement; },
         
-        // Exportación para archivos de proyecto
-        exportProject: function() {
-            return JSON.stringify({
-                version: "1.2",
-                date: new Date().toISOString(),
-                data: _db
-            });
+        setSelected: function(element) {
+            _selectedElement = element;
+            _renderUI();
+        },
+
+        setElevation: function(level) { 
+            _currentElevation = level; 
+        },
+        
+        getElevation: function() { 
+            return _currentElevation; 
+        },
+        
+        setVoice: function(enabled) { 
+            _voiceEnabled = enabled; 
+        },
+        
+        isVoiceEnabled: function() { 
+            return _voiceEnabled; 
         }
     };
 })();
