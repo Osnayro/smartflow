@@ -4,139 +4,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartFlow Test Simple</title>
+    <title>SmartFlow - Test Completo de Botones</title>
     <style>
         body { background: #1a1a2e; color: white; font-family: Arial; padding: 20px; }
-        button { background: #2c3e66; color: white; padding: 10px 20px; margin: 5px; border: none; border-radius: 6px; cursor: pointer; }
+        button { background: #2c3e66; color: white; padding: 8px 14px; margin: 5px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
         button:hover { background: #3b5a8c; }
-        #log { background: #0f0f17; padding: 15px; margin-top: 20px; border-radius: 8px; font-family: monospace; height: 200px; overflow-y: auto; }
+        .btn-primary { background: #238636; }
+        .btn-warning { background: #d29922; color: #1f1f1f; }
+        .btn-speak { background: #7c3aed; }
+        #log { background: #0f0f17; padding: 15px; margin-top: 20px; border-radius: 8px; font-family: monospace; height: 300px; overflow-y: auto; }
+        .success { color: #4ade80; }
+        .error { color: #ef4444; }
     </style>
 </head>
 <body>
-    <h1>SmartFlow - Test de Botones</h1>
+    <h1>SmartFlow - Verificación de Botones</h1>
     
-    <div>
-        <button id="btnNuevo">Nuevo</button>
-        <button id="btnCentrar">Centrar</button>
-        <button id="btnResumen">Resumen</button>
-        <button id="btnMTO">MTO</button>
-        <button id="btnPDF">PDF</button>
-        <button id="btnUndo">Undo</button>
-        <button id="btnRedo">Redo</button>
+    <div class="toolbar">
+        <button id="btnNew" class="btn-primary">📄 Nuevo</button>
+        <button id="btnOpen">📂 Abrir</button>
+        <button id="btnSave">💾 Guardar</button>
+        <button id="btnReset">🔄 Centrar</button>
+        <button id="btnCommand" class="btn-primary">🤖 Comandos</button>
+        <button id="btnAddTank">🏭 Tanque</button>
+        <button id="btnAddPump">⚙️ Bomba</button>
+        <button id="btnMTO">📊 MTO</button>
+        <button id="btnPDF">📄 PDF</button>
+        <button id="btnUndo" class="btn-warning">↩️ Undo</button>
+        <button id="btnRedo" class="btn-warning">↪️ Redo</button>
+        <button id="btnVoice" style="background:#7c3aed">🔊 Voz ON</button>
+        <button id="btnApplyNorm">📐 Normas</button>
+        <button id="btnSpeakSummary" class="btn-speak">📢 Resumen</button>
+        <button id="btnRecalc">🔄 Recalcular</button>
+        <button id="btnToggleCatalog" class="btn-speak">📦 Catálogo</button>
     </div>
     
     <div id="log">
-        Esperando clics en botones...<br>
+        Verificando botones de la interfaz original...<br>
     </div>
     
     <script>
         const logDiv = document.getElementById('log');
         
-        function log(msg) {
-            logDiv.innerHTML += msg + '<br>';
+        function log(msg, isError) {
+            const color = isError ? 'error' : 'success';
+            logDiv.innerHTML += `<span class="${color}">${msg}</span><br>`;
             console.log(msg);
             logDiv.scrollTop = logDiv.scrollHeight;
         }
         
-        log('Página cargada. Buscando botones...');
+        log('Iniciando verificación de botones...');
         
-        const btnNuevo = document.getElementById('btnNuevo');
-        const btnCentrar = document.getElementById('btnCentrar');
-        const btnResumen = document.getElementById('btnResumen');
-        const btnMTO = document.getElementById('btnMTO');
-        const btnPDF = document.getElementById('btnPDF');
-        const btnUndo = document.getElementById('btnUndo');
-        const btnRedo = document.getElementById('btnRedo');
+        const botones = [
+            'btnNew', 'btnOpen', 'btnSave', 'btnReset', 'btnCommand',
+            'btnAddTank', 'btnAddPump', 'btnMTO', 'btnPDF', 'btnUndo',
+            'btnRedo', 'btnVoice', 'btnApplyNorm', 'btnSpeakSummary',
+            'btnRecalc', 'btnToggleCatalog'
+        ];
         
-        log('btnNuevo: ' + (btnNuevo ? 'Encontrado' : 'NO encontrado'));
-        log('btnCentrar: ' + (btnCentrar ? 'Encontrado' : 'NO encontrado'));
-        log('btnResumen: ' + (btnResumen ? 'Encontrado' : 'NO encontrado'));
-        log('btnMTO: ' + (btnMTO ? 'Encontrado' : 'NO encontrado'));
-        log('btnPDF: ' + (btnPDF ? 'Encontrado' : 'NO encontrado'));
-        log('btnUndo: ' + (btnUndo ? 'Encontrado' : 'NO encontrado'));
-        log('btnRedo: ' + (btnRedo ? 'Encontrado' : 'NO encontrado'));
+        let encontrados = 0;
+        let faltantes = 0;
         
-        btnNuevo.onclick = function() { log('Botón NUEVO clickeado'); };
-        btnCentrar.onclick = function() { log('Botón CENTRAR clickeado'); };
-        btnResumen.onclick = function() { log('Botón RESUMEN clickeado'); };
-        btnMTO.onclick = function() { log('Botón MTO clickeado'); };
-        btnPDF.onclick = function() { log('Botón PDF clickeado'); };
-        btnUndo.onclick = function() { log('Botón UNDO clickeado'); };
-        btnRedo.onclick = function() { log('Botón REDO clickeado'); };
+        botones.forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                encontrados++;
+                log(`✅ ${id} - ENCONTRADO`);
+                btn.onclick = function() {
+                    log(`👉 Clic en: ${id}`);
+                };
+            } else {
+                faltantes++;
+                log(`❌ ${id} - NO ENCONTRADO`, true);
+            }
+        });
         
-        log('Eventos asignados a todos los botones.');
-        log('PRUEBE LOS BOTONES - Deben mostrar mensajes en este log.');
+        log(`---`);
+        log(`RESULTADO: ${encontrados} botones encontrados, ${faltantes} botones faltantes`);
+        
+        if (faltantes === 0) {
+            log(`✅ TODOS los botones existen. El problema NO es de IDs.`);
+            log(`👉 Revise la consola (F12) para ver errores de carga de módulos.`);
+        } else {
+            log(`❌ Faltan ${faltantes} botones. Debe agregarlos al HTML.`);
+        }
     </script>
 </body>
 </html>
-```
-
-Prueba 1: ¿Funcionan los botones en simple.html?
-
-Abra simple.html en su navegador. Haga clic en los botones. ¿Aparecen los mensajes en el log?
-
-Si SÍ funcionan:
-
-El problema está en sus archivos de módulos (js/*.js). Los botones del HTML funcionan, pero main.js no está vinculando correctamente.
-
-Si NO funcionan:
-
-El problema es el navegador o el dispositivo. Pruebe en otro navegador (Chrome, Edge, Safari).
-
----
-
-Si simple.html funciona, use este main.js CORREGIDO
-
-```javascript
-(function() {
-    "use strict";
-    
-    console.log("main.js cargado");
-    
-    function log(msg) {
-        console.log("[main] " + msg);
-        const statusEl = document.getElementById('statusMsg');
-        if (statusEl) statusEl.innerHTML = msg;
-    }
-    
-    log("Iniciando...");
-    
-    function bindButtons() {
-        log("Vinculando botones...");
-        
-        const btnNew = document.getElementById('btnNew');
-        const btnReset = document.getElementById('btnReset');
-        const btnSpeakSummary = document.getElementById('btnSpeakSummary');
-        const btnMTO = document.getElementById('btnMTO');
-        const btnPDF = document.getElementById('btnPDF');
-        const btnUndo = document.getElementById('btnUndo');
-        const btnRedo = document.getElementById('btnRedo');
-        const btnCommand = document.getElementById('btnCommand');
-        const btnSave = document.getElementById('btnSave');
-        const btnOpen = document.getElementById('btnOpen');
-        
-        log("btnNew: " + (btnNew ? "OK" : "FALTA"));
-        log("btnReset: " + (btnReset ? "OK" : "FALTA"));
-        log("btnSpeakSummary: " + (btnSpeakSummary ? "OK" : "FALTA"));
-        
-        if (btnNew) btnNew.onclick = function() { log("NUEVO click"); alert("Nuevo proyecto"); };
-        if (btnReset) btnReset.onclick = function() { log("CENTRAR click"); };
-        if (btnSpeakSummary) btnSpeakSummary.onclick = function() { log("RESUMEN click"); };
-        if (btnMTO) btnMTO.onclick = function() { log("MTO click"); };
-        if (btnPDF) btnPDF.onclick = function() { log("PDF click"); };
-        if (btnUndo) btnUndo.onclick = function() { log("UNDO click"); };
-        if (btnRedo) btnRedo.onclick = function() { log("REDO click"); };
-        if (btnCommand) btnCommand.onclick = function() { log("COMANDOS click"); };
-        if (btnSave) btnSave.onclick = function() { log("GUARDAR click"); };
-        if (btnOpen) btnOpen.onclick = function() { log("ABRIR click"); };
-        
-        log("Botones vinculados");
-    }
-    
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bindButtons);
-    } else {
-        bindButtons();
-    }
-    
-})();
