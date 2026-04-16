@@ -4,6 +4,7 @@
 // Archivo: js/commands.js
 // Propósito: Interpretar comandos de texto/voz y ejecutar acciones.
 //            Soporte completo para crear, editar, eliminar y rutear.
+//            Incluye importación PCF y catálogo extendido.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -345,47 +346,7 @@ const SmartFlowCommands = (function() {
             const tag = parts[2];
             const action = parts[3];
             
-            if (action === 'move' && parts[4] === 'to') {
-                let coordStr = '';
-                for (let i = 5; i < parts.length; i++) {
-                    coordStr += parts[i];
-                    if (parts[i].includes(')')) break;
-                }
-                const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
-                if (m) {
-                    const x = parseFloat(m[1]);
-                    const y = parseFloat(m[2]);
-                    const z = parseFloat(m[3]);
-                    const db = _core.getDb();
-                    const line = db.lines.find(l => l.tag === tag);
-                    if (line) {
-                        const dx = x - line._cachedPoints[0].x;
-                        const dy = y - line._cachedPoints[0].y;
-                        const dz = z - line._cachedPoints[0].z;
-                        
-                        line._cachedPoints = line._cachedPoints.map(p => ({
-                            x: p.x + dx,
-                            y: p.y + dy,
-                            z: p.z + dz
-                        }));
-                        
-                        if (line.waypoints) {
-                            line.waypoints = line.waypoints.map(p => ({
-                                x: p.x + dx,
-                                y: p.y + dy,
-                                z: p.z + dz
-                            }));
-                        }
-                        
-                        _core.updateLine(tag, { 
-                            _cachedPoints: line._cachedPoints,
-                            waypoints: line.waypoints 
-                        });
-                        _notifyUI(`Línea ${tag} movida`, false);
-                        return true;
-                    }
-                }
-            } else if (action === 'set') {
+            if (action === 'set') {
                 const property = parts[4];
                 const value = parts[5];
                 
@@ -459,7 +420,7 @@ const SmartFlowCommands = (function() {
                     }
                     
                     const comp = {
-                        ...compDef,
+                        type: compType,
                         tag: `${compType}-${Date.now().toString().slice(-6)}`,
                         param: position
                     };
@@ -467,7 +428,7 @@ const SmartFlowCommands = (function() {
                     if (!line.components) line.components = [];
                     line.components.push(comp);
                     _core.updateLine(tag, { components: line.components });
-                    _notifyUI(`Componente ${compType} añadido a ${tag}`, false);
+                    _notifyUI(`Componente ${compType} añadido a ${tag} en posición ${position}`, false);
                     _renderUI();
                     return true;
                 }
@@ -476,59 +437,13 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // -------------------- 5. PARSER DE COMPONENTES --------------------
-    function parseAddComponent(cmd) {
-        const parts = cmd.split(/\s+/);
-        if (parts[0] !== 'add' || parts[1] !== 'component') return false;
-        
-        const compType = parts[2];
-        let lineTag = null;
-        let position = 0.5;
-        
-        const toIdx = parts.indexOf('to');
-        if (toIdx !== -1) lineTag = parts[toIdx + 1];
-        
-        const atIdx = parts.indexOf('at');
-        if (atIdx !== -1) position = parseFloat(parts[atIdx + 1]);
-        
-        if (!lineTag) {
-            _notifyUI("Especifique la línea: add component TIPO to LINEA at POS", true);
-            return true;
-        }
-        
-        const db = _core.getDb();
-        const line = db.lines.find(l => l.tag === lineTag);
-        if (!line) {
-            _notifyUI(`Línea ${lineTag} no encontrada`, true);
-            return true;
-        }
-        
-        const compDef = _catalog.getComponent(compType);
-        if (!compDef) {
-            _notifyUI(`Componente desconocido: ${compType}`, true);
-            return true;
-        }
-        
-        const comp = {
-            ...compDef,
-            tag: `${compType}-${Date.now().toString().slice(-6)}`,
-            param: position
-        };
-        
-        if (!line.components) line.components = [];
-        line.components.push(comp);
-        _core.updateLine(lineTag, { components: line.components });
-        _notifyUI(`Componente ${compDef.nombre || compType} añadido a ${lineTag}`, false);
-        _renderUI();
-        return true;
-    }
-
+    // -------------------- 5. PARSER DE LISTADOS --------------------
     function parseListComponents(cmd) {
         if (cmd.trim() !== 'list components') return false;
         
         const types = _catalog.listComponentTypes();
         let msg = "Componentes disponibles:\n";
-        types.forEach(t => {
+        types.sort().forEach(t => {
             const comp = _catalog.getComponent(t);
             if (comp) {
                 msg += `  ${t} - ${comp.nombre || 'Sin descripción'}\n`;
@@ -541,10 +456,10 @@ const SmartFlowCommands = (function() {
     function parseListSpecs(cmd) {
         if (cmd.trim() !== 'list specs') return false;
         
-        const specs = _catalog.listSpecs ? _catalog.listSpecs() : [];
+        const specs = _catalog.listSpecs();
         let msg = "Especificaciones disponibles:\n";
-        specs.forEach(s => {
-            const spec = _catalog.getSpec ? _catalog.getSpec(s) : null;
+        specs.sort().forEach(s => {
+            const spec = _catalog.getSpec(s);
             if (spec) {
                 msg += `  ${s}: ${spec.material || ''} ${spec.norma || ''}\n`;
             } else {
@@ -560,7 +475,7 @@ const SmartFlowCommands = (function() {
         
         const types = _catalog.listEquipmentTypes();
         let msg = "Equipos disponibles:\n";
-        types.forEach(t => {
+        types.sort().forEach(t => {
             const eq = _catalog.getEquipment(t);
             if (eq) {
                 msg += `  ${t} - ${eq.nombre || 'Sin descripción'}\n`;
@@ -578,26 +493,25 @@ const SmartFlowCommands = (function() {
         ayuda += "              SMARTFLOW PRO v12.1 - COMANDOS\n";
         ayuda += "═══════════════════════════════════════════════════════════\n\n";
         
-        ayuda += "📌 CREACIÓN:\n";
+        ayuda += "CREACIÓN:\n";
         ayuda += "  create [tipo] [tag] at (x,y,z) [diam N] [height N] [material M]\n";
         ayuda += "  create line [tag] route (x1,y1,z1) (x2,y2,z2) ... [diameter D] [material M]\n";
         ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n\n";
         
-        ayuda += "📌 CONEXIÓN:\n";
+        ayuda += "CONEXIÓN:\n";
         ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter D material M\n\n";
         
-        ayuda += "📌 ELIMINACIÓN:\n";
+        ayuda += "ELIMINACIÓN:\n";
         ayuda += "  delete equipment [tag]\n";
         ayuda += "  delete line [tag]\n\n";
         
-        ayuda += "📌 EDICIÓN DE EQUIPOS:\n";
+        ayuda += "EDICIÓN DE EQUIPOS:\n";
         ayuda += "  edit equipment [tag] move to (x,y,z)\n";
         ayuda += "  edit equipment [tag] set puerto [id] pos (x,y,z)\n";
         ayuda += "  edit equipment [tag] set puerto [id] dir (dx,dy,dz)\n";
         ayuda += "  edit equipment [tag] set puerto [id] diam N\n\n";
         
-        ayuda += "📌 EDICIÓN DE LÍNEAS:\n";
-        ayuda += "  edit line [tag] move to (x,y,z)\n";
+        ayuda += "EDICIÓN DE LÍNEAS:\n";
         ayuda += "  edit line [tag] set material [M]\n";
         ayuda += "  edit line [tag] set diameter [D]\n";
         ayuda += "  edit line [tag] set spec [S]\n";
@@ -605,13 +519,12 @@ const SmartFlowCommands = (function() {
         ayuda += "  edit line [tag] remove waypoint N\n";
         ayuda += "  edit line [tag] add component [tipo] at [0-1]\n\n";
         
-        ayuda += "📌 COMPONENTES:\n";
-        ayuda += "  add component [tipo] to [linea] at [0-1]\n";
+        ayuda += "COMPONENTES:\n";
         ayuda += "  list components\n";
         ayuda += "  list equipment\n";
         ayuda += "  list specs\n\n";
         
-        ayuda += "📌 OTROS:\n";
+        ayuda += "OTROS:\n";
         ayuda += "  undo | redo | help\n";
         ayuda += "═══════════════════════════════════════════════════════════\n";
         
@@ -702,7 +615,6 @@ const SmartFlowCommands = (function() {
         if (parseConnect(trimmed)) return true;
         if (parseDelete(trimmed)) return true;
         if (parseEditCommand(trimmed)) return true;
-        if (parseAddComponent(trimmed)) return true;
         if (parseListComponents(trimmed)) return true;
         if (parseListSpecs(trimmed)) return true;
         if (parseListEquipment(trimmed)) return true;
@@ -758,7 +670,17 @@ const SmartFlowCommands = (function() {
         init,
         executeCommand,
         executeBatch,
-        importPCF
+        importPCF,
+        parseCreate,
+        parseCreateLine,
+        parseCreateManifold,
+        parseConnect,
+        parseDelete,
+        parseEditCommand,
+        parseListComponents,
+        parseListSpecs,
+        parseListEquipment,
+        parseHelp
     };
 
 })();
