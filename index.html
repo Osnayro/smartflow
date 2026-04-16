@@ -1,59 +1,472 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SmartFlow Pro v12.0 - Catálogo Industrial Extendido</title>
-    
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}
-        .toolbar{background:#1a1a2e;padding:8px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;border-bottom:1px solid #2a2a4a}
-        button{background:#2c3e66;border:none;color:white;padding:8px 14px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:13px;transition:background 0.2s}
-        button:hover{background:#3b5a8c}
-        .btn-primary{background:#238636}
-        .btn-primary:hover{background:#2ea043}
-        .btn-warning{background:#d29922;color:#1f1f1f}
-        .btn-warning:hover{background:#e2a83a}
-        .btn-speak{background:#7c3aed;color:white}
-        .btn-speak:hover{background:#8b5cf6}
-        .canvas-container{flex:1;position:relative;background:#000}
-        canvas{display:block;width:100%;height:100%;cursor:grab}
-        canvas:active{cursor:grabbing}
-        .command-panel{position:fixed;left:10px;bottom:10px;width:90%;max-width:500px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:1000;display:none;box-shadow:0 4px 20px rgba(0,0,0,0.5)}
-        .command-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #3a3a4a}
-        .command-header strong{color:#7c3aed}
-        .command-buttons{display:flex;gap:8px;padding:12px}
-        textarea{width:calc(100% - 24px);margin:12px;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:12px;font-family:'Courier New',monospace;font-size:14px;resize:vertical;outline:none}
-        textarea:focus{border-color:#7c3aed}
-        .notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#238636;padding:10px 20px;border-radius:8px;z-index:2000;display:none;text-align:center;font-weight:bold;box-shadow:0 2px 10px rgba(0,0,0,0.3)}
-        .status-bar{background:#111;padding:6px 12px;font-size:12px;text-align:center;border-top:1px solid #2a2a4a;color:#aaa}
-        .tools-panel{position:fixed;left:20px;top:100px;background:#1a1a2e;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:900;border:1px solid #7c3aed}
-        .tools-panel button{background:#2c3e66;padding:6px 12px;font-size:12px}
-        .tools-panel button.active{background:#7c3aed;color:white}
-        .elevation-panel{position:fixed;bottom:20px;right:20px;background:#1e1e2e;padding:8px 12px;border-radius:8px;border:1px solid #7c3aed;z-index:900;display:flex;gap:6px;align-items:center}
-        .elevation-panel input{width:70px;background:#0f0f17;border:1px solid #3a3a4a;color:white;border-radius:4px;padding:4px 6px;outline:none}
-        .elevation-panel input:focus{border-color:#7c3aed}
-        .catalog-panel{position:fixed;right:20px;top:100px;width:300px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:900;display:none;flex-direction:column;max-height:80vh;overflow-y:auto}
-        .catalog-header{background:#2c3e66;padding:12px;font-weight:bold;text-align:center;cursor:pointer;border-radius:12px 12px 0 0}
-        .catalog-content{padding:12px;display:flex;flex-direction:column;gap:12px}
-        .catalog-category{margin-bottom:8px}
-        .catalog-category h4{color:#7c3aed;margin-bottom:6px;font-size:13px;border-left:3px solid #7c3aed;padding-left:6px}
-        .catalog-buttons{display:flex;flex-wrap:wrap;gap:6px}
-        .catalog-buttons button{background:#2c3e66;padding:4px 8px;font-size:11px;border-radius:4px}
-        .catalog-buttons button:hover{background:#7c3aed}
-        .property-panel{position:fixed;right:20px;top:100px;width:380px;background:#1e1e2e;border-radius:12px;border:1px solid #7c3aed;z-index:900;display:none;flex-direction:column;max-height:80vh;overflow-y:auto}
-        .property-header{background:#2c3e66;padding:12px;font-weight:bold;text-align:center;cursor:pointer}
-        .property-content{padding:12px}
-    </style>
+    <title>SmartProject | AcQuaBlue</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <style>
+        /* ========== VARIABLES CORPORATIVAS ========== */
+        :root {
+            --primary-bg: #0a0e17;
+            --panel-bg: rgba(20, 28, 45, 0.95);
+            --accent-cyan: #00f2ff;
+            --accent-blue: #1e4eb8;
+            --text-main: #e0e6ed;
+            --toolbar-bg: #0f172a;
+            --button-bg: #1e293b;
+            --button-border: #334155;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: var(--primary-bg);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* ========== PANTALLA DE CARGA (SPLASH) ========== */
+        #splash-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #10172a 0%, #020617 100%);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.8s ease, visibility 0.8s;
+        }
+
+        .splash-content { text-align: center; width: 350px; }
+        .corporate-header { margin-bottom: 25px; }
+        .company-name { font-size: 11px; letter-spacing: 3px; color: #fff; opacity: 0.6; text-transform: uppercase; display: block; }
+        .powered-by { font-size: 8px; color: var(--accent-cyan); letter-spacing: 1px; text-transform: uppercase; }
+
+        .hex-container {
+            width: 120px; height: 120px;
+            margin: 0 auto 30px;
+            border: 1px solid var(--accent-cyan);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            display: flex; justify-content: center; align-items: center;
+            background: rgba(0, 242, 255, 0.05);
+            animation: hex-pulse 2.5s infinite ease-in-out;
+        }
+        .hex-container img { width: 70%; filter: drop-shadow(0 0 10px #00f2ff); }
+
+        @keyframes hex-pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(0,242,255,0.1); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(0,242,255,0.3); }
+        }
+
+        .splash-title { font-size: 30px; letter-spacing: 8px; color: white; font-weight: 900; text-transform: uppercase; margin-bottom: 5px; }
+        .splash-subtitle { color: var(--accent-cyan); letter-spacing: 4px; font-size: 10px; margin-bottom: 35px; opacity: 0.8; font-weight: bold; }
+
+        .loading-bar-container { width: 200px; height: 1px; background: rgba(255,255,255,0.1); margin: 0 auto 15px; overflow: hidden; }
+        .loading-bar-fill { width: 0%; height: 100%; background: var(--accent-cyan); animation: fill-bar 4.5s forwards cubic-bezier(0.19, 1, 0.22, 1); }
+
+        .splash-status { font-family: monospace; font-size: 9px; color: #64748b; text-transform: uppercase; margin-bottom: 50px; height: 15px; }
+
+        .author-footer { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
+        .leader-by { font-size: 9px; color: #fff; opacity: 0.5; text-transform: uppercase; }
+        .engineer-name { font-size: 13px; font-weight: bold; color: #fff; display: block; letter-spacing: 1.5px; margin-top: 4px; }
+
+        @keyframes fill-bar { 0% { width: 0%; } 100% { width: 100%; } }
+        .splash-hidden { opacity: 0; visibility: hidden; }
+
+        /* ========== PANEL DE BIENVENIDA ========== */
+        #welcome-panel {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: var(--primary-bg);
+            z-index: 9000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.6s ease, visibility 0.6s;
+        }
+
+        .welcome-container {
+            width: 600px;
+            padding: 40px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--accent-cyan);
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .welcome-logo-bg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: auto;
+            opacity: 0.08;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .welcome-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .welcome-company { color: var(--accent-cyan); }
+        .welcome-engineer { color: #fff; }
+
+        .welcome-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .welcome-btn {
+            background: transparent;
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            padding: 16px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .welcome-btn:hover {
+            background: var(--accent-cyan);
+            color: #000;
+            box-shadow: 0 0 30px rgba(0,242,255,0.4);
+        }
+
+        .welcome-btn.secondary {
+            border-color: #64748b;
+            color: #94a3b8;
+        }
+
+        .welcome-btn.secondary:hover {
+            background: #334155;
+            border-color: #94a3b8;
+            color: white;
+        }
+
+        .welcome-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* ========== MODAL NOMBRE DE PROYECTO ========== */
+        #project-name-modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 9500;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            width: 400px;
+            padding: 30px;
+            background: var(--panel-bg);
+            border: 1px solid var(--accent-cyan);
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            color: var(--accent-cyan);
+            margin-bottom: 20px;
+            font-size: 18px;
+            text-transform: uppercase;
+        }
+
+        .modal-content input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 25px;
+            outline: none;
+        }
+
+        .modal-content input:focus {
+            border-color: var(--accent-cyan);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 10px 24px;
+            background: var(--accent-blue);
+            border: none;
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .modal-btn.cancel {
+            background: #334155;
+        }
+
+        /* ========== INTERFAZ PRINCIPAL ========== */
+        .toolbar {
+            background: var(--toolbar-bg);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-bottom: 1px solid var(--accent-blue);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .toolbar-logo {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+        }
+        .toolbar-logo img { height: 28px; margin-right: 8px; filter: drop-shadow(0 0 6px #00f2ff); }
+        .toolbar-title {
+            color: var(--accent-cyan);
+            font-size: 18px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        button {
+            background: var(--button-bg);
+            border: 1px solid var(--button-border);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        button:hover {
+            background: var(--accent-blue);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 12px rgba(0, 242, 255, 0.2);
+        }
+        .btn-primary { background: #238636; border-color: #2ea043; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-warning { background: #d29922; color: #1f1f1f; border-color: #e2a83a; }
+        .btn-warning:hover { background: #e2a83a; }
+        .btn-speak { background: #7c3aed; border-color: #8b5cf6; }
+        .btn-speak:hover { background: #8b5cf6; }
+
+        .canvas-container { flex: 1; background: #000; position: relative; }
+        canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+
+        /* ========== PANELES FLOTANTES ========== */
+        .command-panel {
+            position: fixed; left: 10px; bottom: 10px;
+            width: 90%; max-width: 500px;
+            background: var(--panel-bg); border-radius: 12px;
+            border: 1px solid var(--accent-cyan);
+            z-index: 1000; display: none;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+        }
+        .command-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; border-bottom: 1px solid #3a3a4a;
+        }
+        .command-header strong { color: var(--accent-cyan); }
+        .command-buttons { display: flex; gap: 8px; padding: 12px; }
+        textarea {
+            width: calc(100% - 24px); margin: 12px;
+            background: #0f0f17; color: #eee;
+            border: 1px solid #3a3a4a; border-radius: 8px;
+            padding: 12px; font-family: 'Courier New', monospace;
+            font-size: 14px; resize: vertical; outline: none;
+        }
+        textarea:focus { border-color: var(--accent-cyan); }
+
+        .notification {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: #238636; padding: 10px 20px; border-radius: 8px;
+            z-index: 2000; display: none; text-align: center;
+            font-weight: bold; box-shadow: 0 2px 15px rgba(0,0,0,0.5);
+        }
+
+        .status-bar {
+            background: #020617; padding: 8px 20px; font-size: 10px;
+            border-top: 1px solid var(--accent-blue); color: var(--accent-cyan);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; justify-content: space-between;
+        }
+
+        .tools-panel {
+            position: fixed; left: 20px; top: 100px;
+            background: var(--panel-bg); border-radius: 12px;
+            padding: 8px; display: flex; flex-direction: column; gap: 8px;
+            z-index: 900; border: 1px solid var(--accent-blue);
+            backdrop-filter: blur(8px);
+        }
+        .tools-panel button { padding: 6px 12px; font-size: 12px; }
+        .tools-panel button.active { background: var(--accent-blue); color: white; }
+
+        .elevation-panel {
+            position: fixed; bottom: 20px; right: 20px;
+            background: var(--panel-bg); padding: 8px 12px; border-radius: 8px;
+            border: 1px solid var(--accent-cyan); z-index: 900;
+            display: flex; gap: 6px; align-items: center;
+            backdrop-filter: blur(8px);
+        }
+        .elevation-panel input {
+            width: 70px; background: #0f0f17; border: 1px solid #3a3a4a;
+            color: white; border-radius: 4px; padding: 4px 6px; outline: none;
+        }
+        .elevation-panel input:focus { border-color: var(--accent-cyan); }
+
+        .catalog-panel {
+            position: fixed; right: 20px; top: 100px;
+            width: 300px; background: var(--panel-bg); border-radius: 12px;
+            border: 1px solid var(--accent-cyan); z-index: 900;
+            display: none; flex-direction: column; max-height: 80vh; overflow-y: auto;
+            backdrop-filter: blur(8px);
+        }
+        .catalog-header {
+            background: var(--accent-blue); padding: 12px; font-weight: bold;
+            text-align: center; cursor: pointer; border-radius: 12px 12px 0 0;
+        }
+        .catalog-content { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+        .catalog-category h4 { color: var(--accent-cyan); margin-bottom: 6px; font-size: 13px; border-left: 3px solid var(--accent-cyan); padding-left: 6px; }
+        .catalog-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+        .catalog-buttons button { padding: 4px 8px; font-size: 11px; }
+
+        .property-panel {
+            position: fixed; right: 20px; top: 100px;
+            width: 380px; background: var(--panel-bg); border-radius: 12px;
+            border: 1px solid var(--accent-cyan); z-index: 900;
+            display: none; flex-direction: column; max-height: 80vh; overflow-y: auto;
+            backdrop-filter: blur(8px);
+        }
+        .property-header {
+            background: var(--accent-blue); padding: 12px; font-weight: bold;
+            text-align: center; cursor: pointer;
+        }
+        .property-content { padding: 12px; }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 768px) {
+            .toolbar button { font-size: 10px; padding: 6px 8px; }
+            .property-panel { width: 300px; right: 10px; }
+            .welcome-container { width: 90%; padding: 30px 20px; }
+        }
+    </style>
 </head>
 <body>
 
+    <!-- SPLASH SCREEN -->
+    <div id="splash-screen">
+        <div class="splash-content">
+            <div class="corporate-header">
+                <span class="company-name">AcQuaBlue International Corp.</span>
+                <span class="powered-by">Smart Engineering Systems</span>
+            </div>
+            
+            <div class="hex-container">
+                <img src="img/logo.png" alt="Logo" onerror="this.style.display='none'">
+            </div>
+
+            <h1 class="splash-title">SmartProject</h1>
+            <p class="splash-subtitle">INGENIERÍA INTELIGENTE</p>
+
+            <div class="loading-bar-container">
+                <div class="loading-bar-fill"></div>
+            </div>
+
+            <div class="splash-status" id="splash-status">Inicializando protocolos de IA...</div>
+
+            <div class="author-footer">
+                <span class="leader-by">Ingeniero Líder de Proyecto:</span>
+                <span class="engineer-name">Ing. Osnay Romero</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL DE BIENVENIDA (POST-SPLASH) -->
+    <div id="welcome-panel">
+        <div class="welcome-container">
+            <!-- Logo en marca de agua -->
+            <img src="img/logo.png" alt="Logo" class="welcome-logo-bg" onerror="this.style.display='none'">
+            
+            <div class="welcome-header">
+                <span class="welcome-company">AcQuaBlue International Corp.</span>
+                <span class="welcome-engineer">Ing. Osnay Romero</span>
+            </div>
+            <div class="welcome-actions">
+                <button class="welcome-btn" id="welcome-new-project">➕ Nuevo Proyecto</button>
+                <button class="welcome-btn secondary" id="welcome-open-project">📂 Abrir Proyecto Existente</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL NOMBRE DE PROYECTO -->
+    <div id="project-name-modal">
+        <div class="modal-content">
+            <h3>Nuevo Proyecto</h3>
+            <input type="text" id="project-name-input" placeholder="Nombre del proyecto" value="Proyecto_SmartFlow">
+            <div class="modal-actions">
+                <button class="modal-btn" id="modal-accept">Aceptar</button>
+                <button class="modal-btn cancel" id="modal-skip">Saltar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BARRA DE HERRAMIENTAS -->
     <div class="toolbar">
-        <button id="btnNew" class="btn-primary">📄 Nuevo</button>
+        <div class="toolbar-logo">
+            <img src="img/logo.png" alt="Logo" style="height: 28px;" onerror="this.style.display='none'">
+            <span class="toolbar-title">SmartProject</span>
+        </div>
+        
         <button id="btnOpen">📂 Abrir</button>
         <button id="btnSave">💾 Guardar</button>
         <button id="btnReset">🔄 Centrar</button>
@@ -62,42 +475,56 @@
         <button id="btnAddPump">⚙️ Bomba</button>
         <button id="btnMTO">📊 MTO</button>
         <button id="btnPDF">📄 PDF</button>
+        <button id="btnExportPCF">📦 Export PCF</button>
+        <button id="btnImportPCF">📂 Import PCF</button>
         <button id="btnUndo" class="btn-warning">↩️ Undo</button>
         <button id="btnRedo" class="btn-warning">↪️ Redo</button>
-        <button id="btnVoice" style="background:#7c3aed">🔊 Voz ON</button>
+        <button id="btnVoice" class="btn-speak">🔊 Voz ON</button>
         <button id="btnApplyNorm">📐 Normas</button>
         <button id="btnSpeakSummary" class="btn-speak">📢 Resumen</button>
         <button id="btnRecalc">🔄 Recalcular</button>
         <button id="btnToggleCatalog" class="btn-speak">📦 Catálogo</button>
     </div>
-    
+
+    <!-- ÁREA DEL CANVAS -->
     <div class="canvas-container">
         <canvas id="isoCanvas"></canvas>
+        <div style="position:absolute; top:20px; left:20px; color:rgba(0,242,255,0.2); font-size:11px; pointer-events:none; text-transform:uppercase;">
+            AcQuaBlue Corp. | MODO ISOMÉTRICO
+        </div>
     </div>
-    
+
+    <!-- PANEL DE COMANDOS -->
     <div id="commandPanel" class="command-panel">
         <div class="command-header">
-            <strong>🤖 Comandos SmartFlow</strong>
-            <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;height:30px;">✖</button>
+            <strong>🤖 Comandos IA</strong>
+            <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;">✖</button>
         </div>
-        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE&#10;connect TK-01 N1 to M-SUCC IN1 diameter 3 material PPR&#10;edit equipment TK-01 set puerto N1 pos (0,-1250,1190) dir (0,0,1)&#10;help"></textarea>
+        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE&#10;connect TK-01 N1 to M-SUCC IN1 diameter 3 material PPR&#10;edit equipment TK-01 set puerto N1 pos (0,-1300,1190) dir (0,0,1)&#10;help"></textarea>
         <div class="command-buttons">
             <button id="runCommands" class="btn-primary">Ejecutar</button>
             <button id="clearCommand">Limpiar</button>
         </div>
     </div>
-    
+
+    <!-- NOTIFICACIONES -->
     <div id="notification" class="notification"></div>
-    
-    <div class="status-bar" id="statusMsg">SmartFlow Pro v12.0 - Catálogo Industrial Extendido | Listo</div>
-    
+
+    <!-- BARRA DE ESTADO -->
+    <div class="status-bar">
+        <div id="statusMsg">SISTEMA LISTO | SmartProject</div>
+        <div>AcQuaBlue International Corp. | Ing. Osnay Romero</div>
+    </div>
+
+    <!-- PANEL DE HERRAMIENTAS -->
     <div class="tools-panel" id="toolsPanel">
         <button id="toolSelect" class="active">🔍 Seleccionar</button>
         <button id="toolMoveEq">✋ Mover equipo</button>
         <button id="toolEditPipe">✏️ Editar tubería</button>
         <button id="toolAddPoint">➕ Añadir punto</button>
     </div>
-    
+
+    <!-- PANEL DE ELEVACIÓN -->
     <div class="elevation-panel" id="elevationPanel">
         <span style="font-size:12px;">📐 Elev. (mm):</span>
         <button onclick="setElevation(0)" style="padding:2px 8px;">0</button>
@@ -106,55 +533,63 @@
         <input type="number" id="customElev" value="0" step="100">
         <button id="btnSetElev" style="padding:2px 8px;">Set</button>
     </div>
-    
+
+    <!-- PANEL DE CATÁLOGO -->
     <div id="catalogPanel" class="catalog-panel" style="display:none">
-        <div class="catalog-header">📦 Catálogo Industrial <span style="float:right">▼</span></div>
+        <div class="catalog-header">📦 Catálogo <span style="float:right">▼</span></div>
         <div class="catalog-content" id="catalogContent">
             <div class="catalog-category">
                 <h4>🛢️ Tanques</h4>
                 <div class="catalog-buttons">
-                    <button onclick="SmartFlowCommands.executeCommand('create tanque_v TK-V at (0,1450,0) diam 2380 height 2900 material PE')">Tanque Vertical PE</button>
-                    <button onclick="SmartFlowCommands.executeCommand('create tanque_h TK-H at (0,1000,0) diam 2000 height 2000 largo 4000')">Tanque Horizontal</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create tanque_v TK-V at (0,1450,0) diam 2380 height 2900 material PE')">Tanque Vertical PE</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create tanque_h TK-H at (0,1000,0) diam 2000 height 2000 largo 4000')">Tanque Horizontal</button>
                 </div>
             </div>
             <div class="catalog-category">
                 <h4>⚙️ Bombas</h4>
                 <div class="catalog-buttons">
-                    <button onclick="SmartFlowCommands.executeCommand('create bomba B-CEN at (0,800,0) diam 800 height 800 material SS')">Bomba Centrífuga</button>
-                    <button onclick="SmartFlowCommands.executeCommand('create bomba_dosificacion B-DOS at (0,600,0) diam 500 height 600')">Bomba Dosificadora</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create bomba B-CEN at (0,800,0) diam 800 height 800 material SS')">Bomba Centrífuga</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create bomba_dosificacion B-DOS at (0,600,0) diam 500 height 600')">Bomba Dosificadora</button>
                 </div>
             </div>
             <div class="catalog-category">
                 <h4>🔥 Proceso</h4>
                 <div class="catalog-buttons">
-                    <button onclick="SmartFlowCommands.executeCommand('create intercambiador E-01 at (0,1000,0) diam 1500 height 2000 largo 4000')">Intercambiador</button>
-                    <button onclick="SmartFlowCommands.executeCommand('create torre T-01 at (0,3000,0) diam 3000 height 6000')">Torre Destilación</button>
-                    <button onclick="SmartFlowCommands.executeCommand('create reactor R-01 at (0,2000,0) diam 2500 height 4000')">Reactor</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create intercambiador E-01 at (0,1000,0) diam 1500 height 2000 largo 4000')">Intercambiador</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create torre T-01 at (0,3000,0) diam 3000 height 6000')">Torre Destilación</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create reactor R-01 at (0,2000,0) diam 2500 height 4000')">Reactor</button>
                 </div>
             </div>
             <div class="catalog-category">
                 <h4>🔀 Distribución</h4>
                 <div class="catalog-buttons">
-                    <button onclick="SmartFlowCommands.executeCommand('create manifold M-01 at (0,0,0) entries 4 spacing 3000 output center diameter 4 material PPR')">Colector 4"</button>
+                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create manifold M-01 at (0,0,0) entries 4 spacing 3000 output center diameter 4 material PPR')">Colector 4"</button>
                 </div>
             </div>
         </div>
     </div>
-    
+
+    <!-- PANEL DE PROPIEDADES -->
     <div id="propertyPanel" class="property-panel" style="display:none">
-        <div class="property-header">📋 Propiedades del equipo <span style="float:right">✖</span></div>
+        <div class="property-header">📋 Propiedades <span style="float:right">✖</span></div>
         <div class="property-content" id="propertyContent">
             <p style="color:#aaa;text-align:center;padding:20px;">Seleccione un equipo para ver sus propiedades</p>
         </div>
     </div>
 
+    <!-- SCRIPTS DE LA APLICACIÓN -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/main.js"></script>
-    
+
+    <!-- SCRIPT DE INICIALIZACIÓN Y FLUJO DE BIENVENIDA -->
     <script>
+        // Variable global para el nombre del proyecto
+        window.currentProjectName = "Proyecto_SmartFlow";
+
+        // Función global para elevación
         function setElevation(level) {
             if (typeof SmartFlowCore !== 'undefined' && typeof SmartFlowRenderer !== 'undefined') {
                 SmartFlowCore.setElevation(level);
@@ -162,7 +597,86 @@
                 document.getElementById('customElev').value = level;
             }
         }
-    </script>
 
+        // Flujo de inicio
+        window.addEventListener('load', () => {
+            const splash = document.getElementById('splash-screen');
+            const welcome = document.getElementById('welcome-panel');
+            const modal = document.getElementById('project-name-modal');
+            const inputProject = document.getElementById('project-name-input');
+            const statusEl = document.getElementById('splash-status');
+            
+            const messages = [
+                "Cargando librerías de AcQuaBlue...",
+                "Sincronizando modelos de objetos inteligentes...",
+                "Optimizando motor gráfico isométrico...",
+                "Iniciando interfaz de Ing. Osnay Romero...",
+                "¡SmartProject Activo!"
+            ];
+            
+            let i = 0;
+            const interval = setInterval(() => {
+                if(i < messages.length) {
+                    statusEl.innerText = messages[i];
+                    i++;
+                }
+            }, 800);
+
+            setTimeout(() => {
+                splash.classList.add('splash-hidden');
+                clearInterval(interval);
+            }, 4500);
+
+            // Mostrar panel de bienvenida después del splash
+            setTimeout(() => {
+                welcome.classList.remove('welcome-hidden');
+            }, 4800);
+
+            // Eventos del panel de bienvenida
+            document.getElementById('welcome-new-project').onclick = () => {
+                modal.style.display = 'flex';
+            };
+
+            document.getElementById('welcome-open-project').onclick = () => {
+                // Disparar clic en el botón "Abrir" de la toolbar
+                document.getElementById('btnOpen')?.click();
+                welcome.classList.add('welcome-hidden');
+            };
+
+            // Modal: Aceptar
+            document.getElementById('modal-accept').onclick = () => {
+                const name = inputProject.value.trim();
+                if (name) window.currentProjectName = name;
+                modal.style.display = 'none';
+                welcome.classList.add('welcome-hidden');
+                // Opcional: iniciar proyecto nuevo (ya se hace en main.js al cargar)
+                if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) {
+                    SmartFlowCore.nuevoProyecto();
+                }
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+            };
+
+            // Modal: Saltar
+            document.getElementById('modal-skip').onclick = () => {
+                modal.style.display = 'none';
+                welcome.classList.add('welcome-hidden');
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+            };
+        });
+
+        // Mensajes rotativos en barra de estado
+        const logs = [
+            "SmartProject | IA: Escaneando colisiones...",
+            "SmartProject | Optimizando MTO...",
+            "SmartProject | Verificando normas...",
+            "SmartProject | Listo para comandos"
+        ];
+        setInterval(() => {
+            const statusDiv = document.getElementById('statusMsg');
+            if (statusDiv && !statusDiv.dataset.locked) {
+                statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
+            }
+        }, 6000);
+    </script>
 </body>
 </html>
