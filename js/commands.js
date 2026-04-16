@@ -1,9 +1,9 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v12.0
+// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v12.1
 // Archivo: js/commands.js
 // Propósito: Interpretar comandos de texto/voz y ejecutar acciones.
-//            Incluye importación PCF y soporte para catálogo extendido.
+//            Soporte completo para crear, editar, eliminar y rutear.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -14,7 +14,7 @@ const SmartFlowCommands = (function() {
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
 
-    // -------------------- 1. PARSER DE CREACIÓN --------------------
+    // -------------------- 1. PARSER DE CREACIÓN DE EQUIPOS --------------------
     function parseCreate(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'create') return false;
@@ -64,6 +64,61 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
+    function parseCreateLine(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'create' || parts[1] !== 'line') return false;
+        
+        const tag = parts[2];
+        let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
+        let points = [];
+        let i = 3;
+        
+        while (i < parts.length) {
+            if (parts[i] === 'diameter') {
+                diameter = parseFloat(parts[++i]);
+            } else if (parts[i] === 'material') {
+                material = parts[++i].toUpperCase();
+            } else if (parts[i] === 'spec') {
+                spec = parts[++i];
+            } else if (parts[i] === 'from' || parts[i] === 'route') {
+                i++;
+                while (i < parts.length) {
+                    const coordStr = parts[i];
+                    const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+                    if (m) {
+                        points.push({
+                            x: parseFloat(m[1]),
+                            y: parseFloat(m[2]),
+                            z: parseFloat(m[3])
+                        });
+                    } else {
+                        break;
+                    }
+                    i++;
+                }
+                continue;
+            }
+            i++;
+        }
+        
+        if (points.length < 2) {
+            _notifyUI("Error: Se requieren al menos 2 puntos para crear una línea", true);
+            return true;
+        }
+        
+        const nuevaLinea = {
+            tag, diameter, material, spec,
+            _cachedPoints: points,
+            waypoints: points.slice(1, -1),
+            components: []
+        };
+        
+        _core.addLine(nuevaLinea);
+        _notifyUI(`Línea ${tag} creada con ${points.length} puntos`, false);
+        _renderUI();
+        return true;
+    }
+
     function parseCreateManifold(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'create' || parts[1] !== 'manifold') return false;
@@ -107,6 +162,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
+    // -------------------- 2. PARSER DE CONEXIÓN --------------------
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect') return false;
@@ -163,11 +219,69 @@ const SmartFlowCommands = (function() {
             if (pTo) pTo.connectedLine = tag;
         }
         
+        _core.syncPhysicalData();
         _notifyUI(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip}.${toNozzle} (${tag})`, false);
+        _renderUI();
         return true;
     }
 
-    // -------------------- 2. PARSER DE EDICIÓN --------------------
+    // -------------------- 3. PARSER DE ELIMINACIÓN --------------------
+    function parseDelete(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'delete') return false;
+        
+        const type = parts[1];
+        const tag = parts[2];
+        
+        if (type === 'equipment') {
+            const db = _core.getDb();
+            const index = db.equipos.findIndex(e => e.tag === tag);
+            if (index === -1) {
+                _notifyUI(`Equipo ${tag} no encontrado`, true);
+                return true;
+            }
+            
+            db.equipos.splice(index, 1);
+            
+            db.lines = db.lines.filter(line => {
+                if (line.origin && line.origin.equipTag === tag) return false;
+                if (line.destination && line.destination.equipTag === tag) return false;
+                return true;
+            });
+            
+            _core._saveState();
+            _notifyUI(`Equipo ${tag} eliminado`, false);
+            _renderUI();
+            return true;
+            
+        } else if (type === 'line') {
+            const db = _core.getDb();
+            const index = db.lines.findIndex(l => l.tag === tag);
+            if (index === -1) {
+                _notifyUI(`Línea ${tag} no encontrada`, true);
+                return true;
+            }
+            
+            db.lines.splice(index, 1);
+            
+            db.equipos.forEach(eq => {
+                if (eq.puertos) {
+                    eq.puertos.forEach(p => {
+                        if (p.connectedLine === tag) delete p.connectedLine;
+                    });
+                }
+            });
+            
+            _core._saveState();
+            _notifyUI(`Línea ${tag} eliminada`, false);
+            _renderUI();
+            return true;
+        }
+        
+        return false;
+    }
+
+    // -------------------- 4. PARSER DE EDICIÓN --------------------
     function parseEditCommand(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'edit') return false;
@@ -189,6 +303,7 @@ const SmartFlowCommands = (function() {
                     const z = parseFloat(m[3]);
                     _core.updateEquipment(tag, { posX: x, posY: y, posZ: z });
                     _core.syncPhysicalData();
+                    _notifyUI(`Equipo ${tag} movido a (${x}, ${y}, ${z})`, false);
                     return true;
                 }
             } else if (action === 'set' && parts[4] === 'puerto') {
@@ -199,6 +314,7 @@ const SmartFlowCommands = (function() {
                     const nuevoDiam = parseFloat(parts[7]);
                     if (!isNaN(nuevoDiam)) {
                         _core.updatePuerto(tag, puertoId, { diametro: nuevoDiam });
+                        _notifyUI(`Puerto ${puertoId} de ${tag} diámetro ${nuevoDiam}"`, false);
                         return true;
                     }
                 } else if (subParam === 'pos' || subParam === 'dir') {
@@ -215,8 +331,10 @@ const SmartFlowCommands = (function() {
                         
                         if (subParam === 'pos') {
                             _core.updatePuerto(tag, puertoId, { pos: { x, y, z } });
+                            _notifyUI(`Puerto ${puertoId} de ${tag} posición (${x}, ${y}, ${z})`, false);
                         } else {
                             _core.updatePuerto(tag, puertoId, { dir: { dx: x, dy: y, dz: z } });
+                            _notifyUI(`Puerto ${puertoId} de ${tag} dirección (${x}, ${y}, ${z})`, false);
                         }
                         _core.syncPhysicalData();
                         return true;
@@ -227,7 +345,64 @@ const SmartFlowCommands = (function() {
             const tag = parts[2];
             const action = parts[3];
             
-            if (action === 'add' && parts[4] === 'waypoint') {
+            if (action === 'move' && parts[4] === 'to') {
+                let coordStr = '';
+                for (let i = 5; i < parts.length; i++) {
+                    coordStr += parts[i];
+                    if (parts[i].includes(')')) break;
+                }
+                const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+                if (m) {
+                    const x = parseFloat(m[1]);
+                    const y = parseFloat(m[2]);
+                    const z = parseFloat(m[3]);
+                    const db = _core.getDb();
+                    const line = db.lines.find(l => l.tag === tag);
+                    if (line) {
+                        const dx = x - line._cachedPoints[0].x;
+                        const dy = y - line._cachedPoints[0].y;
+                        const dz = z - line._cachedPoints[0].z;
+                        
+                        line._cachedPoints = line._cachedPoints.map(p => ({
+                            x: p.x + dx,
+                            y: p.y + dy,
+                            z: p.z + dz
+                        }));
+                        
+                        if (line.waypoints) {
+                            line.waypoints = line.waypoints.map(p => ({
+                                x: p.x + dx,
+                                y: p.y + dy,
+                                z: p.z + dz
+                            }));
+                        }
+                        
+                        _core.updateLine(tag, { 
+                            _cachedPoints: line._cachedPoints,
+                            waypoints: line.waypoints 
+                        });
+                        _notifyUI(`Línea ${tag} movida`, false);
+                        return true;
+                    }
+                }
+            } else if (action === 'set') {
+                const property = parts[4];
+                const value = parts[5];
+                
+                if (property === 'material') {
+                    _core.updateLine(tag, { material: value.toUpperCase() });
+                    _notifyUI(`Línea ${tag} material ${value}`, false);
+                    return true;
+                } else if (property === 'diameter') {
+                    _core.updateLine(tag, { diameter: parseFloat(value) });
+                    _notifyUI(`Línea ${tag} diámetro ${value}"`, false);
+                    return true;
+                } else if (property === 'spec') {
+                    _core.updateLine(tag, { spec: value });
+                    _notifyUI(`Línea ${tag} especificación ${value}`, false);
+                    return true;
+                }
+            } else if (action === 'add' && parts[4] === 'waypoint') {
                 let coordStr = '';
                 for (let i = 5; i < parts.length; i++) {
                     coordStr += parts[i];
@@ -240,8 +415,19 @@ const SmartFlowCommands = (function() {
                     const line = db.lines.find(l => l.tag === tag);
                     if (line) {
                         if (!line.waypoints) line.waypoints = [];
-                        line.waypoints.push(wp);
+                        
+                        let after = -1;
+                        const afterIdx = parts.indexOf('after');
+                        if (afterIdx !== -1) after = parseInt(parts[afterIdx + 1]) - 1;
+                        
+                        if (after >= 0 && after < line.waypoints.length) {
+                            line.waypoints.splice(after + 1, 0, wp);
+                        } else {
+                            line.waypoints.push(wp);
+                        }
+                        
                         _core.updateLine(tag, { waypoints: line.waypoints });
+                        _core.syncPhysicalData();
                         _notifyUI(`Waypoint añadido a ${tag}`, false);
                         return true;
                     }
@@ -253,12 +439,16 @@ const SmartFlowCommands = (function() {
                 if (line && line.waypoints && idx >= 0 && idx < line.waypoints.length) {
                     line.waypoints.splice(idx, 1);
                     _core.updateLine(tag, { waypoints: line.waypoints });
-                    _notifyUI(`Waypoint eliminado de ${tag}`, false);
+                    _core.syncPhysicalData();
+                    _notifyUI(`Waypoint ${idx + 1} eliminado de ${tag}`, false);
                     return true;
                 }
             } else if (action === 'add' && parts[4] === 'component') {
                 const compType = parts[5];
-                const position = parseFloat(parts[6]) || 0.5;
+                let position = 0.5;
+                const atIdx = parts.indexOf('at');
+                if (atIdx !== -1) position = parseFloat(parts[atIdx + 1]);
+                
                 const db = _core.getDb();
                 const line = db.lines.find(l => l.tag === tag);
                 if (line) {
@@ -267,15 +457,18 @@ const SmartFlowCommands = (function() {
                         _notifyUI(`Componente desconocido: ${compType}`, true);
                         return true;
                     }
+                    
                     const comp = {
                         ...compDef,
                         tag: `${compType}-${Date.now().toString().slice(-6)}`,
                         param: position
                     };
+                    
                     if (!line.components) line.components = [];
                     line.components.push(comp);
                     _core.updateLine(tag, { components: line.components });
                     _notifyUI(`Componente ${compType} añadido a ${tag}`, false);
+                    _renderUI();
                     return true;
                 }
             }
@@ -283,14 +476,20 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // -------------------- 3. PARSER DE COMPONENTES --------------------
+    // -------------------- 5. PARSER DE COMPONENTES --------------------
     function parseAddComponent(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'add' || parts[1] !== 'component') return false;
         
         const compType = parts[2];
-        const lineTag = parts[4] || null;
-        const position = parseFloat(parts[6]) || 0.5;
+        let lineTag = null;
+        let position = 0.5;
+        
+        const toIdx = parts.indexOf('to');
+        if (toIdx !== -1) lineTag = parts[toIdx + 1];
+        
+        const atIdx = parts.indexOf('at');
+        if (atIdx !== -1) position = parseFloat(parts[atIdx + 1]);
         
         if (!lineTag) {
             _notifyUI("Especifique la línea: add component TIPO to LINEA at POS", true);
@@ -306,7 +505,7 @@ const SmartFlowCommands = (function() {
         
         const compDef = _catalog.getComponent(compType);
         if (!compDef) {
-            _notifyUI(`Componente desconocido: ${compType}. Use uno del catálogo.`, true);
+            _notifyUI(`Componente desconocido: ${compType}`, true);
             return true;
         }
         
@@ -331,7 +530,9 @@ const SmartFlowCommands = (function() {
         let msg = "Componentes disponibles:\n";
         types.forEach(t => {
             const comp = _catalog.getComponent(t);
-            msg += `  ${t} - ${comp?.nombre || 'Sin descripción'}\n`;
+            if (comp) {
+                msg += `  ${t} - ${comp.nombre || 'Sin descripción'}\n`;
+            }
         });
         _notifyUI(msg, false);
         return true;
@@ -340,63 +541,94 @@ const SmartFlowCommands = (function() {
     function parseListSpecs(cmd) {
         if (cmd.trim() !== 'list specs') return false;
         
-        const specs = _catalog.listSpecs();
+        const specs = _catalog.listSpecs ? _catalog.listSpecs() : [];
         let msg = "Especificaciones disponibles:\n";
         specs.forEach(s => {
-            const spec = _catalog.getSpec(s);
-            msg += `  ${s}: ${spec?.material || ''} ${spec?.norma || ''}\n`;
+            const spec = _catalog.getSpec ? _catalog.getSpec(s) : null;
+            if (spec) {
+                msg += `  ${s}: ${spec.material || ''} ${spec.norma || ''}\n`;
+            } else {
+                msg += `  ${s}\n`;
+            }
         });
         _notifyUI(msg, false);
         return true;
     }
 
-    // -------------------- 4. AYUDA --------------------
+    function parseListEquipment(cmd) {
+        if (cmd.trim() !== 'list equipment') return false;
+        
+        const types = _catalog.listEquipmentTypes();
+        let msg = "Equipos disponibles:\n";
+        types.forEach(t => {
+            const eq = _catalog.getEquipment(t);
+            if (eq) {
+                msg += `  ${t} - ${eq.nombre || 'Sin descripción'}\n`;
+            }
+        });
+        _notifyUI(msg, false);
+        return true;
+    }
+
+    // -------------------- 6. AYUDA --------------------
     function parseHelp(cmd) {
         if (cmd.toLowerCase() !== 'help') return false;
         
-        let ayuda = "COMANDOS DISPONIBLES:\n\n";
-        ayuda += "CREACIÓN:\n";
-        ayuda += "  create [tipo] [tag] at (x,y,z) [diam N] [height N] [material M] [spec S]\n";
-        ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n";
-        ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter D spec S\n\n";
-        ayuda += "EDICIÓN:\n";
+        let ayuda = "═══════════════════════════════════════════════════════════\n";
+        ayuda += "              SMARTFLOW PRO v12.1 - COMANDOS\n";
+        ayuda += "═══════════════════════════════════════════════════════════\n\n";
+        
+        ayuda += "📌 CREACIÓN:\n";
+        ayuda += "  create [tipo] [tag] at (x,y,z) [diam N] [height N] [material M]\n";
+        ayuda += "  create line [tag] route (x1,y1,z1) (x2,y2,z2) ... [diameter D] [material M]\n";
+        ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n\n";
+        
+        ayuda += "📌 CONEXIÓN:\n";
+        ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter D material M\n\n";
+        
+        ayuda += "📌 ELIMINACIÓN:\n";
+        ayuda += "  delete equipment [tag]\n";
+        ayuda += "  delete line [tag]\n\n";
+        
+        ayuda += "📌 EDICIÓN DE EQUIPOS:\n";
         ayuda += "  edit equipment [tag] move to (x,y,z)\n";
         ayuda += "  edit equipment [tag] set puerto [id] pos (x,y,z)\n";
         ayuda += "  edit equipment [tag] set puerto [id] dir (dx,dy,dz)\n";
-        ayuda += "  edit equipment [tag] set puerto [id] diam N\n";
-        ayuda += "  edit line [tag] add waypoint (x,y,z)\n";
-        ayuda += "  edit line [tag] add component [tipo] [posicion]\n\n";
-        ayuda += "COMPONENTES:\n";
+        ayuda += "  edit equipment [tag] set puerto [id] diam N\n\n";
+        
+        ayuda += "📌 EDICIÓN DE LÍNEAS:\n";
+        ayuda += "  edit line [tag] move to (x,y,z)\n";
+        ayuda += "  edit line [tag] set material [M]\n";
+        ayuda += "  edit line [tag] set diameter [D]\n";
+        ayuda += "  edit line [tag] set spec [S]\n";
+        ayuda += "  edit line [tag] add waypoint (x,y,z) [after N]\n";
+        ayuda += "  edit line [tag] remove waypoint N\n";
+        ayuda += "  edit line [tag] add component [tipo] at [0-1]\n\n";
+        
+        ayuda += "📌 COMPONENTES:\n";
         ayuda += "  add component [tipo] to [linea] at [0-1]\n";
         ayuda += "  list components\n";
+        ayuda += "  list equipment\n";
         ayuda += "  list specs\n\n";
-        ayuda += "VÁLVULAS DISPONIBLES:\n";
-        ayuda += "  GATE_VALVE, GLOBE_VALVE, BUTTERFLY_VALVE, BALL_VALVE,\n";
-        ayuda += "  CHECK_VALVE, DIAPHRAGM_VALVE, CONTROL_VALVE\n\n";
-        ayuda += "OTROS:\n";
-        ayuda += "  undo | redo | help";
+        
+        ayuda += "📌 OTROS:\n";
+        ayuda += "  undo | redo | help\n";
+        ayuda += "═══════════════════════════════════════════════════════════\n";
         
         _notifyUI(ayuda, false);
         return true;
     }
 
-    // -------------------- 5. IMPORTACIÓN PCF --------------------
+    // -------------------- 7. IMPORTACIÓN PCF --------------------
     function importPCF(fileContent) {
         const lines = fileContent.split('\n');
         let currentPipe = null;
         let puntos = [];
         let componentes = [];
-        let unidades = 'MM';
         
         for (let line of lines) {
             line = line.trim();
-            if (line.startsWith('!PCF') || line.startsWith('UNITS')) {
-                if (line.includes('UNITS')) {
-                    const parts = line.split(' ');
-                    unidades = parts[1] || 'MM';
-                }
-                continue;
-            }
+            if (line.startsWith('!PCF') || line.startsWith('UNITS')) continue;
             
             if (line === 'PIPE') {
                 currentPipe = { tag: 'L-IMP', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' };
@@ -458,19 +690,22 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // -------------------- 6. EJECUCIÓN DE COMANDOS --------------------
+    // -------------------- 8. EJECUCIÓN DE COMANDOS --------------------
     function executeCommand(cmd) {
         if (!cmd || cmd.startsWith('//')) return false;
         
         const trimmed = cmd.trim();
         
+        if (parseCreateLine(trimmed)) return true;
         if (parseCreateManifold(trimmed)) return true;
         if (parseCreate(trimmed)) return true;
         if (parseConnect(trimmed)) return true;
+        if (parseDelete(trimmed)) return true;
         if (parseEditCommand(trimmed)) return true;
         if (parseAddComponent(trimmed)) return true;
         if (parseListComponents(trimmed)) return true;
         if (parseListSpecs(trimmed)) return true;
+        if (parseListEquipment(trimmed)) return true;
         if (parseHelp(trimmed)) return true;
         
         if (trimmed === 'undo') {
@@ -484,25 +719,32 @@ const SmartFlowCommands = (function() {
             return true;
         }
         
-        _notifyUI(`No entendi: "${trimmed.substring(0, 50)}..."`, true);
         return false;
     }
 
     function executeBatch(commandsText) {
         const lines = commandsText.split('\n');
         let executed = 0;
+        let failed = 0;
         
         for (let raw of lines) {
-            if (executeCommand(raw)) {
+            const trimmed = raw.trim();
+            if (!trimmed || trimmed.startsWith('//')) continue;
+            
+            if (executeCommand(trimmed)) {
                 executed++;
+            } else {
+                failed++;
+                _notifyUI(`No entendí: "${trimmed.substring(0, 50)}..."`, true);
             }
         }
         
         _renderUI();
+        _notifyUI(`${executed} comandos ejecutados, ${failed} fallidos`, failed > 0);
         return executed;
     }
 
-    // -------------------- 7. INICIALIZACIÓN --------------------
+    // -------------------- 9. INICIALIZACIÓN --------------------
     function init(coreInstance, catalogInstance, rendererInstance, notifyFn, renderFn) {
         _core = coreInstance;
         _catalog = catalogInstance;
@@ -516,12 +758,7 @@ const SmartFlowCommands = (function() {
         init,
         executeCommand,
         executeBatch,
-        importPCF,
-        parseCreate,
-        parseConnect,
-        parseEditCommand,
-        parseAddComponent,
-        parseListComponents
+        importPCF
     };
 
 })();
