@@ -2,7 +2,7 @@
 (function() {
     "use strict";
     
-    console.log("[main.js] Iniciando...");
+    console.log("[main.js] Cargado. Esperando módulos...");
     
     const canvas = document.getElementById('isoCanvas');
     const notificationEl = document.getElementById('notification');
@@ -11,13 +11,12 @@
     const commandText = document.getElementById('commandText');
     const catalogPanel = document.getElementById('catalogPanel');
     const customElev = document.getElementById('customElev');
-    const loadingEl = document.getElementById('loadingIndicator');
     
     let toolMode = 'select';
     let voiceEnabled = true;
     
     function notify(msg, isErr = false) {
-        console.log("[notify]", msg);
+        console.log("[notify] " + msg);
         if (notificationEl) {
             notificationEl.textContent = msg;
             notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
@@ -46,62 +45,59 @@
         }
     }
     
-    function initModules() {
+    function waitForModules(callback) {
         let attempts = 0;
-        const maxAttempts = 50;
+        const maxAttempts = 100;
         
-        function tryInit() {
+        function check() {
             attempts++;
             
-            if (typeof SmartFlowCore === 'undefined' || 
-                typeof SmartFlowRenderer === 'undefined' || 
-                typeof SmartFlowCommands === 'undefined' ||
-                typeof SmartFlowCatalog === 'undefined') {
-                
-                if (attempts < maxAttempts) {
-                    setTimeout(tryInit, 100);
-                    return;
-                } else {
-                    notify("ERROR: Módulos JS no cargados. Verifique archivos js/*.js", true);
-                    console.error("Módulos faltantes:", {
-                        SmartFlowCore: typeof SmartFlowCore,
-                        SmartFlowRenderer: typeof SmartFlowRenderer,
-                        SmartFlowCommands: typeof SmartFlowCommands,
-                        SmartFlowCatalog: typeof SmartFlowCatalog
-                    });
-                    if (loadingEl) loadingEl.style.display = 'none';
-                    return;
-                }
+            const coreReady = typeof SmartFlowCore !== 'undefined';
+            const rendererReady = typeof SmartFlowRenderer !== 'undefined';
+            const commandsReady = typeof SmartFlowCommands !== 'undefined';
+            const catalogReady = typeof SmartFlowCatalog !== 'undefined';
+            
+            console.log(`[main.js] Intento ${attempts}: Core=${coreReady}, Renderer=${rendererReady}, Commands=${commandsReady}, Catalog=${catalogReady}`);
+            
+            if (coreReady && rendererReady && commandsReady && catalogReady) {
+                console.log("[main.js] Todos los módulos listos. Inicializando...");
+                callback();
+            } else if (attempts < maxAttempts) {
+                setTimeout(check, 100);
+            } else {
+                console.error("[main.js] Timeout esperando módulos");
+                notify("Error: No se cargaron los módulos JS", true);
             }
-            
-            console.log("Todos los módulos cargados correctamente");
-            SmartFlowCore.init(notify, render);
-            SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
-            SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, render);
-            
-            if (loadingEl) loadingEl.style.display = 'none';
-            notify("SmartFlow Pro v12.0 - Catálogo Industrial Extendido", false);
         }
         
-        tryInit();
+        check();
+    }
+    
+    function initApp() {
+        SmartFlowCore.init(notify, render);
+        SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
+        SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, render);
+        
+        bindEvents();
+        initCanvasEvents();
+        autoCenter();
+        
+        notify("SmartFlow Pro v12.0 - Listo", false);
+        console.log("[main.js] Aplicación inicializada correctamente");
     }
     
     function nuevoProyecto() {
         if (confirm("¿Crear nuevo proyecto? Se perderán los cambios no guardados.")) {
-            if (typeof SmartFlowCore !== 'undefined') {
-                SmartFlowCore.nuevoProyecto();
-            }
+            SmartFlowCore.nuevoProyecto();
             autoCenter();
             notify("Nuevo proyecto creado", false);
         }
     }
     
     function guardarProyecto() {
-        if (typeof SmartFlowCore !== 'undefined') {
-            const state = SmartFlowCore.exportProject();
-            localStorage.setItem('smartflow_v12_project', state);
-            notify("Proyecto guardado", false);
-        }
+        const state = SmartFlowCore.exportProject();
+        localStorage.setItem('smartflow_v12_project', state);
+        notify("Proyecto guardado", false);
     }
     
     function cargarProyecto() {
@@ -109,9 +105,7 @@
         if (data) {
             try {
                 const state = JSON.parse(data);
-                if (typeof SmartFlowCore !== 'undefined') {
-                    SmartFlowCore.importState(state.data || state);
-                }
+                SmartFlowCore.importState(state.data || state);
                 autoCenter();
                 notify("Proyecto cargado", false);
             } catch (e) {
@@ -123,22 +117,15 @@
     }
     
     function resumenProyecto() {
-        if (typeof SmartFlowCore !== 'undefined') {
-            const equipos = SmartFlowCore.getEquipos();
-            const lines = SmartFlowCore.getLines();
-            const tanques = equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
-            const bombas = equipos.filter(e => e.tipo.includes('bomba'));
-            const msg = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${equipos.length} equipos, ${lines.length} tuberías.`;
-            notify(msg, false);
-        }
+        const equipos = SmartFlowCore.getEquipos();
+        const lines = SmartFlowCore.getLines();
+        const tanques = equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
+        const bombas = equipos.filter(e => e.tipo.includes('bomba'));
+        const msg = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${equipos.length} equipos, ${lines.length} tuberías.`;
+        notify(msg, false);
     }
     
     function exportarMTO() {
-        if (typeof SmartFlowCore === 'undefined') {
-            notify("Core no disponible", true);
-            return;
-        }
-        
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
         let items = [];
@@ -175,6 +162,8 @@
     }
     
     function bindEvents() {
+        console.log("[main.js] Vinculando eventos a botones...");
+        
         const btnNew = document.getElementById('btnNew');
         const btnOpen = document.getElementById('btnOpen');
         const btnSave = document.getElementById('btnSave');
@@ -205,14 +194,14 @@
         if (btnCloseCommand) btnCloseCommand.onclick = () => { if (commandPanel) commandPanel.style.display = 'none'; };
         if (btnClearCommand) btnClearCommand.onclick = () => { if (commandText) commandText.value = ''; };
         if (btnRunCommands) btnRunCommands.onclick = () => {
-            if (commandText && typeof SmartFlowCommands !== 'undefined') {
+            if (commandText) {
                 SmartFlowCommands.executeBatch(commandText.value);
                 if (commandPanel) commandPanel.style.display = 'none';
             }
         };
-        if (btnUndo) btnUndo.onclick = () => { if (typeof SmartFlowCore !== 'undefined') { SmartFlowCore.undo(); render(); } };
-        if (btnRedo) btnRedo.onclick = () => { if (typeof SmartFlowCore !== 'undefined') { SmartFlowCore.redo(); render(); } };
-        if (btnPDF) btnPDF.onclick = () => { if (typeof SmartFlowRenderer !== 'undefined') { SmartFlowRenderer.exportPDF(); } };
+        if (btnUndo) btnUndo.onclick = () => { SmartFlowCore.undo(); render(); };
+        if (btnRedo) btnRedo.onclick = () => { SmartFlowCore.redo(); render(); };
+        if (btnPDF) btnPDF.onclick = () => { SmartFlowRenderer.exportPDF(); };
         if (btnMTO) btnMTO.onclick = exportarMTO;
         if (btnVoice) btnVoice.onclick = () => {
             voiceEnabled = !voiceEnabled;
@@ -227,61 +216,38 @@
         if (btnSetElev) btnSetElev.onclick = () => {
             const val = parseInt(customElev?.value);
             if (!isNaN(val)) {
-                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.setElevation(val);
-                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.setElevation(val);
+                SmartFlowCore.setElevation(val);
+                SmartFlowRenderer.setElevation(val);
             }
         };
         if (btnAddTank) btnAddTank.onclick = () => {
-            if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
-                const equipos = SmartFlowCore.getEquipos();
-                const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
-                const x = equipos.length > 0 ? equipos[equipos.length - 1].posX + 3000 : 0;
-                SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
-            }
+            const equipos = SmartFlowCore.getEquipos();
+            const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
+            const x = equipos.length > 0 ? equipos[equipos.length - 1].posX + 3000 : 0;
+            SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
         };
         if (btnAddPump) btnAddPump.onclick = () => {
-            if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
-                const equipos = SmartFlowCore.getEquipos();
-                const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
-                const x = equipos.length > 0 ? equipos[equipos.length - 1].posX + 3000 : 5000;
-                SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
-            }
+            const equipos = SmartFlowCore.getEquipos();
+            const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
+            const x = equipos.length > 0 ? equipos[equipos.length - 1].posX + 3000 : 5000;
+            SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
         };
         if (toolSelect) toolSelect.onclick = () => { toolMode = 'select'; };
         if (toolMoveEq) toolMoveEq.onclick = () => { toolMode = 'moveEq'; };
+        
+        console.log("[main.js] Eventos vinculados correctamente");
     }
     
     function initCanvasEvents() {
         if (!canvas) return;
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.zoom(e.deltaY);
+            if (typeof SmartFlowRenderer !== 'undefined') {
+                SmartFlowRenderer.zoom(e.deltaY);
+            }
         });
     }
     
-    function init() {
-        console.log("[main.js] init()");
-        initModules();
-        bindEvents();
-        initCanvasEvents();
-        autoCenter();
-    }
-    
-    init();
+    waitForModules(initApp);
     
 })();
-```
-
-Fragmento HTML para el Loading Indicator
-
-Agregue esto inmediatamente después de la etiqueta <canvas> en su index.html:
-
-```html
-<div id="loadingIndicator" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);padding:20px;border-radius:10px;display:flex;align-items:center;gap:10px;z-index:5000;">
-    <div style="width:20px;height:20px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></div>
-    <span style="color:#7c3aed;">Cargando SmartFlow Pro v12.0...</span>
-</div>
-
-<style>
-@keyframes spin { to { transform: rotate(360deg); } }
-</style>
