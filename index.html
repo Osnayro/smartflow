@@ -1,5 +1,5 @@
 
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -115,12 +115,15 @@
             margin-bottom: 25px;
         }
 
+        /* SOLUCIÓN MAESTRA: ELIMINA EL DAMERO Y DEJA SOLO EL BRILLO */
         .home-logo-img {
-            width: 100px;
+            width: 110px;
             height: auto;
-            /* Solución de ingeniería: elimina el recuadro fantasma */
+            margin-bottom: 20px;
+            /* Truco de ingeniería: proyecta solo los colores claros */
             mix-blend-mode: screen;
-            filter: brightness(1.1) drop-shadow(0 0 12px rgba(0, 242, 255, 0.6));
+            /* Toque neón AcQuaBlue */
+            filter: brightness(1.2) drop-shadow(0 0 15px rgba(0, 242, 255, 0.7));
             transition: transform 0.3s ease;
             animation: pulseLogo 3s infinite ease-in-out;
         }
@@ -420,7 +423,7 @@
             .toolbar button { font-size: 10px; padding: 6px 8px; }
             .property-panel { width: 300px; right: 10px; }
             .welcome-container { width: 90%; padding: 30px 20px; }
-            .home-logo-img { width: 80px; }
+            .home-logo-img { width: 90px; }
             .corp-name, .user-name { font-size: 14px; }
         }
     </style>
