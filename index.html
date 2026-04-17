@@ -1,3 +1,5 @@
+.PNG.
+
 
 <!DOCTYPE html>
 <html lang="es">
@@ -118,8 +120,13 @@
         .home-logo-img {
             width: 100px;
             height: auto;
-            filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.6));
+            filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.8));
+            transition: transform 0.3s ease;
             animation: pulseLogo 3s infinite ease-in-out;
+        }
+
+        .home-logo-img:hover {
+            transform: scale(1.1);
         }
 
         @keyframes pulseLogo {
@@ -451,18 +458,15 @@
     <!-- PANEL DE BIENVENIDA (POST-SPLASH) -->
     <div id="welcome-panel">
         <div class="welcome-container">
-            <!-- Logo centrado como ancla visual -->
             <div class="home-logo-wrapper">
                 <img src="img/logo.PNG" alt="Logo SmartProject" class="home-logo-img" onerror="this.style.display='none'">
             </div>
 
-            <!-- Nombres de empresa e ingeniero -->
             <div class="header-names">
                 <h1 class="corp-name">ACQUABLUE<br>INTERNATIONAL CORP.</h1>
                 <h2 class="user-name">ING.<br>OSNAY ROMERO</h2>
             </div>
 
-            <!-- Botones de acción -->
             <div class="button-group">
                 <button class="welcome-btn" id="welcome-new-project">➕ NUEVO PROYECTO</button>
                 <button class="welcome-btn secondary" id="welcome-open-project">📂 ABRIR PROYECTO EXISTENTE</button>
@@ -608,10 +612,8 @@
 
     <!-- SCRIPT DE INICIALIZACIÓN Y FLUJO DE BIENVENIDA -->
     <script>
-        // Variable global para el nombre del proyecto
         window.currentProjectName = "Proyecto_SmartFlow";
 
-        // Función global para elevación
         function setElevation(level) {
             if (typeof SmartFlowCore !== 'undefined' && typeof SmartFlowRenderer !== 'undefined') {
                 SmartFlowCore.setElevation(level);
@@ -620,7 +622,6 @@
             }
         }
 
-        // Flujo de inicio
         window.addEventListener('load', () => {
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
@@ -649,36 +650,30 @@
                 clearInterval(interval);
             }, 4500);
 
-            // Mostrar panel de bienvenida después del splash
             setTimeout(() => {
                 welcome.classList.remove('welcome-hidden');
             }, 4800);
 
-            // Eventos del panel de bienvenida
             document.getElementById('welcome-new-project').onclick = () => {
                 modal.style.display = 'flex';
             };
 
             document.getElementById('welcome-open-project').onclick = () => {
-                // Disparar clic en el botón "Abrir" de la toolbar
                 document.getElementById('btnOpen')?.click();
                 welcome.classList.add('welcome-hidden');
             };
 
-            // Modal: Aceptar
             document.getElementById('modal-accept').onclick = () => {
                 const name = inputProject.value.trim();
                 if (name) window.currentProjectName = name;
                 modal.style.display = 'none';
                 welcome.classList.add('welcome-hidden');
-                // Opcional: iniciar proyecto nuevo (ya se hace en main.js al cargar)
                 if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) {
                     SmartFlowCore.nuevoProyecto();
                 }
                 document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
 
-            // Modal: Saltar
             document.getElementById('modal-skip').onclick = () => {
                 modal.style.display = 'none';
                 welcome.classList.add('welcome-hidden');
@@ -686,7 +681,6 @@
             };
         });
 
-        // Mensajes rotativos en barra de estado
         const logs = [
             "SmartProject | IA: Escaneando colisiones...",
             "SmartProject | Optimizando MTO...",
