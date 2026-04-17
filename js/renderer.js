@@ -1,12 +1,11 @@
 
-
-
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v16.0
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.0
 // Archivo: js/renderer.js
 // Propósito: Manejar toda la lógica de proyección isométrica,
 //            dibujo en Canvas 2D con jerarquía visual profesional,
 //            exportación (PDF/PCF) y acotación inteligente.
+//            v17.0: Etiquetas isométricas, radio PPR, símbolos de instrumentación.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -405,6 +404,30 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
+    // Nueva función para texto con orientación isométrica
+    function drawIsometricText(text, x, y, angle) {
+        _ctx.save();
+        _ctx.translate(x, y);
+        
+        // Determinar si el texto debe seguir el eje X (30°) o Z (-30°)
+        let isoAngle = (Math.abs(angle) > Math.PI/4 && Math.abs(angle) < 3*Math.PI/4) ? 0 : 
+                       (angle > 0 ? Math.PI/6 : -Math.PI/6);
+        
+        _ctx.rotate(isoAngle);
+        
+        // Estilo Acquablue: Fondo semi-transparente para legibilidad
+        const tw = _ctx.measureText(text).width;
+        _ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+        _ctx.fillRect(-tw/2 - 2, -12, tw + 4, 14);
+        
+        _ctx.fillStyle = '#f8fafc';
+        _ctx.font = `bold ${Math.max(10, 11 * _cam.scale)}px monospace`;
+        _ctx.textAlign = 'center';
+        _ctx.textBaseline = 'middle';
+        _ctx.fillText(text, 0, 0);
+        _ctx.restore();
+    }
+
     function drawPipeWithElbows(line) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return;
@@ -424,7 +447,10 @@ const SmartFlowRenderer = (function() {
             }
         }
         
-        const radio = Math.min((line.diameter || 4) * 25.4 * 1.5, 500);
+        // MEJORA v17.0: Radio de curvatura específico para PPR
+        const isPPR = line.material === 'PPR' || (line.spec && line.spec.includes('PPR'));
+        const radioBase = isPPR ? (line.diameter * 25.4 * 0.8) : (line.diameter * 25.4 * 1.5);
+        const radio = Math.min(radioBase, 350);
         
         _ctx.beginPath();
         let first = project(pts[0]);
@@ -453,7 +479,7 @@ const SmartFlowRenderer = (function() {
         const last = project(pts[pts.length-1]);
         _ctx.lineTo(last.x, last.y);
         
-        // MEJORA: Grosor jerárquico y estilo profesional
+        // Grosor jerárquico y estilo profesional
         const baseWidth = (line.diameter || 4) * _cam.scale;
         _ctx.lineWidth = Math.max(3, baseWidth);
         _ctx.lineCap = 'round';
@@ -471,6 +497,7 @@ const SmartFlowRenderer = (function() {
         _ctx.stroke();
         _ctx.shadowBlur = 0;
 
+        // Acotación automática
         if (line.showDimensions !== false) {
             const puntosReales = pts.filter(p => !p.isControlPoint);
             for (let i = 0; i < puntosReales.length - 1; i++) {
@@ -481,6 +508,19 @@ const SmartFlowRenderer = (function() {
                     drawIsometricDimension(p1, p2, 1200);
                 }
             }
+        }
+
+        // Dibujar etiqueta de línea con orientación isométrica
+        if (line.tag && pts.length >= 2) {
+            const midPt = getPointAtDistance(pts[0], pts[pts.length-1], 
+                        Math.hypot(pts[pts.length-1].x - pts[0].x, 
+                                   pts[pts.length-1].y - pts[0].y, 
+                                   pts[pts.length-1].z - pts[0].z) / 2);
+            const projMid = project(midPt);
+            const dx = pts[1].x - pts[0].x;
+            const dz = pts[1].z - pts[0].z;
+            const lineAngle = Math.atan2(dz, dx);
+            drawIsometricText(line.tag, projMid.x, projMid.y - 15 * _cam.scale, lineAngle);
         }
     }
 
@@ -524,6 +564,11 @@ const SmartFlowRenderer = (function() {
             const angle = Math.atan2(projP2.y - projP1.y, projP2.x - projP1.x);
             
             drawSymbol(proj.x, proj.y, angle, comp);
+            
+            // Dibujar etiqueta del componente si tiene tag
+            if (comp.tag) {
+                drawIsometricText(comp.tag, proj.x, proj.y - 20 * _cam.scale, angle);
+            }
         });
     }
 
@@ -532,7 +577,6 @@ const SmartFlowRenderer = (function() {
         _ctx.translate(x, y);
         _ctx.rotate(angle);
         
-        // MEJORA: Escala mínima garantizada
         const sizeBase = 12;
         const s = Math.max(8, sizeBase * _cam.scale);
         
@@ -827,6 +871,18 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineTo(s, 0);
                 _ctx.stroke();
                 break;
+            case 'LEVEL_SWITCH_RANA':
+                // Dibujo del flotador tipo rana según inventario de Génica
+                _ctx.beginPath();
+                _ctx.arc(0, 0, s*0.5, 0, Math.PI*2);
+                _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(0, 0);
+                _ctx.lineTo(-s, -s*0.5);
+                _ctx.stroke();
+                _ctx.fillStyle = '#4ade80';
+                _ctx.fill();
+                break;
             case 'PIPE_SHOE':
                 _ctx.fillRect(-s*0.8, s*0.3, s*1.6, s*0.3);
                 _ctx.strokeRect(-s*0.8, s*0.3, s*1.6, s*0.3);
@@ -1020,9 +1076,7 @@ const SmartFlowRenderer = (function() {
     // FUNCIONES AUXILIARES PARA EXPORTACIÓN PCF (ÁMBITO PRIVADO)
     // ============================================================
     
-    // Mapeo de tipos internos a SKEYs estándar de ISOGEN
     const skeyMap = {
-        // Válvulas
         'GATE_VALVE': 'VAGF',
         'GLOBE_VALVE': 'VGLF',
         'BUTTERFLY_VALVE': 'VBAF',
@@ -1033,43 +1087,37 @@ const SmartFlowRenderer = (function() {
         'CONTROL_VALVE': 'VCON',
         'PRESSURE_RELIEF': 'VPRV',
         'SAFETY_VALVE': 'VSFT',
-        // Bridas
         'WELD_NECK_FLANGE': 'FLWN',
         'SLIP_ON_FLANGE': 'FLSO',
         'BLIND_FLANGE': 'FLBL',
         'LAP_JOINT_FLANGE': 'FLLJ',
-        // Codos
         'ELBOW_90_LR': 'ELBW',
         'ELBOW_90_SR': 'ELBS',
         'ELBOW_45': 'ELL4',
         'ELBOW_90_PPR': 'ELBW',
         'ELBOW_45_PPR': 'ELL4',
         'CODO_90_ACERO_3IN': 'ELBW',
-        // Reductores
         'CONCENTRIC_REDUCER': 'RECN',
         'ECCENTRIC_REDUCER': 'REEC',
-        // Tees y derivaciones
         'TEE_EQUAL': 'TEE',
         'TEE_REDUCING': 'TEER',
         'TEE_PPR': 'TEE',
         'CROSS': 'CROS',
         'CAP': 'CAPF',
-        // Soportes
         'PIPE_SHOE': 'SHOE',
         'U_BOLT': 'UBOL',
         'GUIDE': 'GUID',
         'ANCHOR': 'ANCH',
-        // Otros
         'TRANSITION': 'TRAN',
         'UNION': 'UNIO',
         'BULKHEAD': 'BULK',
         'Y_STRAINER': 'STRY',
         'PRESSURE_GAUGE': 'INPG',
         'TEMPERATURE_GAUGE': 'INTG',
-        'FLOW_METER': 'INFM'
+        'FLOW_METER': 'INFM',
+        'LEVEL_SWITCH_RANA': 'INSLS'
     };
 
-    // Calcula las coordenadas aproximadas de un componente a lo largo de la línea
     function calculateComponentPosition(line, param) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return null;
@@ -1245,4 +1293,3 @@ const SmartFlowRenderer = (function() {
     };
 
 })();
- 
