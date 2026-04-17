@@ -110,39 +110,53 @@
             text-align: center;
         }
 
-        .welcome-logo-bg {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 300px;
-            height: auto;
-            opacity: 0.08;
-            pointer-events: none;
-            z-index: 1;
+        .home-logo-wrapper {
+            text-align: center;
+            margin-bottom: 25px;
         }
 
-        .welcome-header {
+        .home-logo-img {
+            width: 100px;
+            height: auto;
+            filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.6));
+            animation: pulseLogo 3s infinite ease-in-out;
+        }
+
+        @keyframes pulseLogo {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+        }
+
+        .header-names {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 30px;
-            font-size: 16px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            position: relative;
-            z-index: 2;
+            margin-bottom: 35px;
+            text-align: left;
         }
 
-        .welcome-company { color: var(--accent-cyan); }
-        .welcome-engineer { color: #fff; }
+        .corp-name {
+            color: var(--accent-cyan);
+            font-size: 16px;
+            font-weight: 800;
+            line-height: 1.3;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
 
-        .welcome-actions {
+        .user-name {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.3;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: right;
+        }
+
+        .button-group {
             display: flex;
             flex-direction: column;
-            gap: 20px;
-            position: relative;
-            z-index: 2;
+            gap: 16px;
         }
 
         .welcome-btn {
@@ -399,6 +413,8 @@
             .toolbar button { font-size: 10px; padding: 6px 8px; }
             .property-panel { width: 300px; right: 10px; }
             .welcome-container { width: 90%; padding: 30px 20px; }
+            .home-logo-img { width: 80px; }
+            .corp-name, .user-name { font-size: 14px; }
         }
     </style>
 </head>
@@ -435,15 +451,21 @@
     <!-- PANEL DE BIENVENIDA (POST-SPLASH) -->
     <div id="welcome-panel">
         <div class="welcome-container">
-            <img src="img/logo.PNG" alt="Logo" class="welcome-logo-bg" onerror="this.style.display='none'">
-            
-            <div class="welcome-header">
-                <span class="welcome-company">AcQuaBlue International Corp.</span>
-                <span class="welcome-engineer">Ing. Osnay Romero</span>
+            <!-- Logo centrado como ancla visual -->
+            <div class="home-logo-wrapper">
+                <img src="img/logo.PNG" alt="Logo SmartProject" class="home-logo-img" onerror="this.style.display='none'">
             </div>
-            <div class="welcome-actions">
-                <button class="welcome-btn" id="welcome-new-project">➕ Nuevo Proyecto</button>
-                <button class="welcome-btn secondary" id="welcome-open-project">📂 Abrir Proyecto Existente</button>
+
+            <!-- Nombres de empresa e ingeniero -->
+            <div class="header-names">
+                <h1 class="corp-name">ACQUABLUE<br>INTERNATIONAL CORP.</h1>
+                <h2 class="user-name">ING.<br>OSNAY ROMERO</h2>
+            </div>
+
+            <!-- Botones de acción -->
+            <div class="button-group">
+                <button class="welcome-btn" id="welcome-new-project">➕ NUEVO PROYECTO</button>
+                <button class="welcome-btn secondary" id="welcome-open-project">📂 ABRIR PROYECTO EXISTENTE</button>
             </div>
         </div>
     </div>
