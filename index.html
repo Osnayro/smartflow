@@ -114,13 +114,14 @@
             margin-bottom: 25px;
         }
 
-        /* SOLUCIÓN DEFINITIVA: FONDO NEGRO ABSOLUTO - CSS SIMPLIFICADO */
+        /* SOLUCIÓN DEFINITIVA: FONDO NEGRO ABSOLUTO - CSS OPTIMIZADO */
         .home-logo-img {
-            width: 120px; /* Tamaño ideal para que se aprecien los circuitos */
+            width: 130px; /* Un poco más de presencia */
             height: auto;
-            margin-bottom: 20px;
-            /* Un ligero resplandor externo para que el logo "respire" */
-            filter: drop-shadow(0 0 12px rgba(0, 242, 255, 0.4));
+            margin-top: 10px;
+            margin-bottom: 25px;
+            /* Esto hará que el brillo cian se sienta más profundo */
+            filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.4));
             transition: transform 0.3s ease;
         }
 
@@ -414,7 +415,7 @@
             .toolbar button { font-size: 10px; padding: 6px 8px; }
             .property-panel { width: 300px; right: 10px; }
             .welcome-container { width: 90%; padding: 30px 20px; }
-            .home-logo-img { width: 100px; }
+            .home-logo-img { width: 110px; }
             .corp-name, .user-name { font-size: 14px; }
         }
     </style>
@@ -648,30 +649,40 @@
                 welcome.classList.remove('welcome-hidden');
             }, 4800);
 
+            // --- NUEVO PROYECTO ---
             document.getElementById('welcome-new-project').onclick = () => {
                 modal.style.display = 'flex';
             };
 
-            document.getElementById('welcome-open-project').onclick = () => {
-                document.getElementById('btnOpen')?.click();
-                welcome.classList.add('welcome-hidden');
-            };
-
-            document.getElementById('modal-accept').onclick = () => {
-                const name = inputProject.value.trim();
-                if (name) window.currentProjectName = name;
+            // Función que realmente crea el nuevo proyecto y limpia el canvas
+            function ejecutarNuevoProyecto(nombreProyecto) {
+                if (nombreProyecto) window.currentProjectName = nombreProyecto;
                 modal.style.display = 'none';
                 welcome.classList.add('welcome-hidden');
+                
+                // Limpiar el canvas y restablecer el estado inicial
                 if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) {
                     SmartFlowCore.nuevoProyecto();
                 }
+                if (typeof SmartFlowRenderer !== 'undefined') {
+                    SmartFlowRenderer.autoCenter();
+                }
                 document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+            }
+
+            document.getElementById('modal-accept').onclick = () => {
+                const name = inputProject.value.trim();
+                ejecutarNuevoProyecto(name);
             };
 
             document.getElementById('modal-skip').onclick = () => {
-                modal.style.display = 'none';
+                ejecutarNuevoProyecto(window.currentProjectName);
+            };
+
+            // --- ABRIR PROYECTO EXISTENTE ---
+            document.getElementById('welcome-open-project').onclick = () => {
+                document.getElementById('btnOpen')?.click();
                 welcome.classList.add('welcome-hidden');
-                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
         });
 
