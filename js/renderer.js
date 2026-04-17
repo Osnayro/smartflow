@@ -1,14 +1,31 @@
 
+
+
+// ============================================================
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v16.0
+// Archivo: js/renderer.js
+// Propósito: Manejar toda la lógica de proyección isométrica,
+//            dibujo en Canvas 2D con jerarquía visual profesional,
+//            exportación (PDF/PCF) y acotación inteligente.
+// ============================================================
+
 const SmartFlowRenderer = (function() {
     
+    // Dependencias inyectadas
     let _canvas = null;
     let _ctx = null;
     let _core = null;
     
+    // Cámara (Estado interno del renderer)
     let _cam = { scale: 0.5, panX: 0, panY: 0 };
+    
+    // Elevación actual para dibujo de rejilla
     let _currentElevation = 0;
+    
+    // Callback para notificaciones
     let _notifyUI = (msg, isErr) => console.log(msg);
 
+    // -------------------- 1. PROYECCIÓN ISOMÉTRICA --------------------
     const COS30 = 0.86602540378;
     const SIN30 = 0.5;
     
@@ -34,6 +51,7 @@ const SmartFlowRenderer = (function() {
         };
     }
 
+    // -------------------- 2. DIBUJO DE REJILLA Y ORIGEN --------------------
     function drawGrid(elevation = 0) {
         const step = 1000;
         const minX = -10000, maxX = 20000, minZ = -10000, maxZ = 20000;
@@ -73,6 +91,7 @@ const SmartFlowRenderer = (function() {
         _ctx.fillText(`ORIGEN (0,${_currentElevation/1000}m,0)`, o.x + 15, o.y - 8);
     }
 
+    // -------------------- 3. DIBUJO DE EQUIPOS --------------------
     function drawTank(eq) {
         const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
         const w = (eq.diametro / 2) * _cam.scale;
@@ -245,6 +264,7 @@ const SmartFlowRenderer = (function() {
         });
     }
 
+    // -------------------- 4. DIBUJO DE TUBERÍAS Y ACOTACIÓN INTELIGENTE --------------------
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -254,6 +274,135 @@ const SmartFlowRenderer = (function() {
             y: from.y + (to.y - from.y) * t, 
             z: from.z + (to.z - from.z) * t 
         }; 
+    }
+
+    function drawDimensionTick(x, y, angle) {
+        const tickSize = 8 * _cam.scale;
+        _ctx.save();
+        _ctx.translate(x, y);
+        _ctx.rotate(angle + Math.PI / 4);
+        _ctx.beginPath();
+        _ctx.moveTo(0, -tickSize);
+        _ctx.lineTo(0, tickSize);
+        _ctx.strokeStyle = '#facc15';
+        _ctx.lineWidth = 1.5;
+        _ctx.stroke();
+        _ctx.restore();
+    }
+
+    function getPipeOrientation(p1, p2) {
+        const dx = Math.abs(p2.x - p1.x);
+        const dy = Math.abs(p2.y - p1.y);
+        const dz = Math.abs(p2.z - p1.z);
+        return (dy > dx && dy > dz) ? 'vertical' : 'horizontal';
+    }
+
+    function isPointCollidingWithEquipment(point, margin = 1500) {
+        if (!_core) return false;
+        const db = _core.getDb();
+        if (!db || !db.equipos) return false;
+        
+        return db.equipos.some(eq => {
+            if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
+                const dx = Math.abs(point.x - eq.posX);
+                const dz = Math.abs(point.z - eq.posZ);
+                const radius = (eq.diametro / 2) + margin;
+                return (dx <= radius && dz <= radius);
+            } else if (eq.tipo === 'tanque_h') {
+                const halfL = (eq.largo / 2) + margin;
+                const halfD = (eq.diametro / 2) + margin;
+                const dx = Math.abs(point.x - eq.posX);
+                const dz = Math.abs(point.z - eq.posZ);
+                return (dx <= halfL && dz <= halfD);
+            } else if (eq.tipo === 'bomba' || eq.tipo === 'intercambiador' || eq.tipo === 'colector') {
+                const halfL = ((eq.largo || 1000) / 2) + margin;
+                const halfW = ((eq.ancho || eq.diametro || 1000) / 2) + margin;
+                const dx = Math.abs(point.x - eq.posX);
+                const dz = Math.abs(point.z - eq.posZ);
+                return (dx <= halfL && dz <= halfW);
+            }
+            return false;
+        });
+    }
+
+    function drawIsometricDimension(p1, p2, offset = 1200) {
+        const orientation = getPipeOrientation(p1, p2);
+        
+        let candA, candB;
+        if (orientation === 'horizontal') {
+            candA = { dx: 0, dy: -offset, dz: 0 };
+            candB = { dx: 0, dy: offset, dz: 0 };
+        } else {
+            candA = { dx: offset, dy: 0, dz: 0 };
+            candB = { dx: -offset, dy: 0, dz: 0 };
+        }
+
+        const checkCollision = (offsetV) => {
+            const midPoint = { 
+                x: (p1.x + p2.x) / 2 + offsetV.dx, 
+                y: (p1.y + p2.y) / 2 + offsetV.dy, 
+                z: (p1.z + p2.z) / 2 + offsetV.dz 
+            };
+            return isPointCollidingWithEquipment(midPoint, 1200);
+        };
+
+        const finalOffset = checkCollision(candA) ? candB : candA;
+
+        const dp1 = { x: p1.x + finalOffset.dx, y: p1.y + finalOffset.dy, z: p1.z + finalOffset.dz };
+        const dp2 = { x: p2.x + finalOffset.dx, y: p2.y + finalOffset.dy, z: p2.z + finalOffset.dz };
+
+        const pr1 = project(p1);
+        const pr2 = project(p2);
+        const prD1 = project(dp1);
+        const prD2 = project(dp2);
+
+        _ctx.beginPath();
+        _ctx.setLineDash([4, 4]);
+        _ctx.strokeStyle = '#64748b';
+        _ctx.lineWidth = 1;
+        _ctx.moveTo(pr1.x, pr1.y); _ctx.lineTo(prD1.x, prD1.y);
+        _ctx.moveTo(pr2.x, pr2.y); _ctx.lineTo(prD2.x, prD2.y);
+        _ctx.stroke();
+        _ctx.setLineDash([]);
+
+        _ctx.beginPath();
+        _ctx.moveTo(prD1.x, prD1.y);
+        _ctx.lineTo(prD2.x, prD2.y);
+        _ctx.strokeStyle = '#facc15';
+        _ctx.lineWidth = 1.5;
+        _ctx.stroke();
+
+        const angle = Math.atan2(prD2.y - prD1.y, prD2.x - prD1.x);
+        drawDimensionTick(prD1.x, prD1.y, angle);
+        drawDimensionTick(prD2.x, prD2.y, angle);
+
+        const realDistMeters = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z) / 1000;
+        const midX = (prD1.x + prD2.x) / 2;
+        const midY = (prD1.y + prD2.y) / 2;
+
+        _ctx.save();
+        _ctx.translate(midX, midY);
+        let textAngle = angle;
+        if (textAngle > Math.PI/2 || textAngle < -Math.PI/2) textAngle += Math.PI;
+        _ctx.rotate(textAngle);
+        
+        const textStr = `${realDistMeters.toFixed(3)} m`;
+        _ctx.font = `bold ${Math.max(10, 12 * _cam.scale)}px monospace`;
+        const textWidth = _ctx.measureText(textStr).width;
+        
+        _ctx.fillStyle = '#0a0e17';
+        _ctx.fillRect(-textWidth/2 - 4, -18, textWidth + 8, 18);
+        
+        _ctx.shadowColor = '#000';
+        _ctx.shadowBlur = 6;
+        _ctx.fillStyle = '#facc15';
+        _ctx.textAlign = 'center';
+        _ctx.textBaseline = 'middle';
+        
+        const textVOffset = (prD1.y > pr1.y) ? 12 : -5;
+        _ctx.fillText(textStr, 0, textVOffset - 9);
+        _ctx.shadowBlur = 0;
+        _ctx.restore();
     }
 
     function drawPipeWithElbows(line) {
@@ -304,15 +453,35 @@ const SmartFlowRenderer = (function() {
         const last = project(pts[pts.length-1]);
         _ctx.lineTo(last.x, last.y);
         
+        // MEJORA: Grosor jerárquico y estilo profesional
+        const baseWidth = (line.diameter || 4) * _cam.scale;
+        _ctx.lineWidth = Math.max(3, baseWidth);
+        _ctx.lineCap = 'round';
+        _ctx.lineJoin = 'round';
+        
         if (line.hasClash) {
-            _ctx.strokeStyle = '#ff0000';
-            _ctx.lineWidth = Math.max(6, (line.diameter || 4) * _cam.scale * 1.5);
+            _ctx.strokeStyle = '#ef4444';
+            _ctx.shadowBlur = 10;
+            _ctx.shadowColor = '#ef4444';
         } else {
             const spec = line.spec && SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
-            _ctx.strokeStyle = spec?.color || (line.material === 'Acero_Carbono' ? '#94a3b8' : '#facc15');
-            _ctx.lineWidth = Math.max(4, (line.diameter || 4) * _cam.scale);
+            _ctx.strokeStyle = spec?.color || '#f8fafc';
+            _ctx.shadowBlur = 0;
         }
         _ctx.stroke();
+        _ctx.shadowBlur = 0;
+
+        if (line.showDimensions !== false) {
+            const puntosReales = pts.filter(p => !p.isControlPoint);
+            for (let i = 0; i < puntosReales.length - 1; i++) {
+                const p1 = puntosReales[i];
+                const p2 = puntosReales[i+1];
+                const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+                if (dist > 100) {
+                    drawIsometricDimension(p1, p2, 1200);
+                }
+            }
+        }
     }
 
     function drawPipeComponents(line) {
@@ -358,25 +527,31 @@ const SmartFlowRenderer = (function() {
         });
     }
 
-    function drawSymbol(x, y, angle, comp, sizeFactor = 1) {
+    function drawSymbol(x, y, angle, comp) {
         _ctx.save();
         _ctx.translate(x, y);
         _ctx.rotate(angle);
         
+        // MEJORA: Escala mínima garantizada
+        const sizeBase = 12;
+        const s = Math.max(8, sizeBase * _cam.scale);
+        
         _ctx.strokeStyle = '#fff';
         _ctx.lineWidth = 1.5;
-        _ctx.fillStyle = '#1e1e2e';
-        
-        const s = 10 * _cam.scale * sizeFactor;
+        _ctx.fillStyle = '#0f172a';
 
         switch (comp.type) {
             case 'GATE_VALVE':
-                _ctx.fillRect(-s, -s*0.5, s*2, s);
-                _ctx.clearRect(-s*0.1, -s*0.5, s*0.2, s);
-                _ctx.strokeRect(-s, -s*0.5, s*2, s);
-                _ctx.fillRect(-s*0.3, -s*0.9, s*0.6, s*0.4);
+                _ctx.beginPath();
+                _ctx.moveTo(-s, -s/2); _ctx.lineTo(s, s/2); _ctx.lineTo(s, -s/2); _ctx.lineTo(-s, s/2);
+                _ctx.closePath();
+                _ctx.fill();
+                _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(0, 0); _ctx.lineTo(0, -s);
+                _ctx.moveTo(-s/2, -s); _ctx.lineTo(s/2, -s);
+                _ctx.stroke();
                 break;
-                
             case 'GLOBE_VALVE':
                 _ctx.beginPath();
                 _ctx.ellipse(0, 0, s*0.8, s*0.5, 0, 0, Math.PI*2);
@@ -388,7 +563,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.stroke();
                 _ctx.fillRect(-s*0.3, -s*1.1, s*0.6, s*0.5);
                 break;
-                
             case 'BUTTERFLY_VALVE':
                 _ctx.beginPath();
                 _ctx.arc(0, 0, s*0.8, 0, Math.PI*2);
@@ -402,7 +576,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.fillRect(-s*0.3, -s*1.2, s*0.6, s*0.5);
                 _ctx.lineWidth = 1.5;
                 break;
-                
             case 'DIAPHRAGM_VALVE':
                 _ctx.beginPath();
                 _ctx.rect(-s, -s*0.3, s*2, s*0.6);
@@ -414,7 +587,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.stroke();
                 _ctx.fillRect(-s*0.4, -s*1.0, s*0.8, s*0.4);
                 break;
-                
             case 'CHECK_VALVE':
                 _ctx.strokeRect(-s, -s*0.4, s*2, s*0.8);
                 _ctx.beginPath();
@@ -425,7 +597,7 @@ const SmartFlowRenderer = (function() {
                 _ctx.fillStyle = '#fff';
                 _ctx.fill();
                 _ctx.stroke();
-                _ctx.fillStyle = '#1e1e2e';
+                _ctx.fillStyle = '#0f172a';
                 if (comp.subtype === 'SWING') {
                     _ctx.beginPath();
                     _ctx.arc(s*0.5, 0, s*0.2, 0, Math.PI*2);
@@ -433,7 +605,6 @@ const SmartFlowRenderer = (function() {
                     _ctx.stroke();
                 }
                 break;
-                
             case 'CONTROL_VALVE':
                 _ctx.beginPath();
                 _ctx.ellipse(0, 0, s*0.8, s*0.5, 0, 0, Math.PI*2);
@@ -452,7 +623,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineTo(s*0.4, -s*1.1);
                 _ctx.stroke();
                 break;
-
             case 'BALL_VALVE':
             case 'VALVE_BALL':
                 _ctx.beginPath();
@@ -466,7 +636,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.strokeStyle = '#fff'; _ctx.stroke();
                 _ctx.fillRect(-s*0.2, -s*1.1, s*0.4, s*0.5);
                 break;
-
             case 'CONCENTRIC_REDUCER':
             case 'ECCENTRIC_REDUCER':
                 _ctx.beginPath();
@@ -485,8 +654,10 @@ const SmartFlowRenderer = (function() {
                     _ctx.stroke();
                 }
                 break;
-
             case 'WELD_NECK_FLANGE':
+                _ctx.fillRect(-s/4, -s, s/2, s*2);
+                _ctx.strokeRect(-s/4, -s, s/2, s*2);
+                break;
             case 'SLIP_ON_FLANGE':
             case 'BLIND_FLANGE':
             case 'LAP_JOINT_FLANGE':
@@ -506,17 +677,7 @@ const SmartFlowRenderer = (function() {
                     _ctx.lineTo(-s*0.4, s*0.6);
                     _ctx.stroke();
                 }
-                if (comp.type === 'WELD_NECK_FLANGE') {
-                    _ctx.beginPath();
-                    _ctx.moveTo(-s*0.8, -s*0.4);
-                    _ctx.lineTo(-s*0.6, -s*0.4);
-                    _ctx.lineTo(-s*0.6, s*0.4);
-                    _ctx.lineTo(-s*0.8, s*0.4);
-                    _ctx.fill();
-                    _ctx.stroke();
-                }
                 break;
-
             case 'PRESSURE_GAUGE':
                 _ctx.beginPath();
                 _ctx.arc(0, -s, s*0.8, 0, Math.PI*2);
@@ -531,7 +692,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineTo(s*0.3, -s*0.2);
                 _ctx.stroke();
                 break;
-                
             case 'TEMPERATURE_GAUGE':
                 _ctx.beginPath();
                 _ctx.arc(0, -s, s*0.8, 0, Math.PI*2);
@@ -546,7 +706,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.arc(0, -s*0.8, s*0.15, 0, Math.PI*2);
                 _ctx.fill();
                 break;
-                
             case 'FLOW_METER':
                 _ctx.beginPath();
                 _ctx.ellipse(0, 0, s*0.5, s*0.8, Math.PI/2, 0, Math.PI*2);
@@ -560,7 +719,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.font = `${s*0.8}px Arial`;
                 _ctx.fillText('FM', -s*0.6, -s*1.1);
                 break;
-
             case 'TEE_EQUAL':
             case 'TEE_REDUCING':
                 _ctx.beginPath();
@@ -580,7 +738,6 @@ const SmartFlowRenderer = (function() {
                     _ctx.fill();
                 }
                 break;
-                
             case 'CROSS':
                 _ctx.beginPath();
                 _ctx.moveTo(0, -s*1.2);
@@ -593,7 +750,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.fill();
                 _ctx.stroke();
                 break;
-                
             case 'CAP':
                 _ctx.beginPath();
                 _ctx.arc(0, 0, s*0.6, 0, Math.PI, true);
@@ -607,7 +763,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineTo(s, 0);
                 _ctx.stroke();
                 break;
-
             case 'ELBOW_45':
                 _ctx.beginPath();
                 _ctx.arc(0, 0, s*0.8, 0, Math.PI/4);
@@ -617,7 +772,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.fillStyle = '#fff';
                 _ctx.fill();
                 break;
-                
             case 'ELBOW_90_LR':
             case 'ELBOW_90_SR':
                 const radio = comp.type === 'ELBOW_90_LR' ? s*1.2 : s*0.7;
@@ -629,7 +783,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.fillStyle = '#fff';
                 _ctx.fill();
                 break;
-
             case 'TRANSITION':
                 _ctx.beginPath();
                 _ctx.rect(-s, -s/2, s, s);
@@ -643,7 +796,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineWidth = 2;
                 _ctx.strokeRect(-s, -s/2, s, s);
                 break;
-
             case 'UNION':
                 _ctx.beginPath();
                 _ctx.moveTo(-s*0.3, -s); _ctx.lineTo(-s*0.3, s);
@@ -651,7 +803,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.stroke();
                 _ctx.strokeRect(-s*0.5, -s*0.5, s, s);
                 break;
-
             case 'BULKHEAD':
                 _ctx.beginPath();
                 _ctx.moveTo(-s*0.2, -s*1.2); _ctx.lineTo(-s*0.2, s*1.2);
@@ -662,7 +813,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.strokeStyle = '#fff';
                 _ctx.strokeRect(-s, -s*0.5, s*2, s);
                 break;
-
             case 'Y_STRAINER':
                 _ctx.beginPath();
                 _ctx.moveTo(-s, 0);
@@ -677,20 +827,17 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineTo(s, 0);
                 _ctx.stroke();
                 break;
-
             case 'PIPE_SHOE':
                 _ctx.fillRect(-s*0.8, s*0.3, s*1.6, s*0.3);
                 _ctx.strokeRect(-s*0.8, s*0.3, s*1.6, s*0.3);
                 _ctx.fillRect(-s*0.4, s*0.6, s*0.8, s*0.3);
                 break;
-                
             case 'U_BOLT':
                 _ctx.beginPath();
                 _ctx.arc(0, 0, s*0.6, 0, Math.PI);
                 _ctx.stroke();
                 _ctx.fillRect(-s*0.8, 0, s*1.6, s*0.2);
                 break;
-                
             case 'GUIDE':
                 _ctx.fillRect(-s*0.4, s*0.3, s*0.8, s*0.4);
                 _ctx.beginPath();
@@ -700,7 +847,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.closePath();
                 _ctx.fill();
                 break;
-                
             case 'ANCHOR':
                 _ctx.fillRect(-s*0.5, s*0.3, s*1.0, s*0.5);
                 _ctx.beginPath();
@@ -710,7 +856,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.strokeStyle = '#ef4444';
                 _ctx.stroke();
                 break;
-
             default:
                 _ctx.fillRect(-s, -s, s*2, s*2);
                 _ctx.strokeRect(-s, -s, s*2, s*2);
@@ -718,7 +863,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.font = `${s}px Arial`;
                 _ctx.fillText(comp.type?.substring(0,2) || '?', -s*0.5, s*0.5);
         }
-        
         _ctx.restore();
     }
 
@@ -866,10 +1010,138 @@ const SmartFlowRenderer = (function() {
         const imgData = _canvas.toDataURL('image/png');
         doc.addImage(imgData, 'PNG', 10, 10, 277, 150);
         doc.setFontSize(16);
-        doc.text("SmartFlow Pro - Reporte Isometrico", 10, 175);
+        doc.text("SmartProject - Reporte Isometrico", 10, 175);
         doc.text(`Fecha: ${new Date().toLocaleString()}`, 10, 185);
-        doc.save(`isometrico_${Date.now()}.pdf`);
+        doc.save(`${window.currentProjectName || 'Proyecto'}_Isometrico_${Date.now()}.pdf`);
         _notifyUI("PDF generado correctamente.", false);
+    }
+
+    // ============================================================
+    // FUNCIONES AUXILIARES PARA EXPORTACIÓN PCF (ÁMBITO PRIVADO)
+    // ============================================================
+    
+    // Mapeo de tipos internos a SKEYs estándar de ISOGEN
+    const skeyMap = {
+        // Válvulas
+        'GATE_VALVE': 'VAGF',
+        'GLOBE_VALVE': 'VGLF',
+        'BUTTERFLY_VALVE': 'VBAF',
+        'BALL_VALVE': 'VBAL',
+        'VALVE_BALL': 'VBAL',
+        'CHECK_VALVE': 'VCFF',
+        'DIAPHRAGM_VALVE': 'VDIA',
+        'CONTROL_VALVE': 'VCON',
+        'PRESSURE_RELIEF': 'VPRV',
+        'SAFETY_VALVE': 'VSFT',
+        // Bridas
+        'WELD_NECK_FLANGE': 'FLWN',
+        'SLIP_ON_FLANGE': 'FLSO',
+        'BLIND_FLANGE': 'FLBL',
+        'LAP_JOINT_FLANGE': 'FLLJ',
+        // Codos
+        'ELBOW_90_LR': 'ELBW',
+        'ELBOW_90_SR': 'ELBS',
+        'ELBOW_45': 'ELL4',
+        'ELBOW_90_PPR': 'ELBW',
+        'ELBOW_45_PPR': 'ELL4',
+        'CODO_90_ACERO_3IN': 'ELBW',
+        // Reductores
+        'CONCENTRIC_REDUCER': 'RECN',
+        'ECCENTRIC_REDUCER': 'REEC',
+        // Tees y derivaciones
+        'TEE_EQUAL': 'TEE',
+        'TEE_REDUCING': 'TEER',
+        'TEE_PPR': 'TEE',
+        'CROSS': 'CROS',
+        'CAP': 'CAPF',
+        // Soportes
+        'PIPE_SHOE': 'SHOE',
+        'U_BOLT': 'UBOL',
+        'GUIDE': 'GUID',
+        'ANCHOR': 'ANCH',
+        // Otros
+        'TRANSITION': 'TRAN',
+        'UNION': 'UNIO',
+        'BULKHEAD': 'BULK',
+        'Y_STRAINER': 'STRY',
+        'PRESSURE_GAUGE': 'INPG',
+        'TEMPERATURE_GAUGE': 'INTG',
+        'FLOW_METER': 'INFM'
+    };
+
+    // Calcula las coordenadas aproximadas de un componente a lo largo de la línea
+    function calculateComponentPosition(line, param) {
+        const pts = line._cachedPoints || line.points3D;
+        if (!pts || pts.length < 2) return null;
+        
+        let lengths = [];
+        let totalLen = 0;
+        for (let i = 0; i < pts.length - 1; i++) {
+            let d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+            lengths.push(d);
+            totalLen += d;
+        }
+        if (totalLen === 0) return null;
+        
+        const targetLen = totalLen * param;
+        let currentAccum = 0;
+        let segIndex = 0;
+        let t = 0;
+        
+        for (let i = 0; i < lengths.length; i++) {
+            if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) {
+                segIndex = i;
+                let segLen = lengths[i];
+                if (segLen > 0) t = (targetLen - currentAccum) / segLen;
+                else t = 0;
+                t = Math.min(1, Math.max(0, t));
+                break;
+            }
+            currentAccum += lengths[i];
+        }
+        
+        const p1 = pts[segIndex];
+        const p2 = pts[segIndex + 1];
+        const compPos = {
+            x: p1.x + (p2.x - p1.x) * t,
+            y: p1.y + (p2.y - p1.y) * t,
+            z: p1.z + (p2.z - p1.z) * t
+        };
+        
+        return {
+            p1: compPos,
+            p2: compPos
+        };
+    }
+
+    function generatePCFHeader(line) {
+        const db = _core.getDb();
+        const projectName = window.currentProjectName || db.projectName || 'ACQ-PROJECT';
+        return [
+            `ISOGEN-FILES PCF.STYLE`,
+            `UNITS-BORMM             MM`,
+            `UNITS-COOR              MM`,
+            `UNITS-WEIGHT            KG`,
+            `PIPELINE-REFERENCE      ${line.tag}`,
+            `REVISION                ${line.revision || '0'}`,
+            `PROJECT-IDENTIFIER      ${projectName}`,
+            `ATTRIBUTE1              ${line.service || 'PROCESS'}`,
+            `ATTRIBUTE2              ${line.spec || 'UNSPECIFIED'}`,
+            `END-POSITION-CHECK      OFF`
+        ].join('\n');
+    }
+
+    function formatComponentPCF(comp, pos, diameterMM) {
+        const skey = skeyMap[comp.type] || 'MISC';
+        return [
+            `${comp.type}`,
+            `    END-POINT           ${pos.p1.x.toFixed(2)} ${pos.p1.y.toFixed(2)} ${pos.p1.z.toFixed(2)}  ${diameterMM.toFixed(2)}`,
+            `    END-POINT           ${pos.p2.x.toFixed(2)} ${pos.p2.y.toFixed(2)} ${pos.p2.z.toFixed(2)}  ${diameterMM.toFixed(2)}`,
+            `    SKEY                ${skey}`,
+            `    ITEM-CODE           ${comp.itemCode || comp.type}`,
+            `    ITEM-DESCRIPTION    ${comp.description || comp.nombre || comp.type}`,
+            `    FABRICATION-ITEM`
+        ].join('\n');
     }
 
     function exportPCF() {
@@ -880,38 +1152,55 @@ const SmartFlowRenderer = (function() {
         
         const db = _core.getDb();
         const lines = db?.lines || [];
-        let pcf = `!PCF v12.0 - SmartFlow Pro\nUNITS MM\n`;
+        if (lines.length === 0) {
+            _notifyUI("No hay líneas para exportar.", true);
+            return;
+        }
         
-        for (let line of lines) {
+        let pcfContent = "";
+        
+        lines.forEach(line => {
             const pts = line._cachedPoints || line.points3D;
-            if (!pts || pts.length < 2) continue;
+            if (!pts || pts.length < 2) return;
             
-            pcf += `PIPE\n`;
-            pcf += `    COMPONENT-IDENTIFIER ${line.tag}\n`;
-            pcf += `    DIAMETER ${(line.diameter * 25.4).toFixed(2)} MM\n`;
-            pcf += `    MATERIAL ${line.material || 'PPR'}\n`;
-            if (line.spec) pcf += `    SPEC ${line.spec}\n`;
+            const diamMM = (line.diameter || 4) * 25.4;
             
-            pts.forEach((p) => {
-                pcf += `    POINT ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}\n`;
-            });
+            pcfContent += generatePCFHeader(line) + "\n";
+            
+            for (let i = 0; i < pts.length - 1; i++) {
+                const p1 = pts[i];
+                const p2 = pts[i+1];
+                if (!p1.isControlPoint && !p2.isControlPoint) {
+                    pcfContent += "PIPE\n";
+                    pcfContent += `    END-POINT           ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} ${p1.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+                    pcfContent += `    END-POINT           ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} ${p2.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+                    pcfContent += `    ITEM-CODE           PIPE-${line.material || 'PPR'}-${line.diameter}IN\n`;
+                    pcfContent += `    SKEY                PIPE\n`;
+                    pcfContent += `    FABRICATION-ITEM\n`;
+                }
+            }
             
             if (line.components && line.components.length > 0) {
                 line.components.forEach(comp => {
-                    pcf += `    COMPONENT ${comp.type} ${comp.tag || 'UNKNOWN'}\n`;
+                    const pos = calculateComponentPosition(line, comp.param || 0.5);
+                    if (pos) {
+                        pcfContent += formatComponentPCF(comp, pos, diamMM) + "\n";
+                    }
                 });
             }
             
-            pcf += `ENDPIPE\n\n`;
-        }
+            pcfContent += "\n";
+        });
         
-        const blob = new Blob([pcf], { type: 'text/plain' });
+        const blob = new Blob([pcfContent], { type: 'text/plain' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `proyecto_${Date.now()}.pcf`;
+        const projectName = window.currentProjectName || 'Proyecto';
+        const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+        a.download = `${projectName}_PCF_${timestamp}.pcf`;
         a.click();
         
-        _notifyUI("Archivo PCF exportado correctamente.", false);
+        _notifyUI("Archivo PCF exportado correctamente con estándar ISOGEN.", false);
     }
 
     function init(canvasElement, coreInstance, notifyFn) {
@@ -956,3 +1245,4 @@ const SmartFlowRenderer = (function() {
     };
 
 })();
+ 
