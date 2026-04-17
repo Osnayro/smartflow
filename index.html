@@ -1,5 +1,4 @@
-
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -115,26 +114,33 @@
             margin-bottom: 25px;
         }
 
-        /* SOLUCIÓN MAESTRA: ELIMINA EL DAMERO Y DEJA SOLO EL BRILLO */
+        /* SOLUCIÓN DEFINITIVA: ELIMINA EL DAMERO EN TODOS LOS NAVEGADORES */
         .home-logo-img {
             width: 110px;
             height: auto;
             margin-bottom: 20px;
-            /* Truco de ingeniería: proyecta solo los colores claros */
-            mix-blend-mode: screen;
-            /* Toque neón AcQuaBlue */
-            filter: brightness(1.2) drop-shadow(0 0 15px rgba(0, 242, 255, 0.7));
-            transition: transform 0.3s ease;
+
+            /* 1. ELIMINA EL PATRÓN DE CUADROS: Mezcla el logo con el fondo */
+            mix-blend-mode: screen; 
+
+            /* 2. POTENCIA EL COLOR: Hace que el cian resalte */
+            filter: brightness(1.3) contrast(1.1);
+
+            /* 3. AURA DE INGENIERÍA: Un brillo neón suave y borde redondeado para suavizar */
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2); 
+            border-radius: 50%; /* Ayuda a suavizar bordes si quedan restos */
+            
+            /* Mantenemos la animación sutil */
             animation: pulseLogo 3s infinite ease-in-out;
         }
 
         .home-logo-img:hover {
-            transform: scale(1.1);
+            transform: scale(1.05);
         }
 
         @keyframes pulseLogo {
-            0%, 100% { transform: scale(1); opacity: 0.9; }
-            50% { transform: scale(1.05); opacity: 1; }
+            0%, 100% { transform: scale(1); opacity: 0.95; }
+            50% { transform: scale(1.03); opacity: 1; }
         }
 
         .header-names {
