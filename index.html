@@ -1,5 +1,3 @@
-.PNG.
-
 
 <!DOCTYPE html>
 <html lang="es">
@@ -120,7 +118,9 @@
         .home-logo-img {
             width: 100px;
             height: auto;
-            filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.8));
+            /* Solución de ingeniería: elimina el recuadro fantasma */
+            mix-blend-mode: screen;
+            filter: brightness(1.1) drop-shadow(0 0 12px rgba(0, 242, 255, 0.6));
             transition: transform 0.3s ease;
             animation: pulseLogo 3s infinite ease-in-out;
         }
