@@ -1,11 +1,11 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.0
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.1
 // Archivo: js/renderer.js
 // Propósito: Manejar toda la lógica de proyección isométrica,
 //            dibujo en Canvas 2D con jerarquía visual profesional,
-//            exportación (PDF/PCF) y acotación inteligente.
-//            v17.0: Etiquetas isométricas, radio PPR, símbolos de instrumentación.
+//            texto isométrico deformado, flechas de flujo, acotación
+//            inteligente, exportación (PDF/PCF) y más.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -116,9 +116,8 @@ const SmartFlowRenderer = (function() {
         _ctx.fill(); 
         _ctx.stroke();
         
-        _ctx.fillStyle = 'white'; 
-        _ctx.font = `bold ${Math.max(12, 14*_cam.scale)}px Arial`; 
-        _ctx.fillText(eq.tag, p.x-18, topY-10);
+        // Etiqueta del tanque con texto isométrico (plano XY)
+        drawIsoText(eq.tag, p.x, topY - 10, 'XY');
         
         drawPuertos(eq);
     }
@@ -141,9 +140,7 @@ const SmartFlowRenderer = (function() {
         _ctx.lineTo(p.x+rad, p.y); 
         _ctx.stroke();
         
-        _ctx.fillStyle = 'white'; 
-        _ctx.font = `bold ${Math.max(12, 14*_cam.scale)}px Arial`;
-        _ctx.fillText(eq.tag, p.x+18, p.y-5);
+        drawIsoText(eq.tag, p.x + 20, p.y - 5, 'XY');
         
         drawPuertos(eq);
     }
@@ -159,9 +156,7 @@ const SmartFlowRenderer = (function() {
         _ctx.lineWidth = Math.max(4, (eq.diametro || 4) * _cam.scale); 
         _ctx.stroke();
         
-        _ctx.fillStyle = 'white'; 
-        _ctx.font = `bold ${Math.max(12, 14*_cam.scale)}px Arial`;
-        _ctx.fillText(eq.tag, pIzq.x-15, pIzq.y-10);
+        drawIsoText(eq.tag, (pIzq.x + pDer.x)/2, pIzq.y - 15, 'ZY');
         
         drawPuertos(eq);
     }
@@ -176,9 +171,7 @@ const SmartFlowRenderer = (function() {
         _ctx.strokeStyle = 'white'; 
         _ctx.strokeRect(p.x-w, p.y-h, w*2, h*2);
         
-        _ctx.fillStyle = 'white'; 
-        _ctx.font = `bold ${Math.max(12, 14*_cam.scale)}px Arial`;
-        _ctx.fillText(eq.tag, p.x-15, p.y-10);
+        drawIsoText(eq.tag, p.x, p.y - h - 5, 'XY');
         
         drawPuertos(eq);
     }
@@ -205,8 +198,7 @@ const SmartFlowRenderer = (function() {
         _ctx.fill();
         _ctx.stroke();
         
-        _ctx.fillStyle = 'white'; 
-        _ctx.fillText(eq.tag, p.x-15, p.y-10);
+        drawIsoText(eq.tag, p.x, p.y - h - 5, 'XY');
         
         drawPuertos(eq);
     }
@@ -257,13 +249,75 @@ const SmartFlowRenderer = (function() {
             _ctx.lineWidth = 1;
             _ctx.stroke();
             
-            _ctx.fillStyle = 'white'; 
-            _ctx.font = '9px monospace'; 
-            _ctx.fillText(`${nz.id} ${nz.diametro || 3}"`, proj.x-12, proj.y-6);
+            drawIsoText(`${nz.id} ${nz.diametro || 3}"`, proj.x - 12, proj.y - 6, 'XY');
         });
     }
 
-    // -------------------- 4. DIBUJO DE TUBERÍAS Y ACOTACIÓN INTELIGENTE --------------------
+    // -------------------- 4. TEXTO ISOMÉTRICO CON DEFORMACIÓN --------------------
+    /**
+     * Dibuja texto con la deformación isométrica adecuada.
+     * @param {string} text - Texto a dibujar.
+     * @param {number} x - Coordenada X en pantalla.
+     * @param {number} y - Coordenada Y en pantalla.
+     * @param {string} plane - Plano isométrico: 'XY' (eje X, 30°), 'ZY' (eje Z, -30°), 'XZ' (planta).
+     */
+    function drawIsoText(text, x, y, plane = 'XY') {
+        if (!text) return;
+        _ctx.save();
+        _ctx.font = `bold ${Math.max(10, 12 * _cam.scale)}px monospace`;
+        _ctx.textAlign = 'center';
+        _ctx.textBaseline = 'bottom';
+
+        // Matriz de transformación isométrica
+        // [m11, m12, m21, m22, dx, dy]
+        if (plane === 'XY') {
+            // Alineado al eje X (30 grados)
+            _ctx.setTransform(1, 0.5, 0, 1, x, y); 
+        } else if (plane === 'ZY') {
+            // Alineado al eje Z (-30 grados)
+            _ctx.setTransform(1, -0.5, 0, 1, x, y);
+        } else {
+            // Plano de planta (XZ)
+            _ctx.setTransform(1, -0.5, 1, 0.5, x, y);
+        }
+
+        // Halo para legibilidad sobre líneas de rejilla
+        _ctx.strokeStyle = '#000';
+        _ctx.lineWidth = 3;
+        _ctx.strokeText(text, 0, 0);
+        _ctx.fillStyle = '#facc15';
+        _ctx.fillText(text, 0, 0);
+
+        _ctx.restore();
+        // Resetear la transformación para el resto del dibujo
+        _ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    // -------------------- 5. FLECHA DE DIRECCIÓN DE FLUJO --------------------
+    function drawFlowArrow(p1, p2, diameter) {
+        const proj1 = project(p1);
+        const proj2 = project(p2);
+        const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x);
+        const midX = (proj1.x + proj2.x) / 2;
+        const midY = (proj1.y + proj2.y) / 2;
+
+        _ctx.save();
+        _ctx.translate(midX, midY);
+        _ctx.rotate(angle);
+        
+        _ctx.beginPath();
+        _ctx.moveTo(-10, -6);
+        _ctx.lineTo(6, 0);
+        _ctx.lineTo(-10, 6);
+        _ctx.fillStyle = '#ffffff';
+        _ctx.shadowColor = '#00f2ff';
+        _ctx.shadowBlur = 6;
+        _ctx.fill();
+        _ctx.shadowBlur = 0;
+        _ctx.restore();
+    }
+
+    // -------------------- 6. DIBUJO DE TUBERÍAS Y ACOTACIÓN --------------------
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -404,30 +458,6 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    // Nueva función para texto con orientación isométrica
-    function drawIsometricText(text, x, y, angle) {
-        _ctx.save();
-        _ctx.translate(x, y);
-        
-        // Determinar si el texto debe seguir el eje X (30°) o Z (-30°)
-        let isoAngle = (Math.abs(angle) > Math.PI/4 && Math.abs(angle) < 3*Math.PI/4) ? 0 : 
-                       (angle > 0 ? Math.PI/6 : -Math.PI/6);
-        
-        _ctx.rotate(isoAngle);
-        
-        // Estilo Acquablue: Fondo semi-transparente para legibilidad
-        const tw = _ctx.measureText(text).width;
-        _ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
-        _ctx.fillRect(-tw/2 - 2, -12, tw + 4, 14);
-        
-        _ctx.fillStyle = '#f8fafc';
-        _ctx.font = `bold ${Math.max(10, 11 * _cam.scale)}px monospace`;
-        _ctx.textAlign = 'center';
-        _ctx.textBaseline = 'middle';
-        _ctx.fillText(text, 0, 0);
-        _ctx.restore();
-    }
-
     function drawPipeWithElbows(line) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return;
@@ -447,7 +477,6 @@ const SmartFlowRenderer = (function() {
             }
         }
         
-        // MEJORA v17.0: Radio de curvatura específico para PPR
         const isPPR = line.material === 'PPR' || (line.spec && line.spec.includes('PPR'));
         const radioBase = isPPR ? (line.diameter * 25.4 * 0.8) : (line.diameter * 25.4 * 1.5);
         const radio = Math.min(radioBase, 350);
@@ -479,7 +508,6 @@ const SmartFlowRenderer = (function() {
         const last = project(pts[pts.length-1]);
         _ctx.lineTo(last.x, last.y);
         
-        // Grosor jerárquico y estilo profesional
         const baseWidth = (line.diameter || 4) * _cam.scale;
         _ctx.lineWidth = Math.max(3, baseWidth);
         _ctx.lineCap = 'round';
@@ -510,17 +538,23 @@ const SmartFlowRenderer = (function() {
             }
         }
 
-        // Dibujar etiqueta de línea con orientación isométrica
+        // Etiqueta de línea con texto isométrico
         if (line.tag && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], 
                         Math.hypot(pts[pts.length-1].x - pts[0].x, 
                                    pts[pts.length-1].y - pts[0].y, 
                                    pts[pts.length-1].z - pts[0].z) / 2);
             const projMid = project(midPt);
+            // Determinar plano según la dirección predominante
             const dx = pts[1].x - pts[0].x;
             const dz = pts[1].z - pts[0].z;
-            const lineAngle = Math.atan2(dz, dx);
-            drawIsometricText(line.tag, projMid.x, projMid.y - 15 * _cam.scale, lineAngle);
+            const plane = Math.abs(dx) > Math.abs(dz) ? 'XY' : 'ZY';
+            drawIsoText(line.tag, projMid.x, projMid.y - 15 * _cam.scale, plane);
+        }
+
+        // Flecha de flujo si está definida
+        if (line.flowDirection && pts.length >= 2) {
+            drawFlowArrow(pts[0], pts[pts.length-1], line.diameter);
         }
     }
 
@@ -565,9 +599,8 @@ const SmartFlowRenderer = (function() {
             
             drawSymbol(proj.x, proj.y, angle, comp);
             
-            // Dibujar etiqueta del componente si tiene tag
             if (comp.tag) {
-                drawIsometricText(comp.tag, proj.x, proj.y - 20 * _cam.scale, angle);
+                drawIsoText(comp.tag, proj.x, proj.y - 20 * _cam.scale, 'XY');
             }
         });
     }
@@ -872,7 +905,6 @@ const SmartFlowRenderer = (function() {
                 _ctx.stroke();
                 break;
             case 'LEVEL_SWITCH_RANA':
-                // Dibujo del flotador tipo rana según inventario de Génica
                 _ctx.beginPath();
                 _ctx.arc(0, 0, s*0.5, 0, Math.PI*2);
                 _ctx.stroke();
