@@ -1,20 +1,14 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.0
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v12.0
 // Archivo: js/main.js
 // Propósito: Inicializar todos los módulos, cablear eventos de UI,
 //            gestionar el ciclo de vida de la aplicación y
 //            manejar guardado/carga de proyectos.
-//            Soporta alternancia entre Renderer 2D y 3D.
 // ============================================================
 
 (function() {
     "use strict";
-    
-    // ==================== CONFIGURACIÓN DE MODO DE RENDERIZADO ====================
-    // Cambie a true para usar el motor 3D (Three.js). false para el motor 2D clásico.
-    const USE_3D = false;
-    // =============================================================================
     
     // -------------------- 1. REFERENCIAS AL DOM --------------------
     const canvas = document.getElementById('isoCanvas');
@@ -55,7 +49,6 @@
     // -------------------- 2. ESTADO DE LA APLICACIÓN --------------------
     let toolMode = 'select';
     let voiceEnabled = true;
-    let SmartFlowRenderer = null;  // Referencia al renderizador activo
     
     let draggingEquipment = false;
     let draggedEquip = null;
@@ -65,6 +58,7 @@
     
     // -------------------- 3. FUNCIONES DE UI --------------------
     function notify(msg, isErr = false) {
+        console.log("[notify] " + msg);
         if (notificationEl) {
             notificationEl.textContent = msg;
             notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
@@ -87,64 +81,101 @@
     }
     
     function render() {
-        if (SmartFlowRenderer) {
+        if (typeof SmartFlowRenderer !== 'undefined') {
             SmartFlowRenderer.render();
         }
     }
     
     function autoCenter() {
-        if (SmartFlowRenderer) {
+        console.log("[main.js] autoCenter() llamado");
+        
+        if (typeof SmartFlowRenderer === 'undefined') {
+            console.error("[main.js] SmartFlowRenderer no definido");
+            notify("Error: Renderer no disponible", true);
+            return;
+        }
+        
+        if (!canvas) {
+            console.error("[main.js] Canvas no encontrado");
+            return;
+        }
+        
+        if (canvas.width === 0 || canvas.height === 0) {
+            console.log("[main.js] Canvas sin dimensiones, reintentando...");
+            setTimeout(() => autoCenter(), 50);
+            return;
+        }
+        
+        try {
             SmartFlowRenderer.autoCenter();
+            render();
+            console.log("[main.js] Vista centrada correctamente");
+            notify("Vista centrada", false);
+        } catch (e) {
+            console.error("[main.js] Error al centrar:", e);
+            notify("Error al centrar la vista", true);
         }
     }
     
     // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
-    async function initModules() {
-        SmartFlowCore.init(notify, render);
+    function waitForModules(callback) {
+        let attempts = 0;
+        const maxAttempts = 100;
         
-        if (USE_3D) {
-            try {
-                const module = await import('./renderer3d.js');
-                const Renderer3D = module.SmartFlowRenderer3D;
-                SmartFlowRenderer = Renderer3D;
-                Renderer3D.init(canvas, SmartFlowCore, notify);
-                notify("SmartProject - Modo 3D Activado", false);
-            } catch (e) {
-                console.error("Error cargando renderer 3D, usando 2D:", e);
-                SmartFlowRenderer = window.SmartFlowRenderer2D || SmartFlowRenderer;
-                if (SmartFlowRenderer) {
-                    SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
-                }
-                notify("SmartProject - Modo 2D (fallback)", false);
-            }
-        } else {
-            // Cargar renderer 2D tradicional (debe estar en window)
-            SmartFlowRenderer = window.SmartFlowRenderer;
-            if (SmartFlowRenderer) {
-                SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
+        function check() {
+            attempts++;
+            
+            const coreReady = typeof SmartFlowCore !== 'undefined';
+            const rendererReady = typeof SmartFlowRenderer !== 'undefined';
+            const commandsReady = typeof SmartFlowCommands !== 'undefined';
+            const catalogReady = typeof SmartFlowCatalog !== 'undefined';
+            
+            console.log(`[main.js] Intento ${attempts}: Core=${coreReady}, Renderer=${rendererReady}, Commands=${commandsReady}, Catalog=${catalogReady}`);
+            
+            if (coreReady && rendererReady && commandsReady && catalogReady) {
+                console.log("[main.js] Todos los módulos listos. Inicializando...");
+                callback();
+            } else if (attempts < maxAttempts) {
+                setTimeout(check, 100);
             } else {
-                console.error("SmartFlowRenderer 2D no encontrado");
+                console.error("[main.js] Timeout esperando módulos");
+                notify("Error: No se cargaron los módulos JS", true);
             }
-            notify("SmartProject - Modo 2D", false);
         }
         
+        check();
+    }
+    
+    function initModules() {
+        console.log("[main.js] Inicializando módulos...");
+        
+        SmartFlowCore.init(notify, render);
+        SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, render);
+        
+        notify("SmartFlow Pro v12.0 - Catálogo Industrial Extendido", false);
     }
     
     // -------------------- 5. GESTIÓN DE PROYECTOS --------------------
     function guardarProyecto() {
-        const state = SmartFlowCore.exportProject();
-        localStorage.setItem('smartproject_v2_project', state);
-        notify("Proyecto guardado en el navegador.", false);
+        if (typeof SmartFlowCore !== 'undefined') {
+            const state = SmartFlowCore.exportProject();
+            localStorage.setItem('smartflow_v12_project', state);
+            notify("Proyecto guardado en el navegador.", false);
+        }
     }
     
     function cargarProyecto() {
-        const data = localStorage.getItem('smartproject_v2_project');
+        const data = localStorage.getItem('smartflow_v12_project');
         if (data) {
             try {
                 const state = JSON.parse(data);
-                SmartFlowCore.importState(state.data || state);
-                autoCenter();
+                if (typeof SmartFlowCore !== 'undefined') {
+                    SmartFlowCore.importState(state.data || state);
+                }
+                setTimeout(() => {
+                    autoCenter();
+                }, 100);
                 notify("Proyecto cargado correctamente.", false);
             } catch (e) {
                 notify("Error al cargar el proyecto: archivo corrupto.", true);
@@ -156,13 +187,23 @@
     
     function nuevoProyecto() {
         if (confirm("¿Desea crear un nuevo proyecto? Se perderán los cambios no guardados.")) {
-            SmartFlowCore.nuevoProyecto();
-            autoCenter();
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.nuevoProyecto();
+            }
+            setTimeout(() => {
+                autoCenter();
+            }, 100);
+            notify("Nuevo proyecto creado.", false);
         }
     }
     
-    // -------------------- 6. MTO EXPANDIDO --------------------
+    // -------------------- 6. MTO EXPANDIDO (v12.0) --------------------
     function exportarMTO() {
+        if (typeof SmartFlowCore === 'undefined') {
+            notify("Core no disponible", true);
+            return;
+        }
+        
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
         
@@ -236,6 +277,11 @@
             return;
         }
         
+        if (typeof XLSX === 'undefined') {
+            notify("Librería XLSX no disponible.", true);
+            return;
+        }
+        
         const ws = XLSX.utils.aoa_to_sheet([["Tag", "Descripción", "Unidad", "Cantidad"], ...items]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "MTO");
@@ -244,6 +290,11 @@
     }
     
     function resumenProyecto() {
+        if (typeof SmartFlowCore === 'undefined') {
+            notify("Core no disponible", true);
+            return;
+        }
+        
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
         
@@ -258,7 +309,7 @@
             if (pts) totalCodos += Math.max(0, pts.filter(p => !p.isControlPoint).length - 2);
             if (l.components) {
                 l.components.forEach(c => {
-                    if (c.type.includes('VALVE')) totalValvulas++;
+                    if (c.type && c.type.includes('VALVE')) totalValvulas++;
                 });
             }
         });
@@ -287,15 +338,23 @@
     }
     
     function setElevation(level) {
-        SmartFlowCore.setElevation(level);
-        if (SmartFlowRenderer) SmartFlowRenderer.setElevation(level);
+        if (typeof SmartFlowCore !== 'undefined') {
+            SmartFlowCore.setElevation(level);
+        }
+        if (typeof SmartFlowRenderer !== 'undefined') {
+            SmartFlowRenderer.setElevation(level);
+        }
         if (customElev) customElev.value = level;
+        notify(`Elevación: ${level} mm`, false);
     }
     
     function toggleVoice() {
         voiceEnabled = !voiceEnabled;
-        SmartFlowCore.setVoice(voiceEnabled);
-        if (btnVoice) btnVoice.textContent = voiceEnabled ? "Voz ON" : "Voz OFF";
+        if (typeof SmartFlowCore !== 'undefined') {
+            SmartFlowCore.setVoice(voiceEnabled);
+        }
+        if (btnVoice) btnVoice.textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF";
+        notify(voiceEnabled ? "Voz activada" : "Voz desactivada", false);
     }
     
     // -------------------- 8. EVENTOS DEL CANVAS --------------------
@@ -313,6 +372,10 @@
     }
     
     function pickElement(mouseCanvas) {
+        if (typeof SmartFlowCore === 'undefined' || typeof SmartFlowRenderer === 'undefined') {
+            return null;
+        }
+        
         const db = SmartFlowCore.getDb();
         const equipos = db?.equipos || [];
         const lines = db?.lines || [];
@@ -363,7 +426,9 @@
             const picked = pickElement(mouse);
             
             if (toolMode === 'select') {
-                SmartFlowCore.setSelected(picked);
+                if (typeof SmartFlowCore !== 'undefined') {
+                    SmartFlowCore.setSelected(picked);
+                }
                 render();
             } else if (toolMode === 'moveEq' && picked?.type === 'equipment') {
                 draggingEquipment = true;
@@ -380,7 +445,7 @@
         });
         
         window.addEventListener('mousemove', (e) => {
-            if (draggingEquipment && draggedEquip) {
+            if (draggingEquipment && draggedEquip && typeof SmartFlowRenderer !== 'undefined') {
                 const dx = (e.clientX - dragLastPos.x) / SmartFlowRenderer.getCam().scale;
                 const dy = (e.clientY - dragLastPos.y) / SmartFlowRenderer.getCam().scale;
                 
@@ -393,7 +458,7 @@
                 
                 dragLastPos = { x: e.clientX, y: e.clientY };
                 render();
-            } else if (panLocal) {
+            } else if (panLocal && typeof SmartFlowRenderer !== 'undefined') {
                 const dx = e.clientX - panStartLocal.x;
                 const dy = e.clientY - panStartLocal.y;
                 SmartFlowRenderer.pan(dx, dy);
@@ -402,93 +467,154 @@
         });
         
         window.addEventListener('mouseup', () => {
-            if (draggingEquipment) {
+            if (draggingEquipment && typeof SmartFlowCore !== 'undefined') {
                 SmartFlowCore.syncPhysicalData();
                 SmartFlowCore._saveState();
             }
             draggingEquipment = false;
             panLocal = false;
-            canvas.style.cursor = 'grab';
+            if (canvas) canvas.style.cursor = 'grab';
         });
         
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            SmartFlowRenderer.zoom(e.deltaY);
+            if (typeof SmartFlowRenderer !== 'undefined') {
+                SmartFlowRenderer.zoom(e.deltaY);
+            }
         });
     }
     
     // -------------------- 9. CABLEADO DE BOTONES --------------------
     function bindEvents() {
+        console.log("[main.js] Vinculando eventos...");
+        
         const vincular = (id, accion) => {
             const el = document.getElementById(id);
             if (el) {
                 el.onclick = accion;
+                console.log("[main.js] Botón vinculado: " + id);
             } else {
-                console.warn("Botón no encontrado: " + id);
+                console.warn("[main.js] Botón NO encontrado: " + id);
             }
         };
-        
+
         vincular('btnNew', nuevoProyecto);
         vincular('btnOpen', cargarProyecto);
         vincular('btnSave', guardarProyecto);
         vincular('btnReset', autoCenter);
+        
         vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
         vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
         vincular('clearCommand', () => { if (commandText) commandText.value = ''; });
         vincular('runCommands', () => {
-            if (commandText) {
+            if (commandText && typeof SmartFlowCommands !== 'undefined') {
                 SmartFlowCommands.executeBatch(commandText.value);
                 if (commandPanel) commandPanel.style.display = 'none';
             }
         });
+
         vincular('btnAddTank', () => {
-            const equipos = SmartFlowCore.getEquipos();
-            const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
-            const ult = equipos[equipos.length - 1];
-            const x = ult ? ult.posX + 3000 : 0;
-            SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
+            if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
+                const equipos = SmartFlowCore.getEquipos();
+                const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
+                const ult = equipos[equipos.length - 1];
+                const x = ult ? ult.posX + 3000 : 0;
+                SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
+            }
         });
+        
         vincular('btnAddPump', () => {
-            const equipos = SmartFlowCore.getEquipos();
-            const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
-            const ult = equipos[equipos.length - 1];
-            const x = ult ? ult.posX + 3000 : 5000;
-            SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
+            if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
+                const equipos = SmartFlowCore.getEquipos();
+                const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
+                const ult = equipos[equipos.length - 1];
+                const x = ult ? ult.posX + 3000 : 5000;
+                SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
+            }
         });
+
         vincular('toolSelect', () => setTool('select'));
         vincular('toolMoveEq', () => setTool('moveEq'));
         vincular('toolEditPipe', () => setTool('editPipe'));
         vincular('toolAddPoint', () => setTool('addPoint'));
+
         vincular('btnMTO', exportarMTO);
-        vincular('btnPDF', () => { if (SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF(); });
-        vincular('btnToggleCatalog', () => {
-            if (catalogPanel) catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
+        vincular('btnPDF', () => { 
+            if (typeof SmartFlowRenderer !== 'undefined' && SmartFlowRenderer.exportPDF) {
+                SmartFlowRenderer.exportPDF(); 
+            }
         });
-        vincular('btnUndo', () => { SmartFlowCore.undo(); render(); });
-        vincular('btnRedo', () => { SmartFlowCore.redo(); render(); });
+        
+        vincular('btnToggleCatalog', () => {
+            if (catalogPanel) {
+                catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
+            }
+        });
+        
+        vincular('btnUndo', () => { 
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.undo(); 
+                render(); 
+            }
+        });
+        
+        vincular('btnRedo', () => { 
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.redo(); 
+                render(); 
+            }
+        });
+        
         vincular('btnVoice', toggleVoice);
         vincular('btnSpeakSummary', resumenProyecto);
-        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); render(); });
+        
+        vincular('btnRecalc', () => { 
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.syncPhysicalData(); 
+                render(); 
+            }
+            notify("Recalculado", false);
+        });
+        
         vincular('btnSetElev', () => {
             const val = parseInt(customElev?.value);
-            if (!isNaN(val)) setElevation(val);
+            if (!isNaN(val)) {
+                setElevation(val);
+            }
         });
-        vincular('btnApplyNorm', () => notify("Función de normas en desarrollo.", false));
         
-        window.addEventListener('resize', () => {
-            if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
-            autoCenter();
+        vincular('btnApplyNorm', () => {
+            notify("Función de normas en desarrollo.", false);
         });
+
+        window.addEventListener('resize', () => {
+            if (typeof SmartFlowRenderer !== 'undefined') {
+                SmartFlowRenderer.resizeCanvas();
+                autoCenter();
+            }
+        });
+        
+        console.log("[main.js] Todos los eventos vinculados correctamente.");
     }
     
     // -------------------- 10. ARRANQUE DE LA APLICACIÓN --------------------
-    async function init() {
-        await initModules();
-        bindEvents();
-        initCanvasEvents();
-        setTool('select');
-        setElevation(0);
-        autoCenter();
+    function init() {
+        console.log("[main.js] Iniciando aplicación...");
+        
+        waitForModules(() => {
+            initModules();
+            bindEvents();
+            initCanvasEvents();
+            
+            setTool('select');
+            setElevation(0);
+            
+            setTimeout(() => {
+                autoCenter();
+            }, 200);
+            
+            console.log("[main.js] Aplicación inicializada correctamente.");
+        });
     }
     
     init();
