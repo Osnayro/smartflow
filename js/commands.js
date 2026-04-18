@@ -1,10 +1,10 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v12.1
+// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v3.2
 // Archivo: js/commands.js
 // Propósito: Interpretar comandos de texto/voz y ejecutar acciones.
-//            Soporte completo para crear, editar, eliminar y rutear.
-//            Incluye importación PCF y catálogo extendido.
+//            Soporte completo para crear, editar, eliminar, rutear,
+//            auditoría, generación de BOM, importación PCF y accesibilidad.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -226,7 +226,34 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // -------------------- 3. PARSER DE ELIMINACIÓN --------------------
+    // -------------------- 3. PARSER DE RUTA AUTOMÁTICA --------------------
+    function parseRoute(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'route') return false;
+        if (parts[1] !== 'from') return false;
+        
+        const fromEquip = parts[2];
+        const fromNozzle = parts[3];
+        if (parts[4] !== 'to') return false;
+        const toEquip = parts[5];
+        const toNozzle = parts[6];
+        
+        let diameter = 3, material = 'PPR', spec = 'PPR_PN12_5';
+        for (let i = 7; i < parts.length; i++) {
+            if (parts[i] === 'diameter') diameter = parseFloat(parts[++i]);
+            else if (parts[i] === 'material') material = parts[++i].toUpperCase();
+            else if (parts[i] === 'spec') spec = parts[++i];
+        }
+        
+        if (typeof SmartFlowRouter !== 'undefined') {
+            SmartFlowRouter.routeBetweenPorts(fromEquip, fromNozzle, toEquip, toNozzle, diameter, material, spec);
+        } else {
+            _notifyUI("Módulo Router no disponible.", true);
+        }
+        return true;
+    }
+
+    // -------------------- 4. PARSER DE ELIMINACIÓN --------------------
     function parseDelete(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'delete') return false;
@@ -243,7 +270,6 @@ const SmartFlowCommands = (function() {
             }
             
             db.equipos.splice(index, 1);
-            
             db.lines = db.lines.filter(line => {
                 if (line.origin && line.origin.equipTag === tag) return false;
                 if (line.destination && line.destination.equipTag === tag) return false;
@@ -264,7 +290,6 @@ const SmartFlowCommands = (function() {
             }
             
             db.lines.splice(index, 1);
-            
             db.equipos.forEach(eq => {
                 if (eq.puertos) {
                     eq.puertos.forEach(p => {
@@ -282,7 +307,7 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // -------------------- 4. PARSER DE EDICIÓN --------------------
+    // -------------------- 5. PARSER DE EDICIÓN --------------------
     function parseEditCommand(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'edit') return false;
@@ -303,7 +328,6 @@ const SmartFlowCommands = (function() {
                     const y = parseFloat(m[2]);
                     const z = parseFloat(m[3]);
                     _core.updateEquipment(tag, { posX: x, posY: y, posZ: z });
-                    _core.syncPhysicalData();
                     _notifyUI(`Equipo ${tag} movido a (${x}, ${y}, ${z})`, false);
                     return true;
                 }
@@ -337,7 +361,6 @@ const SmartFlowCommands = (function() {
                             _core.updatePuerto(tag, puertoId, { dir: { dx: x, dy: y, dz: z } });
                             _notifyUI(`Puerto ${puertoId} de ${tag} dirección (${x}, ${y}, ${z})`, false);
                         }
-                        _core.syncPhysicalData();
                         return true;
                     }
                 }
@@ -376,17 +399,14 @@ const SmartFlowCommands = (function() {
                     const line = db.lines.find(l => l.tag === tag);
                     if (line) {
                         if (!line.waypoints) line.waypoints = [];
-                        
                         let after = -1;
                         const afterIdx = parts.indexOf('after');
                         if (afterIdx !== -1) after = parseInt(parts[afterIdx + 1]) - 1;
-                        
                         if (after >= 0 && after < line.waypoints.length) {
                             line.waypoints.splice(after + 1, 0, wp);
                         } else {
                             line.waypoints.push(wp);
                         }
-                        
                         _core.updateLine(tag, { waypoints: line.waypoints });
                         _core.syncPhysicalData();
                         _notifyUI(`Waypoint añadido a ${tag}`, false);
@@ -418,13 +438,11 @@ const SmartFlowCommands = (function() {
                         _notifyUI(`Componente desconocido: ${compType}`, true);
                         return true;
                     }
-                    
                     const comp = {
                         type: compType,
                         tag: `${compType}-${Date.now().toString().slice(-6)}`,
                         param: position
                     };
-                    
                     if (!line.components) line.components = [];
                     line.components.push(comp);
                     _core.updateLine(tag, { components: line.components });
@@ -437,17 +455,14 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // -------------------- 5. PARSER DE LISTADOS --------------------
+    // -------------------- 6. PARSER DE LISTADOS --------------------
     function parseListComponents(cmd) {
         if (cmd.trim() !== 'list components') return false;
-        
         const types = _catalog.listComponentTypes();
         let msg = "Componentes disponibles:\n";
         types.sort().forEach(t => {
             const comp = _catalog.getComponent(t);
-            if (comp) {
-                msg += `  ${t} - ${comp.nombre || 'Sin descripción'}\n`;
-            }
+            if (comp) msg += `  ${t} - ${comp.nombre || 'Sin descripción'}\n`;
         });
         _notifyUI(msg, false);
         return true;
@@ -455,16 +470,12 @@ const SmartFlowCommands = (function() {
 
     function parseListSpecs(cmd) {
         if (cmd.trim() !== 'list specs') return false;
-        
         const specs = _catalog.listSpecs();
         let msg = "Especificaciones disponibles:\n";
         specs.sort().forEach(s => {
             const spec = _catalog.getSpec(s);
-            if (spec) {
-                msg += `  ${s}: ${spec.material || ''} ${spec.norma || ''}\n`;
-            } else {
-                msg += `  ${s}\n`;
-            }
+            if (spec) msg += `  ${s}: ${spec.material || ''} ${spec.norma || ''}\n`;
+            else msg += `  ${s}\n`;
         });
         _notifyUI(msg, false);
         return true;
@@ -472,191 +483,144 @@ const SmartFlowCommands = (function() {
 
     function parseListEquipment(cmd) {
         if (cmd.trim() !== 'list equipment') return false;
-        
         const types = _catalog.listEquipmentTypes();
         let msg = "Equipos disponibles:\n";
         types.sort().forEach(t => {
             const eq = _catalog.getEquipment(t);
-            if (eq) {
-                msg += `  ${t} - ${eq.nombre || 'Sin descripción'}\n`;
-            }
+            if (eq) msg += `  ${t} - ${eq.nombre || 'Sin descripción'}\n`;
         });
         _notifyUI(msg, false);
         return true;
     }
 
-    // -------------------- 6. AYUDA --------------------
+    // -------------------- 7. GENERACIÓN DE BOM --------------------
+    function parseBOM(cmd) {
+        const trimmed = cmd.trim();
+        if (trimmed === 'bom' || trimmed === 'mto' || trimmed === 'generate bom') {
+            generateBOM();
+            return true;
+        }
+        return false;
+    }
+
+    function generateBOM() {
+        if (!_core) { _notifyUI("Error: Core no inicializado", true); return; }
+        const db = _core.getDb();
+        const lines = db.lines || [];
+        const equipos = db.equipos || [];
+        let items = [];
+        equipos.forEach(eq => items.push({ tipo: 'EQUIPO', tag: eq.tag, descripcion: `${eq.tipo} ${eq.material || ''}`, cantidad: 1, unidad: 'Und' }));
+        const pipeMap = new Map();
+        lines.forEach(line => {
+            const pts = line._cachedPoints || line.points3D;
+            if (!pts || pts.length < 2) return;
+            let length = 0;
+            for (let i = 0; i < pts.length - 1; i++) length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+            const lengthM = length / 1000;
+            const key = `${line.diameter}"-${line.material || 'PPR'}-${line.spec || 'STD'}`;
+            if (pipeMap.has(key)) pipeMap.get(key).length += lengthM;
+            else pipeMap.set(key, { tipo: 'TUBERIA', diametro: line.diameter, material: line.material || 'PPR', spec: line.spec || 'STD', length: lengthM });
+        });
+        for (const [key, data] of pipeMap.entries()) items.push({ tipo: 'TUBERIA', tag: '', descripcion: `Tubo ${data.material} ${data.diametro}" ${data.spec}`, cantidad: data.length.toFixed(2), unidad: 'm' });
+        const compMap = new Map();
+        lines.forEach(line => { if (line.components) line.components.forEach(comp => { const key = `${comp.type}-${line.diameter}"`; compMap.set(key, (compMap.get(key) || 0) + 1); }); });
+        for (const [key, count] of compMap.entries()) { const [type, diam] = key.split('-'); items.push({ tipo: 'COMPONENTE', tag: '', descripcion: `${type} ${diam}`, cantidad: count, unidad: 'Und' }); }
+        let csv = 'Tipo,Tag,Descripción,Cantidad,Unidad\n';
+        items.forEach(item => csv += `${item.tipo},${item.tag},${item.descripcion},${item.cantidad},${item.unidad}\n`);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `BOM_${window.currentProjectName || 'Proyecto'}_${Date.now()}.csv`;
+        a.click();
+        _notifyUI(`BOM generado con ${items.length} líneas.`, false);
+    }
+
+    // -------------------- 8. AUDITORÍA --------------------
+    function parseAudit(cmd) {
+        if (cmd.trim() === 'audit' || cmd.trim() === 'audit model') {
+            if (_core && _core.auditModel) _core.auditModel();
+            else _notifyUI("Auditoría no disponible.", true);
+            return true;
+        }
+        return false;
+    }
+
+    // -------------------- 9. AYUDA --------------------
     function parseHelp(cmd) {
         if (cmd.toLowerCase() !== 'help') return false;
-        
         let ayuda = "═══════════════════════════════════════════════════════════\n";
-        ayuda += "              SMARTFLOW PRO v12.1 - COMANDOS\n";
+        ayuda += "              SMARTFLOW PRO - COMANDOS DISPONIBLES\n";
         ayuda += "═══════════════════════════════════════════════════════════\n\n";
-        
-        ayuda += "CREACIÓN:\n";
-        ayuda += "  create [tipo] [tag] at (x,y,z) [diam N] [height N] [material M]\n";
-        ayuda += "  create line [tag] route (x1,y1,z1) (x2,y2,z2) ... [diameter D] [material M]\n";
-        ayuda += "  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n\n";
-        
-        ayuda += "CONEXIÓN:\n";
-        ayuda += "  connect [equipo] [puerto] to [equipo] [puerto] diameter D material M\n\n";
-        
-        ayuda += "ELIMINACIÓN:\n";
-        ayuda += "  delete equipment [tag]\n";
-        ayuda += "  delete line [tag]\n\n";
-        
-        ayuda += "EDICIÓN DE EQUIPOS:\n";
-        ayuda += "  edit equipment [tag] move to (x,y,z)\n";
-        ayuda += "  edit equipment [tag] set puerto [id] pos (x,y,z)\n";
-        ayuda += "  edit equipment [tag] set puerto [id] dir (dx,dy,dz)\n";
-        ayuda += "  edit equipment [tag] set puerto [id] diam N\n\n";
-        
-        ayuda += "EDICIÓN DE LÍNEAS:\n";
-        ayuda += "  edit line [tag] set material [M]\n";
-        ayuda += "  edit line [tag] set diameter [D]\n";
-        ayuda += "  edit line [tag] set spec [S]\n";
-        ayuda += "  edit line [tag] add waypoint (x,y,z) [after N]\n";
-        ayuda += "  edit line [tag] remove waypoint N\n";
-        ayuda += "  edit line [tag] add component [tipo] at [0-1]\n\n";
-        
-        ayuda += "COMPONENTES:\n";
-        ayuda += "  list components\n";
-        ayuda += "  list equipment\n";
-        ayuda += "  list specs\n\n";
-        
-        ayuda += "OTROS:\n";
-        ayuda += "  undo | redo | help\n";
-        ayuda += "═══════════════════════════════════════════════════════════\n";
-        
+        ayuda += "CREACIÓN:\n  create [tipo] [tag] at (x,y,z) [diam N] [height N] [material M]\n  create line [tag] route (x1,y1,z1) (x2,y2,z2) ... [diameter D]\n  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n\n";
+        ayuda += "CONEXIÓN:\n  connect [equipo] [puerto] to [equipo] [puerto] diameter D\n  route from [equipo] [puerto] to [equipo] [puerto] diameter D\n\n";
+        ayuda += "ELIMINACIÓN:\n  delete equipment [tag]\n  delete line [tag]\n\n";
+        ayuda += "EDICIÓN DE EQUIPOS:\n  edit equipment [tag] move to (x,y,z)\n  edit equipment [tag] set puerto [id] pos (x,y,z)\n  edit equipment [tag] set puerto [id] dir (dx,dy,dz)\n  edit equipment [tag] set puerto [id] diam N\n\n";
+        ayuda += "EDICIÓN DE LÍNEAS:\n  edit line [tag] set material [M]\n  edit line [tag] set diameter [D]\n  edit line [tag] set spec [S]\n  edit line [tag] add waypoint (x,y,z) [after N]\n  edit line [tag] remove waypoint N\n  edit line [tag] add component [tipo] at [0-1]\n\n";
+        ayuda += "LISTADOS:\n  list components\n  list equipment\n  list specs\n\n";
+        ayuda += "REPORTES:\n  bom | mto | generate bom - Generar lista de materiales (CSV)\n  audit | audit model - Verificar diámetros y colisiones\n\n";
+        ayuda += "ACCESIBILIDAD (comandos de texto):\n  seleccionar [tag] - Selecciona y describe un elemento\n  leer selección - Describe el elemento actual\n  leer escena - Resume equipos y líneas\n  ¿dónde estoy? - Informa posición de cámara\n  lista de equipos - Enumera todos los equipos\n  lista de líneas - Enumera todas las líneas\n  centrar vista - Centra la vista\n  ayuda accesibilidad - Muestra estos comandos\n  silencio - Detiene la voz\n  modo verbose - Alterna descripciones detalladas\n\n";
+        ayuda += "OTROS:\n  undo | redo | help\n═══════════════════════════════════════════════════════════\n";
         _notifyUI(ayuda, false);
         return true;
     }
 
-    // -------------------- 7. IMPORTACIÓN PCF --------------------
+    // -------------------- 10. IMPORTACIÓN PCF --------------------
     function importPCF(fileContent) {
         const lines = fileContent.split('\n');
-        let currentPipe = null;
-        let puntos = [];
-        let componentes = [];
-        
+        let currentPipe = null, puntos = [], componentes = [];
         for (let line of lines) {
             line = line.trim();
             if (line.startsWith('!PCF') || line.startsWith('UNITS')) continue;
-            
-            if (line === 'PIPE') {
-                currentPipe = { tag: 'L-IMP', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' };
-                puntos = [];
-                componentes = [];
-            } else if (line === 'ENDPIPE') {
-                if (currentPipe && puntos.length >= 2) {
-                    const db = _core.getDb();
-                    const tag = `L-${(db.lines || []).length + 1}`;
-                    const nuevaLinea = {
-                        tag,
-                        diameter: currentPipe.diameter,
-                        material: currentPipe.material,
-                        spec: currentPipe.spec,
-                        waypoints: puntos.slice(1, -1),
-                        _cachedPoints: puntos,
-                        components: componentes
-                    };
-                    _core.addLine(nuevaLinea);
-                }
-                currentPipe = null;
-            } else if (line.startsWith('COMPONENT-IDENTIFIER') && currentPipe) {
-                const parts = line.split(' ');
-                currentPipe.tag = parts[1] || currentPipe.tag;
-            } else if (line.startsWith('DIAMETER') && currentPipe) {
-                const parts = line.split(' ');
-                const diamMM = parseFloat(parts[1]);
-                currentPipe.diameter = Math.round(diamMM / 25.4);
-            } else if (line.startsWith('MATERIAL') && currentPipe) {
-                const parts = line.split(' ');
-                currentPipe.material = parts[1] || currentPipe.material;
-            } else if (line.startsWith('SPEC') && currentPipe) {
-                const parts = line.split(' ');
-                currentPipe.spec = parts[1] || currentPipe.spec;
-            } else if (line.startsWith('POINT') && currentPipe) {
-                const parts = line.split(/\s+/);
-                if (parts.length >= 4) {
-                    const x = parseFloat(parts[1]);
-                    const y = parseFloat(parts[2]);
-                    const z = parseFloat(parts[3]);
-                    if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-                        puntos.push({ x, y, z });
-                    }
-                }
-            } else if (line.startsWith('COMPONENT') && currentPipe) {
-                const parts = line.split(/\s+/);
-                if (parts.length >= 3) {
-                    componentes.push({
-                        type: parts[1],
-                        tag: parts[2],
-                        param: 0.5
-                    });
-                }
-            }
+            if (line === 'PIPE') { currentPipe = { tag: 'L-IMP', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' }; puntos = []; componentes = []; }
+            else if (line === 'ENDPIPE') { if (currentPipe && puntos.length >= 2) { const db = _core.getDb(); const tag = `L-${(db.lines || []).length + 1}`; _core.addLine({ tag, diameter: currentPipe.diameter, material: currentPipe.material, spec: currentPipe.spec, waypoints: puntos.slice(1, -1), _cachedPoints: puntos, components: componentes }); } currentPipe = null; }
+            else if (line.startsWith('COMPONENT-IDENTIFIER') && currentPipe) { currentPipe.tag = line.split(' ')[1] || currentPipe.tag; }
+            else if (line.startsWith('DIAMETER') && currentPipe) { currentPipe.diameter = Math.round(parseFloat(line.split(' ')[1]) / 25.4); }
+            else if (line.startsWith('MATERIAL') && currentPipe) { currentPipe.material = line.split(' ')[1] || currentPipe.material; }
+            else if (line.startsWith('SPEC') && currentPipe) { currentPipe.spec = line.split(' ')[1] || currentPipe.spec; }
+            else if (line.startsWith('POINT') && currentPipe) { const p = line.split(/\s+/); if (p.length >= 4) { const x = parseFloat(p[1]), y = parseFloat(p[2]), z = parseFloat(p[3]); if (!isNaN(x)&&!isNaN(y)&&!isNaN(z)) puntos.push({x,y,z}); } }
+            else if (line.startsWith('COMPONENT') && currentPipe) { const p = line.split(/\s+/); if (p.length >= 3) componentes.push({ type: p[1], tag: p[2], param: 0.5 }); }
         }
-        
-        _renderUI();
-        _notifyUI('Archivo PCF importado correctamente.', false);
+        _renderUI(); _notifyUI('Archivo PCF importado correctamente.', false);
         return true;
     }
 
-    // -------------------- 8. EJECUCIÓN DE COMANDOS --------------------
+    // -------------------- 11. EJECUCIÓN DE COMANDOS --------------------
     function executeCommand(cmd) {
         if (!cmd || cmd.startsWith('//')) return false;
-        
         const trimmed = cmd.trim();
-        
         if (parseCreateLine(trimmed)) return true;
         if (parseCreateManifold(trimmed)) return true;
         if (parseCreate(trimmed)) return true;
         if (parseConnect(trimmed)) return true;
+        if (parseRoute(trimmed)) return true;
         if (parseDelete(trimmed)) return true;
         if (parseEditCommand(trimmed)) return true;
         if (parseListComponents(trimmed)) return true;
         if (parseListSpecs(trimmed)) return true;
         if (parseListEquipment(trimmed)) return true;
+        if (parseBOM(trimmed)) return true;
+        if (parseAudit(trimmed)) return true;
         if (parseHelp(trimmed)) return true;
-        
-        if (trimmed === 'undo') {
-            _core.undo();
-            _renderUI();
-            return true;
-        }
-        if (trimmed === 'redo') {
-            _core.redo();
-            _renderUI();
-            return true;
-        }
-        
+        if (trimmed === 'undo') { _core.undo(); _renderUI(); return true; }
+        if (trimmed === 'redo') { _core.redo(); _renderUI(); return true; }
         return false;
     }
 
     function executeBatch(commandsText) {
         const lines = commandsText.split('\n');
-        let executed = 0;
-        let failed = 0;
-        
+        let executed = 0, failed = 0;
         for (let raw of lines) {
             const trimmed = raw.trim();
             if (!trimmed || trimmed.startsWith('//')) continue;
-            
-            if (executeCommand(trimmed)) {
-                executed++;
-            } else {
-                failed++;
-                _notifyUI(`No entendí: "${trimmed.substring(0, 50)}..."`, true);
-            }
+            if (executeCommand(trimmed)) executed++;
+            else { failed++; _notifyUI(`No entendí: "${trimmed.substring(0, 50)}..."`, true); }
         }
-        
         _renderUI();
         _notifyUI(`${executed} comandos ejecutados, ${failed} fallidos`, failed > 0);
         return executed;
     }
 
-    // -------------------- 9. INICIALIZACIÓN --------------------
+    // -------------------- 12. INICIALIZACIÓN --------------------
     function init(coreInstance, catalogInstance, rendererInstance, notifyFn, renderFn) {
         _core = coreInstance;
         _catalog = catalogInstance;
@@ -665,22 +629,5 @@ const SmartFlowCommands = (function() {
         _renderUI = renderFn;
     }
 
-    // -------------------- API PÚBLICA --------------------
-    return {
-        init,
-        executeCommand,
-        executeBatch,
-        importPCF,
-        parseCreate,
-        parseCreateLine,
-        parseCreateManifold,
-        parseConnect,
-        parseDelete,
-        parseEditCommand,
-        parseListComponents,
-        parseListSpecs,
-        parseListEquipment,
-        parseHelp
-    };
-
+    return { init, executeCommand, executeBatch, importPCF };
 })();
