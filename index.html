@@ -1,3 +1,6 @@
+
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -109,25 +112,15 @@
             text-align: center;
         }
 
-        .home-logo-wrapper {
-            text-align: center;
-            margin-bottom: 25px;
-        }
+        .home-logo-wrapper { text-align: center; margin-bottom: 25px; }
 
-        /* SOLUCIÓN DEFINITIVA: FONDO NEGRO ABSOLUTO - CSS OPTIMIZADO */
         .home-logo-img {
-            width: 130px; /* Un poco más de presencia */
-            height: auto;
-            margin-top: 10px;
-            margin-bottom: 25px;
-            /* Esto hará que el brillo cian se sienta más profundo */
+            width: 130px; height: auto;
+            margin-top: 10px; margin-bottom: 25px;
             filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.4));
             transition: transform 0.3s ease;
         }
-
-        .home-logo-img:active {
-            transform: scale(0.95); /* Efecto táctil para iPhone */
-        }
+        .home-logo-img:active { transform: scale(0.95); }
 
         .header-names {
             display: flex;
@@ -138,20 +131,14 @@
 
         .corp-name {
             color: var(--accent-cyan);
-            font-size: 16px;
-            font-weight: 800;
-            line-height: 1.3;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+            font-size: 16px; font-weight: 800; line-height: 1.3;
+            text-transform: uppercase; letter-spacing: 2px;
         }
 
         .user-name {
             color: #fff;
-            font-size: 16px;
-            font-weight: 600;
-            line-height: 1.3;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+            font-size: 16px; font-weight: 600; line-height: 1.3;
+            text-transform: uppercase; letter-spacing: 2px;
             text-align: right;
         }
 
@@ -166,42 +153,21 @@
             border: 1px solid var(--accent-cyan);
             color: var(--accent-cyan);
             padding: 16px 24px;
-            font-size: 18px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 3px;
+            font-size: 18px; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 3px;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s;
         }
+        .welcome-btn:hover { background: var(--accent-cyan); color: #000; box-shadow: 0 0 30px rgba(0,242,255,0.4); }
+        .welcome-btn.secondary { border-color: #64748b; color: #94a3b8; }
+        .welcome-btn.secondary:hover { background: #334155; border-color: #94a3b8; color: white; }
 
-        .welcome-btn:hover {
-            background: var(--accent-cyan);
-            color: #000;
-            box-shadow: 0 0 30px rgba(0,242,255,0.4);
-        }
-
-        .welcome-btn.secondary {
-            border-color: #64748b;
-            color: #94a3b8;
-        }
-
-        .welcome-btn.secondary:hover {
-            background: #334155;
-            border-color: #94a3b8;
-            color: white;
-        }
-
-        .welcome-hidden {
-            opacity: 0;
-            visibility: hidden;
-            pointer-events: none;
-        }
+        .welcome-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 
         /* ========== MODAL NOMBRE DE PROYECTO ========== */
         #project-name-modal {
-            position: fixed;
-            top: 0; left: 0;
+            position: fixed; top: 0; left: 0;
             width: 100%; height: 100%;
             background: rgba(0,0,0,0.8);
             z-index: 9500;
@@ -211,8 +177,7 @@
         }
 
         .modal-content {
-            width: 400px;
-            padding: 30px;
+            width: 400px; padding: 30px;
             background: var(--panel-bg);
             border: 1px solid var(--accent-cyan);
             border-radius: 16px;
@@ -220,49 +185,22 @@
             text-align: center;
         }
 
-        .modal-content h3 {
-            color: var(--accent-cyan);
-            margin-bottom: 20px;
-            font-size: 18px;
-            text-transform: uppercase;
-        }
-
+        .modal-content h3 { color: var(--accent-cyan); margin-bottom: 20px; font-size: 18px; text-transform: uppercase; }
         .modal-content input {
-            width: 100%;
-            padding: 12px 16px;
-            background: #0f172a;
-            border: 1px solid #334155;
-            color: white;
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 25px;
-            outline: none;
+            width: 100%; padding: 12px 16px;
+            background: #0f172a; border: 1px solid #334155;
+            color: white; border-radius: 8px; font-size: 16px;
+            margin-bottom: 25px; outline: none;
         }
+        .modal-content input:focus { border-color: var(--accent-cyan); }
 
-        .modal-content input:focus {
-            border-color: var(--accent-cyan);
-        }
-
-        .modal-actions {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-        }
-
+        .modal-actions { display: flex; gap: 15px; justify-content: center; }
         .modal-btn {
-            padding: 10px 24px;
-            background: var(--accent-blue);
-            border: none;
-            color: white;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-            text-transform: uppercase;
+            padding: 10px 24px; background: var(--accent-blue);
+            border: none; color: white; font-weight: bold;
+            border-radius: 6px; cursor: pointer; text-transform: uppercase;
         }
-
-        .modal-btn.cancel {
-            background: #334155;
-        }
+        .modal-btn.cancel { background: #334155; }
 
         /* ========== INTERFAZ PRINCIPAL ========== */
         .toolbar {
@@ -284,10 +222,8 @@
         .toolbar-logo img { height: 28px; margin-right: 8px; filter: drop-shadow(0 0 6px #00f2ff); }
         .toolbar-title {
             color: var(--accent-cyan);
-            font-size: 18px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+            font-size: 18px; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 2px;
         }
 
         button {
@@ -296,18 +232,12 @@
             color: white;
             padding: 8px 14px;
             border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 12px; font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            text-transform: uppercase; letter-spacing: 0.5px;
         }
-        button:hover {
-            background: var(--accent-blue);
-            border-color: var(--accent-cyan);
-            box-shadow: 0 0 12px rgba(0, 242, 255, 0.2);
-        }
+        button:hover { background: var(--accent-blue); border-color: var(--accent-cyan); box-shadow: 0 0 12px rgba(0, 242, 255, 0.2); }
         .btn-primary { background: #238636; border-color: #2ea043; }
         .btn-primary:hover { background: #2ea043; }
         .btn-warning { background: #d29922; color: #1f1f1f; border-color: #e2a83a; }
@@ -429,20 +359,13 @@
                 <span class="company-name">AcQuaBlue International Corp.</span>
                 <span class="powered-by">Smart Engineering Systems</span>
             </div>
-            
             <div class="hex-container">
                 <img src="img/logo.PNG" alt="Logo" onerror="this.style.display='none'">
             </div>
-
             <h1 class="splash-title">SmartProject</h1>
             <p class="splash-subtitle">INGENIERÍA INTELIGENTE</p>
-
-            <div class="loading-bar-container">
-                <div class="loading-bar-fill"></div>
-            </div>
-
+            <div class="loading-bar-container"><div class="loading-bar-fill"></div></div>
             <div class="splash-status" id="splash-status">Inicializando protocolos de IA...</div>
-
             <div class="author-footer">
                 <span class="leader-by">Ingeniero Líder de Proyecto:</span>
                 <span class="engineer-name">Ing. Osnay Romero</span>
@@ -450,18 +373,16 @@
         </div>
     </div>
 
-    <!-- PANEL DE BIENVENIDA (POST-SPLASH) -->
+    <!-- PANEL DE BIENVENIDA -->
     <div id="welcome-panel">
         <div class="welcome-container">
             <div class="home-logo-wrapper">
                 <img src="img/logo.PNG" alt="Logo SmartProject" class="home-logo-img" onerror="this.style.display='none'">
             </div>
-
             <div class="header-names">
                 <h1 class="corp-name">ACQUABLUE<br>INTERNATIONAL CORP.</h1>
                 <h2 class="user-name">ING.<br>OSNAY ROMERO</h2>
             </div>
-
             <div class="button-group">
                 <button class="welcome-btn" id="welcome-new-project">➕ NUEVO PROYECTO</button>
                 <button class="welcome-btn secondary" id="welcome-open-project">📂 ABRIR PROYECTO EXISTENTE</button>
@@ -482,29 +403,28 @@
     </div>
 
     <!-- BARRA DE HERRAMIENTAS -->
-    <div class="toolbar">
+    <div class="toolbar" role="toolbar" aria-label="Barra de herramientas principal">
         <div class="toolbar-logo">
             <img src="img/logo.PNG" alt="Logo" style="height: 28px;" onerror="this.style.display='none'">
-            <span class="toolbar-title">SmartProject</span>
+            <span class="toolbar-title" aria-label="SmartProject">SmartProject</span>
         </div>
-        
-        <button id="btnOpen">📂 Abrir</button>
-        <button id="btnSave">💾 Guardar</button>
-        <button id="btnReset">🔄 Centrar</button>
-        <button id="btnCommand" class="btn-primary">🤖 Comandos</button>
-        <button id="btnAddTank">🏭 Tanque</button>
-        <button id="btnAddPump">⚙️ Bomba</button>
-        <button id="btnMTO">📊 MTO</button>
-        <button id="btnPDF">📄 PDF</button>
-        <button id="btnExportPCF">📦 Export PCF</button>
-        <button id="btnImportPCF">📂 Import PCF</button>
-        <button id="btnUndo" class="btn-warning">↩️ Undo</button>
-        <button id="btnRedo" class="btn-warning">↪️ Redo</button>
-        <button id="btnVoice" class="btn-speak">🔊 Voz ON</button>
-        <button id="btnApplyNorm">📐 Normas</button>
-        <button id="btnSpeakSummary" class="btn-speak">📢 Resumen</button>
-        <button id="btnRecalc">🔄 Recalcular</button>
-        <button id="btnToggleCatalog" class="btn-speak">📦 Catálogo</button>
+        <button id="btnOpen" aria-label="Abrir proyecto">📂 Abrir</button>
+        <button id="btnSave" aria-label="Guardar proyecto">💾 Guardar</button>
+        <button id="btnReset" aria-label="Centrar vista">🔄 Centrar</button>
+        <button id="btnCommand" class="btn-primary" aria-label="Abrir panel de comandos">🤖 Comandos</button>
+        <button id="btnAddTank" aria-label="Añadir tanque">🏭 Tanque</button>
+        <button id="btnAddPump" aria-label="Añadir bomba">⚙️ Bomba</button>
+        <button id="btnMTO" aria-label="Exportar lista de materiales">📊 MTO</button>
+        <button id="btnPDF" aria-label="Exportar PDF">📄 PDF</button>
+        <button id="btnExportPCF" aria-label="Exportar archivo PCF">📦 Export PCF</button>
+        <button id="btnImportPCF" aria-label="Importar archivo PCF">📂 Import PCF</button>
+        <button id="btnUndo" class="btn-warning" aria-label="Deshacer">↩️ Undo</button>
+        <button id="btnRedo" class="btn-warning" aria-label="Rehacer">↪️ Redo</button>
+        <button id="btnVoice" class="btn-speak" aria-label="Activar o desactivar voz">🔊 Voz ON</button>
+        <button id="btnApplyNorm" aria-label="Aplicar normas">📐 Normas</button>
+        <button id="btnSpeakSummary" class="btn-speak" aria-label="Leer resumen del proyecto">📢 Resumen</button>
+        <button id="btnRecalc" aria-label="Recalcular">🔄 Recalcular</button>
+        <button id="btnToggleCatalog" class="btn-speak" aria-label="Mostrar catálogo">📦 Catálogo</button>
     </div>
 
     <!-- ÁREA DEL CANVAS -->
@@ -516,20 +436,20 @@
     </div>
 
     <!-- PANEL DE COMANDOS -->
-    <div id="commandPanel" class="command-panel">
+    <div id="commandPanel" class="command-panel" role="dialog" aria-label="Panel de comandos">
         <div class="command-header">
             <strong>🤖 Comandos IA</strong>
-            <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;">✖</button>
+            <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;" aria-label="Cerrar panel">✖</button>
         </div>
-        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE&#10;connect TK-01 N1 to M-SUCC IN1 diameter 3 material PPR&#10;edit equipment TK-01 set puerto N1 pos (0,-1300,1190) dir (0,0,1)&#10;help"></textarea>
+        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE&#10;route from TK-01 N1 to B-01 SUC diameter 3&#10;seleccionar TK-01&#10;leer escena&#10;help"></textarea>
         <div class="command-buttons">
-            <button id="runCommands" class="btn-primary">Ejecutar</button>
-            <button id="clearCommand">Limpiar</button>
+            <button id="runCommands" class="btn-primary" aria-label="Ejecutar comandos">Ejecutar</button>
+            <button id="clearCommand" aria-label="Limpiar panel">Limpiar</button>
         </div>
     </div>
 
     <!-- NOTIFICACIONES -->
-    <div id="notification" class="notification"></div>
+    <div id="notification" class="notification" role="status"></div>
 
     <!-- BARRA DE ESTADO -->
     <div class="status-bar">
@@ -538,25 +458,25 @@
     </div>
 
     <!-- PANEL DE HERRAMIENTAS -->
-    <div class="tools-panel" id="toolsPanel">
-        <button id="toolSelect" class="active">🔍 Seleccionar</button>
-        <button id="toolMoveEq">✋ Mover equipo</button>
-        <button id="toolEditPipe">✏️ Editar tubería</button>
-        <button id="toolAddPoint">➕ Añadir punto</button>
+    <div class="tools-panel" id="toolsPanel" role="toolbar" aria-label="Herramientas de dibujo">
+        <button id="toolSelect" class="active" aria-label="Seleccionar">🔍 Seleccionar</button>
+        <button id="toolMoveEq" aria-label="Mover equipo">✋ Mover equipo</button>
+        <button id="toolEditPipe" aria-label="Editar tubería">✏️ Editar tubería</button>
+        <button id="toolAddPoint" aria-label="Añadir punto">➕ Añadir punto</button>
     </div>
 
     <!-- PANEL DE ELEVACIÓN -->
     <div class="elevation-panel" id="elevationPanel">
         <span style="font-size:12px;">📐 Elev. (mm):</span>
-        <button onclick="setElevation(0)" style="padding:2px 8px;">0</button>
-        <button onclick="setElevation(2500)" style="padding:2px 8px;">2.5m</button>
-        <button onclick="setElevation(5000)" style="padding:2px 8px;">5.0m</button>
-        <input type="number" id="customElev" value="0" step="100">
-        <button id="btnSetElev" style="padding:2px 8px;">Set</button>
+        <button onclick="setElevation(0)" style="padding:2px 8px;" aria-label="Elevación 0">0</button>
+        <button onclick="setElevation(2500)" style="padding:2px 8px;" aria-label="Elevación 2.5 metros">2.5m</button>
+        <button onclick="setElevation(5000)" style="padding:2px 8px;" aria-label="Elevación 5 metros">5.0m</button>
+        <input type="number" id="customElev" value="0" step="100" aria-label="Elevación personalizada">
+        <button id="btnSetElev" style="padding:2px 8px;" aria-label="Establecer elevación">Set</button>
     </div>
 
     <!-- PANEL DE CATÁLOGO -->
-    <div id="catalogPanel" class="catalog-panel" style="display:none">
+    <div id="catalogPanel" class="catalog-panel" style="display:none" role="dialog" aria-label="Catálogo de equipos">
         <div class="catalog-header">📦 Catálogo <span style="float:right">▼</span></div>
         <div class="catalog-content" id="catalogContent">
             <div class="catalog-category">
@@ -591,7 +511,7 @@
     </div>
 
     <!-- PANEL DE PROPIEDADES -->
-    <div id="propertyPanel" class="property-panel" style="display:none">
+    <div id="propertyPanel" class="property-panel" style="display:none" role="dialog" aria-label="Propiedades del equipo">
         <div class="property-header">📋 Propiedades <span style="float:right">✖</span></div>
         <div class="property-content" id="propertyContent">
             <p style="color:#aaa;text-align:center;padding:20px;">Seleccione un equipo para ver sus propiedades</p>
@@ -603,6 +523,8 @@
     <script src="js/catalog.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
+    <script src="js/accessibility.js"></script>
+    <script src="js/router.js"></script>
     <script src="js/main.js"></script>
 
     <!-- SCRIPT DE INICIALIZACIÓN Y FLUJO DE BIENVENIDA -->
@@ -634,55 +556,29 @@
             
             let i = 0;
             const interval = setInterval(() => {
-                if(i < messages.length) {
-                    statusEl.innerText = messages[i];
-                    i++;
-                }
+                if(i < messages.length) { statusEl.innerText = messages[i]; i++; }
             }, 800);
 
-            setTimeout(() => {
-                splash.classList.add('splash-hidden');
-                clearInterval(interval);
-            }, 4500);
+            setTimeout(() => { splash.classList.add('splash-hidden'); clearInterval(interval); }, 4500);
+            setTimeout(() => { welcome.classList.remove('welcome-hidden'); }, 4800);
 
-            setTimeout(() => {
-                welcome.classList.remove('welcome-hidden');
-            }, 4800);
-
-            // --- NUEVO PROYECTO ---
-            document.getElementById('welcome-new-project').onclick = () => {
-                modal.style.display = 'flex';
-            };
-
-            // Función que realmente crea el nuevo proyecto y limpia el canvas
-            function ejecutarNuevoProyecto(nombreProyecto) {
-                if (nombreProyecto) window.currentProjectName = nombreProyecto;
-                modal.style.display = 'none';
-                welcome.classList.add('welcome-hidden');
-                
-                // Limpiar el canvas y restablecer el estado inicial
-                if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) {
-                    SmartFlowCore.nuevoProyecto();
-                }
-                if (typeof SmartFlowRenderer !== 'undefined') {
-                    SmartFlowRenderer.autoCenter();
-                }
-                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
-            }
-
-            document.getElementById('modal-accept').onclick = () => {
-                const name = inputProject.value.trim();
-                ejecutarNuevoProyecto(name);
-            };
-
-            document.getElementById('modal-skip').onclick = () => {
-                ejecutarNuevoProyecto(window.currentProjectName);
-            };
-
-            // --- ABRIR PROYECTO EXISTENTE ---
+            document.getElementById('welcome-new-project').onclick = () => { modal.style.display = 'flex'; };
             document.getElementById('welcome-open-project').onclick = () => {
                 document.getElementById('btnOpen')?.click();
                 welcome.classList.add('welcome-hidden');
+            };
+            document.getElementById('modal-accept').onclick = () => {
+                const name = inputProject.value.trim();
+                if (name) window.currentProjectName = name;
+                modal.style.display = 'none';
+                welcome.classList.add('welcome-hidden');
+                if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) SmartFlowCore.nuevoProyecto();
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+            };
+            document.getElementById('modal-skip').onclick = () => {
+                modal.style.display = 'none';
+                welcome.classList.add('welcome-hidden');
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
         });
 
@@ -694,9 +590,7 @@
         ];
         setInterval(() => {
             const statusDiv = document.getElementById('statusMsg');
-            if (statusDiv && !statusDiv.dataset.locked) {
-                statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
-            }
+            if (statusDiv && !statusDiv.dataset.locked) statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
         }, 6000);
     </script>
 </body>
