@@ -1,11 +1,12 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.3
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.4
 // Archivo: js/renderer.js
 // Propósito: Manejar toda la lógica de proyección isométrica,
 //            dibujo en Canvas 2D con jerarquía visual profesional,
-//            tuberías con volumen simulado, texto isométrico deformado,
-//            acotación inteligente, exportación (PDF/PCF) y más.
+//            tuberías con volumen mediante borde contrastante,
+//            texto isométrico deformado, acotación inteligente,
+//            exportación (PDF/PCF) y más.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -59,7 +60,7 @@ const SmartFlowRenderer = (function() {
         // Rejilla atenuada para no competir con tuberías
         _ctx.strokeStyle = '#1e293b';
         _ctx.lineWidth = 1;
-        _ctx.globalAlpha = 0.5;
+        _ctx.globalAlpha = 0.4;
         
         for (let x = minX; x <= maxX; x += step) {
             const p1 = project({ x, y: elevation, z: minZ });
@@ -316,7 +317,7 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    // -------------------- 6. DIBUJO DE TUBERÍAS CON VOLUMEN --------------------
+    // -------------------- 6. DIBUJO DE TUBERÍAS CON VOLUMEN POR CONTRASTE --------------------
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -509,54 +510,62 @@ const SmartFlowRenderer = (function() {
             _ctx.lineTo(last.x, last.y);
         };
         
+        // Grosor base de la tubería vinculado al diámetro
         const baseWidth = (line.diameter || 4) * _cam.scale;
         const mainWidth = Math.max(6, baseWidth);
         
         _ctx.lineCap = 'round';
         _ctx.lineJoin = 'round';
         
-        // Capa 1: Sombra exterior
+        // ==================== CAPA 1: SOMBRA EXTERIOR (Proyección) ====================
         _ctx.save();
         drawPath();
         _ctx.shadowColor = '#000000';
-        _ctx.shadowBlur = 12 * _cam.scale;
-        _ctx.shadowOffsetX = 3 * _cam.scale;
-        _ctx.shadowOffsetY = 3 * _cam.scale;
+        _ctx.shadowBlur = 10 * _cam.scale;
+        _ctx.shadowOffsetX = 2 * _cam.scale;
+        _ctx.shadowOffsetY = 2 * _cam.scale;
         _ctx.strokeStyle = '#000000';
-        _ctx.lineWidth = mainWidth + 4;
+        _ctx.lineWidth = mainWidth + 6;
         _ctx.stroke();
         _ctx.restore();
         
-        // Capa 2: Contorno oscuro
+        // ==================== CAPA 2: BORDE NEGRO GRUESO (Máscara de contraste) ====================
+        drawPath();
+        _ctx.strokeStyle = '#0a0e17'; // Negro del fondo
+        _ctx.lineWidth = mainWidth + 4;
+        _ctx.stroke();
+        
+        // ==================== CAPA 3: CONTORNO OSCURO INTERMEDIO ====================
         drawPath();
         _ctx.strokeStyle = '#1e293b';
         _ctx.lineWidth = mainWidth + 2;
         _ctx.stroke();
         
-        // Capa 3: Cuerpo principal
+        // ==================== CAPA 4: CUERPO PRINCIPAL (Color del material) ====================
         drawPath();
         const spec = line.spec && SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
-        const mainColor = line.hasClash ? '#ef4444' : (spec?.color || '#f8fafc');
+        const mainColor = line.hasClash ? '#ef4444' : (spec?.color || '#facc15'); // Amarillo industrial por defecto
         _ctx.strokeStyle = mainColor;
         _ctx.lineWidth = mainWidth;
         _ctx.stroke();
         
-        // Capa 4: Brillo especular
+        // ==================== CAPA 5: BRILLO ESPECULAR (Línea central clara) ====================
         drawPath();
         _ctx.strokeStyle = '#ffffff';
-        _ctx.lineWidth = Math.max(2, mainWidth * 0.3);
-        _ctx.globalAlpha = 0.6;
+        _ctx.lineWidth = Math.max(2, mainWidth * 0.25);
+        _ctx.globalAlpha = 0.7;
         _ctx.stroke();
         _ctx.globalAlpha = 1.0;
         
-        // Capa 5: Borde superior iluminado
+        // ==================== CAPA 6: BORDE SUPERIOR ILUMINADO (Toque final) ====================
         drawPath();
-        _ctx.strokeStyle = '#e2e8f0';
-        _ctx.lineWidth = Math.max(1, mainWidth * 0.15);
-        _ctx.globalAlpha = 0.8;
+        _ctx.strokeStyle = '#fef08a';
+        _ctx.lineWidth = Math.max(1, mainWidth * 0.1);
+        _ctx.globalAlpha = 0.9;
         _ctx.stroke();
         _ctx.globalAlpha = 1.0;
 
+        // Acotación automática
         if (line.showDimensions !== false) {
             const puntosReales = pts.filter(p => !p.isControlPoint);
             for (let i = 0; i < puntosReales.length - 1; i++) {
@@ -569,10 +578,12 @@ const SmartFlowRenderer = (function() {
             }
         }
 
+        // Flecha de flujo
         if (pts.length >= 2) {
             drawFlowArrow(pts[0], pts[pts.length-1], line.diameter);
         }
 
+        // Etiqueta de línea
         if (line.tag && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], 
                         Math.hypot(pts[pts.length-1].x - pts[0].x, 
