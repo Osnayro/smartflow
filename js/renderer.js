@@ -1,11 +1,11 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.1
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.3
 // Archivo: js/renderer.js
 // Propósito: Manejar toda la lógica de proyección isométrica,
 //            dibujo en Canvas 2D con jerarquía visual profesional,
-//            texto isométrico deformado, flechas de flujo, acotación
-//            inteligente, exportación (PDF/PCF) y más.
+//            tuberías con volumen simulado, texto isométrico deformado,
+//            acotación inteligente, exportación (PDF/PCF) y más.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -56,8 +56,10 @@ const SmartFlowRenderer = (function() {
         const minX = -10000, maxX = 20000, minZ = -10000, maxZ = 20000;
         
         _ctx.beginPath();
-        _ctx.strokeStyle = (elevation === _currentElevation) ? '#4ade80' : '#1e293b';
+        // Rejilla atenuada para no competir con tuberías
+        _ctx.strokeStyle = '#1e293b';
         _ctx.lineWidth = 1;
+        _ctx.globalAlpha = 0.5;
         
         for (let x = minX; x <= maxX; x += step) {
             const p1 = project({ x, y: elevation, z: minZ });
@@ -72,6 +74,7 @@ const SmartFlowRenderer = (function() {
             _ctx.lineTo(p2.x, p2.y);
         }
         _ctx.stroke();
+        _ctx.globalAlpha = 1.0;
     }
 
     function drawOrigin() {
@@ -116,7 +119,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fill(); 
         _ctx.stroke();
         
-        // Etiqueta del tanque con texto isométrico (plano XY)
         drawIsoText(eq.tag, p.x, topY - 10, 'XY');
         
         drawPuertos(eq);
@@ -254,42 +256,38 @@ const SmartFlowRenderer = (function() {
     }
 
     // -------------------- 4. TEXTO ISOMÉTRICO CON DEFORMACIÓN --------------------
-    /**
-     * Dibuja texto con la deformación isométrica adecuada.
-     * @param {string} text - Texto a dibujar.
-     * @param {number} x - Coordenada X en pantalla.
-     * @param {number} y - Coordenada Y en pantalla.
-     * @param {string} plane - Plano isométrico: 'XY' (eje X, 30°), 'ZY' (eje Z, -30°), 'XZ' (planta).
-     */
     function drawIsoText(text, x, y, plane = 'XY') {
         if (!text) return;
         _ctx.save();
-        _ctx.font = `bold ${Math.max(10, 12 * _cam.scale)}px monospace`;
+        _ctx.font = `bold ${Math.max(12, 14 * _cam.scale)}px 'Segoe UI', monospace`;
         _ctx.textAlign = 'center';
         _ctx.textBaseline = 'bottom';
 
-        // Matriz de transformación isométrica
-        // [m11, m12, m21, m22, dx, dy]
         if (plane === 'XY') {
-            // Alineado al eje X (30 grados)
             _ctx.setTransform(1, 0.5, 0, 1, x, y); 
         } else if (plane === 'ZY') {
-            // Alineado al eje Z (-30 grados)
             _ctx.setTransform(1, -0.5, 0, 1, x, y);
         } else {
-            // Plano de planta (XZ)
             _ctx.setTransform(1, -0.5, 1, 0.5, x, y);
         }
 
-        // Halo para legibilidad sobre líneas de rejilla
-        _ctx.strokeStyle = '#000';
-        _ctx.lineWidth = 3;
-        _ctx.strokeText(text, 0, 0);
-        _ctx.fillStyle = '#facc15';
+        const tw = _ctx.measureText(text).width;
+        
+        // Fondo oscuro con borde sutil
+        _ctx.fillStyle = '#0f172a';
+        _ctx.shadowColor = '#00f2ff';
+        _ctx.shadowBlur = 4;
+        _ctx.fillRect(-tw/2 - 6, -16, tw + 12, 20);
+        _ctx.shadowBlur = 0;
+        _ctx.strokeStyle = '#334155';
+        _ctx.lineWidth = 1;
+        _ctx.strokeRect(-tw/2 - 6, -16, tw + 12, 20);
+        
+        // Texto blanco
+        _ctx.fillStyle = '#ffffff';
         _ctx.fillText(text, 0, 0);
 
         _ctx.restore();
-        // Resetear la transformación para el resto del dibujo
         _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
@@ -305,19 +303,20 @@ const SmartFlowRenderer = (function() {
         _ctx.translate(midX, midY);
         _ctx.rotate(angle);
         
+        const arrowSize = 12 * _cam.scale;
         _ctx.beginPath();
-        _ctx.moveTo(-10, -6);
-        _ctx.lineTo(6, 0);
-        _ctx.lineTo(-10, 6);
-        _ctx.fillStyle = '#ffffff';
+        _ctx.moveTo(-arrowSize, -arrowSize/2);
+        _ctx.lineTo(0, 0);
+        _ctx.lineTo(-arrowSize, arrowSize/2);
+        _ctx.fillStyle = '#00f2ff';
         _ctx.shadowColor = '#00f2ff';
-        _ctx.shadowBlur = 6;
+        _ctx.shadowBlur = 8;
         _ctx.fill();
         _ctx.shadowBlur = 0;
         _ctx.restore();
     }
 
-    // -------------------- 6. DIBUJO DE TUBERÍAS Y ACOTACIÓN --------------------
+    // -------------------- 6. DIBUJO DE TUBERÍAS CON VOLUMEN --------------------
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -481,51 +480,83 @@ const SmartFlowRenderer = (function() {
         const radioBase = isPPR ? (line.diameter * 25.4 * 0.8) : (line.diameter * 25.4 * 1.5);
         const radio = Math.min(radioBase, 350);
         
-        _ctx.beginPath();
-        let first = project(pts[0]);
-        _ctx.moveTo(first.x, first.y);
-        
-        for (let i = 1; i < pts.length - 1; i++) {
-            const pPrev = pts[i-1], pCurr = pts[i], pNext = pts[i+1];
+        const drawPath = () => {
+            _ctx.beginPath();
+            let first = project(pts[0]);
+            _ctx.moveTo(first.x, first.y);
             
-            if (pCurr.isControlPoint && i + 1 < pts.length) {
-                const cp = project(pCurr);
-                const nextP = project(pts[i + 1]);
-                _ctx.quadraticCurveTo(cp.x, cp.y, nextP.x, nextP.y);
-                i++;
-            } else {
-                const pIn = getPointAtDistance(pCurr, pPrev, radio);
-                const pOut = getPointAtDistance(pCurr, pNext, radio);
-                const projIn = project(pIn);
-                const projOut = project(pOut);
-                const projCurr = project(pCurr);
+            for (let i = 1; i < pts.length - 1; i++) {
+                const pPrev = pts[i-1], pCurr = pts[i], pNext = pts[i+1];
                 
-                _ctx.lineTo(projIn.x, projIn.y);
-                _ctx.quadraticCurveTo(projCurr.x, projCurr.y, projOut.x, projOut.y);
+                if (pCurr.isControlPoint && i + 1 < pts.length) {
+                    const cp = project(pCurr);
+                    const nextP = project(pts[i + 1]);
+                    _ctx.quadraticCurveTo(cp.x, cp.y, nextP.x, nextP.y);
+                    i++;
+                } else {
+                    const pIn = getPointAtDistance(pCurr, pPrev, radio);
+                    const pOut = getPointAtDistance(pCurr, pNext, radio);
+                    const projIn = project(pIn);
+                    const projOut = project(pOut);
+                    const projCurr = project(pCurr);
+                    
+                    _ctx.lineTo(projIn.x, projIn.y);
+                    _ctx.quadraticCurveTo(projCurr.x, projCurr.y, projOut.x, projOut.y);
+                }
             }
-        }
-        
-        const last = project(pts[pts.length-1]);
-        _ctx.lineTo(last.x, last.y);
+            
+            const last = project(pts[pts.length-1]);
+            _ctx.lineTo(last.x, last.y);
+        };
         
         const baseWidth = (line.diameter || 4) * _cam.scale;
-        _ctx.lineWidth = Math.max(3, baseWidth);
+        const mainWidth = Math.max(6, baseWidth);
+        
         _ctx.lineCap = 'round';
         _ctx.lineJoin = 'round';
         
-        if (line.hasClash) {
-            _ctx.strokeStyle = '#ef4444';
-            _ctx.shadowBlur = 10;
-            _ctx.shadowColor = '#ef4444';
-        } else {
-            const spec = line.spec && SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
-            _ctx.strokeStyle = spec?.color || '#f8fafc';
-            _ctx.shadowBlur = 0;
-        }
+        // Capa 1: Sombra exterior
+        _ctx.save();
+        drawPath();
+        _ctx.shadowColor = '#000000';
+        _ctx.shadowBlur = 12 * _cam.scale;
+        _ctx.shadowOffsetX = 3 * _cam.scale;
+        _ctx.shadowOffsetY = 3 * _cam.scale;
+        _ctx.strokeStyle = '#000000';
+        _ctx.lineWidth = mainWidth + 4;
         _ctx.stroke();
-        _ctx.shadowBlur = 0;
+        _ctx.restore();
+        
+        // Capa 2: Contorno oscuro
+        drawPath();
+        _ctx.strokeStyle = '#1e293b';
+        _ctx.lineWidth = mainWidth + 2;
+        _ctx.stroke();
+        
+        // Capa 3: Cuerpo principal
+        drawPath();
+        const spec = line.spec && SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
+        const mainColor = line.hasClash ? '#ef4444' : (spec?.color || '#f8fafc');
+        _ctx.strokeStyle = mainColor;
+        _ctx.lineWidth = mainWidth;
+        _ctx.stroke();
+        
+        // Capa 4: Brillo especular
+        drawPath();
+        _ctx.strokeStyle = '#ffffff';
+        _ctx.lineWidth = Math.max(2, mainWidth * 0.3);
+        _ctx.globalAlpha = 0.6;
+        _ctx.stroke();
+        _ctx.globalAlpha = 1.0;
+        
+        // Capa 5: Borde superior iluminado
+        drawPath();
+        _ctx.strokeStyle = '#e2e8f0';
+        _ctx.lineWidth = Math.max(1, mainWidth * 0.15);
+        _ctx.globalAlpha = 0.8;
+        _ctx.stroke();
+        _ctx.globalAlpha = 1.0;
 
-        // Acotación automática
         if (line.showDimensions !== false) {
             const puntosReales = pts.filter(p => !p.isControlPoint);
             for (let i = 0; i < puntosReales.length - 1; i++) {
@@ -538,23 +569,20 @@ const SmartFlowRenderer = (function() {
             }
         }
 
-        // Etiqueta de línea con texto isométrico
+        if (pts.length >= 2) {
+            drawFlowArrow(pts[0], pts[pts.length-1], line.diameter);
+        }
+
         if (line.tag && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], 
                         Math.hypot(pts[pts.length-1].x - pts[0].x, 
                                    pts[pts.length-1].y - pts[0].y, 
                                    pts[pts.length-1].z - pts[0].z) / 2);
             const projMid = project(midPt);
-            // Determinar plano según la dirección predominante
             const dx = pts[1].x - pts[0].x;
             const dz = pts[1].z - pts[0].z;
             const plane = Math.abs(dx) > Math.abs(dz) ? 'XY' : 'ZY';
-            drawIsoText(line.tag, projMid.x, projMid.y - 15 * _cam.scale, plane);
-        }
-
-        // Flecha de flujo si está definida
-        if (line.flowDirection && pts.length >= 2) {
-            drawFlowArrow(pts[0], pts[pts.length-1], line.diameter);
+            drawIsoText(line.tag, projMid.x, projMid.y - 25 * _cam.scale, plane);
         }
     }
 
@@ -1309,7 +1337,8 @@ const SmartFlowRenderer = (function() {
         render();
     }
 
-    return {
+    // Exponer globalmente (necesario para el modo 2D en main.js)
+    window.SmartFlowRenderer = {
         init,
         render,
         autoCenter,
@@ -1323,5 +1352,7 @@ const SmartFlowRenderer = (function() {
         exportPCF,
         getCam: () => _cam
     };
+
+    return window.SmartFlowRenderer;
 
 })();
