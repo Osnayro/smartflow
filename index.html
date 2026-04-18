@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -5,7 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>SmartProject | AcQuaBlue</title>
     
-    <!-- Librerías externas -->
+    <!-- Import map para Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <!-- Librerías externas para exportaciones -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
@@ -114,19 +125,17 @@
             margin-bottom: 25px;
         }
 
-        /* SOLUCIÓN DEFINITIVA: FONDO NEGRO ABSOLUTO - CSS OPTIMIZADO */
         .home-logo-img {
-            width: 130px; /* Un poco más de presencia */
+            width: 130px;
             height: auto;
             margin-top: 10px;
             margin-bottom: 25px;
-            /* Esto hará que el brillo cian se sienta más profundo */
             filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.4));
             transition: transform 0.3s ease;
         }
 
         .home-logo-img:active {
-            transform: scale(0.95); /* Efecto táctil para iPhone */
+            transform: scale(0.95);
         }
 
         .header-names {
@@ -288,8 +297,7 @@
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 2px;
-        }
-
+        } 
         button {
             background: var(--button-bg);
             border: 1px solid var(--button-border);
@@ -601,14 +609,16 @@
     <!-- SCRIPTS DE LA APLICACIÓN -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
-    <script src="js/renderer.js"></script>
+    <!-- El renderer 2D se cargará condicionalmente desde main.js -->
     <script src="js/commands.js"></script>
     <script src="js/main.js"></script>
 
     <!-- SCRIPT DE INICIALIZACIÓN Y FLUJO DE BIENVENIDA -->
     <script>
+        // Variable global para el nombre del proyecto
         window.currentProjectName = "Proyecto_SmartFlow";
 
+        // Función global para elevación (usada en onclick)
         function setElevation(level) {
             if (typeof SmartFlowCore !== 'undefined' && typeof SmartFlowRenderer !== 'undefined') {
                 SmartFlowCore.setElevation(level);
@@ -617,6 +627,7 @@
             }
         }
 
+        // Flujo de inicio
         window.addEventListener('load', () => {
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
@@ -645,21 +656,28 @@
                 clearInterval(interval);
             }, 4500);
 
+            // Mostrar panel de bienvenida después del splash
             setTimeout(() => {
                 welcome.classList.remove('welcome-hidden');
             }, 4800);
 
-            // --- NUEVO PROYECTO ---
+            // Eventos del panel de bienvenida
             document.getElementById('welcome-new-project').onclick = () => {
                 modal.style.display = 'flex';
             };
 
-            // Función que realmente crea el nuevo proyecto y limpia el canvas
-            function ejecutarNuevoProyecto(nombreProyecto) {
-                if (nombreProyecto) window.currentProjectName = nombreProyecto;
+            document.getElementById('welcome-open-project').onclick = () => {
+                // Disparar clic en el botón "Abrir" de la toolbar
+                document.getElementById('btnOpen')?.click();
+                welcome.classList.add('welcome-hidden');
+            };
+
+            // Modal: Aceptar
+            document.getElementById('modal-accept').onclick = () => {
+                const name = inputProject.value.trim();
+                if (name) window.currentProjectName = name;
                 modal.style.display = 'none';
                 welcome.classList.add('welcome-hidden');
-                
                 // Limpiar el canvas y restablecer el estado inicial
                 if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) {
                     SmartFlowCore.nuevoProyecto();
@@ -668,24 +686,17 @@
                     SmartFlowRenderer.autoCenter();
                 }
                 document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
-            }
-
-            document.getElementById('modal-accept').onclick = () => {
-                const name = inputProject.value.trim();
-                ejecutarNuevoProyecto(name);
             };
 
+            // Modal: Saltar
             document.getElementById('modal-skip').onclick = () => {
-                ejecutarNuevoProyecto(window.currentProjectName);
-            };
-
-            // --- ABRIR PROYECTO EXISTENTE ---
-            document.getElementById('welcome-open-project').onclick = () => {
-                document.getElementById('btnOpen')?.click();
+                modal.style.display = 'none';
                 welcome.classList.add('welcome-hidden');
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
         });
 
+        // Mensajes rotativos en barra de estado
         const logs = [
             "SmartProject | IA: Escaneando colisiones...",
             "SmartProject | Optimizando MTO...",
