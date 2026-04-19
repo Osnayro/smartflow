@@ -1,10 +1,11 @@
 
 // ============================================================
-// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v3.1
+// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v4.0
 // Archivo: js/core.js
 // Propósito: Gestionar la base de datos del proyecto, historial,
 //            conectividad inteligente, sincronización física,
 //            auditoría de colisiones y reportes de spools.
+//            v4.0: Soporte para puertos en líneas y conexiones línea-línea.
 // ============================================================
 
 const SmartFlowCore = (function() {
@@ -40,15 +41,16 @@ const SmartFlowCore = (function() {
     function syncPhysicalData() {
         _db.lines.forEach(line => {
             // Extremo inicial (origen)
-            if (line.origin && line.origin.equipTag) {
-                const eq = _db.equipos.find(e => e.tag === line.origin.equipTag);
-                if (eq) {
-                    const puerto = eq.puertos?.find(p => p.id === line.origin.portId);
+            if (line.origin && line.origin.objTag) {
+                const sourceObj = findObjectByTag(line.origin.objTag);
+                if (sourceObj) {
+                    const puerto = sourceObj.puertos?.find(p => p.id === line.origin.portId);
                     if (puerto) {
+                        const posBase = getObjectPosition(sourceObj);
                         const newStart = {
-                            x: eq.posX + (puerto.relX || 0),
-                            y: eq.posY + (puerto.relY || 0),
-                            z: eq.posZ + (puerto.relZ || 0)
+                            x: posBase.x + (puerto.relX || puerto.relPos?.x || 0),
+                            y: posBase.y + (puerto.relY || puerto.relPos?.y || 0),
+                            z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0)
                         };
                         const pts = line._cachedPoints || line.points3D;
                         if (pts && pts.length > 0) {
@@ -59,15 +61,16 @@ const SmartFlowCore = (function() {
             }
             
             // Extremo final (destino)
-            if (line.destination && line.destination.equipTag) {
-                const eq = _db.equipos.find(e => e.tag === line.destination.equipTag);
-                if (eq) {
-                    const puerto = eq.puertos?.find(p => p.id === line.destination.portId);
+            if (line.destination && line.destination.objTag) {
+                const targetObj = findObjectByTag(line.destination.objTag);
+                if (targetObj) {
+                    const puerto = targetObj.puertos?.find(p => p.id === line.destination.portId);
                     if (puerto) {
+                        const posBase = getObjectPosition(targetObj);
                         const newEnd = {
-                            x: eq.posX + (puerto.relX || 0),
-                            y: eq.posY + (puerto.relY || 0),
-                            z: eq.posZ + (puerto.relZ || 0)
+                            x: posBase.x + (puerto.relX || puerto.relPos?.x || 0),
+                            y: posBase.y + (puerto.relY || puerto.relPos?.y || 0),
+                            z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0)
                         };
                         const pts = line._cachedPoints || line.points3D;
                         if (pts && pts.length > 0) {
@@ -80,6 +83,27 @@ const SmartFlowCore = (function() {
         _renderUI();
     }
 
+    function findObjectByTag(tag) {
+        let obj = _db.equipos.find(e => e.tag === tag);
+        if (obj) return obj;
+        obj = _db.lines.find(l => l.tag === tag);
+        return obj;
+    }
+
+    function getObjectPosition(obj) {
+        if (obj.posX !== undefined) {
+            return { x: obj.posX, y: obj.posY, z: obj.posZ };
+        } else {
+            // Para líneas, la posición base del puerto se calcula respecto al punto de inserción del componente.
+            // Esto se maneja en el momento de agregar el componente; aquí devolvemos el primer punto como referencia.
+            const pts = obj._cachedPoints || obj.points3D;
+            if (pts && pts.length > 0) {
+                return pts[0];
+            }
+            return { x: 0, y: 0, z: 0 };
+        }
+    }
+
     // ==================== DETECCIÓN DE COLISIONES ====================
     function pointInBox(p, box) {
         return p.x >= box.xMin && p.x <= box.xMax &&
@@ -89,7 +113,6 @@ const SmartFlowCore = (function() {
 
     function segmentIntersectsBox(p1, p2, box) {
         if (pointInBox(p1, box) || pointInBox(p2, box)) return true;
-        // Simplificación: chequeo de bounding box del segmento vs box
         const segMin = {
             x: Math.min(p1.x, p2.x),
             y: Math.min(p1.y, p2.y),
@@ -107,152 +130,105 @@ const SmartFlowCore = (function() {
 
     function auditCollisions() {
         const collisions = [];
-        
-        // Para cada línea, verificar contra equipos no conectados
         _db.lines.forEach(line => {
             const pts = line._cachedPoints || line.points3D;
             if (!pts || pts.length < 2) return;
             
             _db.equipos.forEach(eq => {
-                // Ignorar equipos conectados a esta línea
-                if ((line.origin && line.origin.equipTag === eq.tag) ||
-                    (line.destination && line.destination.equipTag === eq.tag)) {
+                if ((line.origin && line.origin.objTag === eq.tag) ||
+                    (line.destination && line.destination.objTag === eq.tag)) {
                     return;
                 }
-                
-                // Calcular bounding box del equipo
                 let box;
                 if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
                     const radius = eq.diametro / 2;
                     const halfHeight = eq.altura / 2;
                     box = {
-                        xMin: eq.posX - radius,
-                        xMax: eq.posX + radius,
-                        yMin: eq.posY - halfHeight,
-                        yMax: eq.posY + halfHeight,
-                        zMin: eq.posZ - radius,
-                        zMax: eq.posZ + radius
+                        xMin: eq.posX - radius, xMax: eq.posX + radius,
+                        yMin: eq.posY - halfHeight, yMax: eq.posY + halfHeight,
+                        zMin: eq.posZ - radius, zMax: eq.posZ + radius
                     };
                 } else if (eq.tipo === 'tanque_h') {
                     const halfL = eq.largo / 2;
                     const halfD = eq.diametro / 2;
                     box = {
-                        xMin: eq.posX - halfL,
-                        xMax: eq.posX + halfL,
-                        yMin: eq.posY - halfD,
-                        yMax: eq.posY + halfD,
-                        zMin: eq.posZ - halfD,
-                        zMax: eq.posZ + halfD
+                        xMin: eq.posX - halfL, xMax: eq.posX + halfL,
+                        yMin: eq.posY - halfD, yMax: eq.posY + halfD,
+                        zMin: eq.posZ - halfD, zMax: eq.posZ + halfD
                     };
                 } else {
                     const halfL = (eq.largo || 1000) / 2;
                     const halfW = (eq.ancho || eq.diametro || 1000) / 2;
                     const halfH = (eq.altura || 1000) / 2;
                     box = {
-                        xMin: eq.posX - halfL,
-                        xMax: eq.posX + halfL,
-                        yMin: eq.posY - halfH,
-                        yMax: eq.posY + halfH,
-                        zMin: eq.posZ - halfW,
-                        zMax: eq.posZ + halfW
+                        xMin: eq.posX - halfL, xMax: eq.posX + halfL,
+                        yMin: eq.posY - halfH, yMax: eq.posY + halfH,
+                        zMin: eq.posZ - halfW, zMax: eq.posZ + halfW
                     };
                 }
-                
-                // Verificar cada segmento de la línea
                 for (let i = 0; i < pts.length - 1; i++) {
                     if (segmentIntersectsBox(pts[i], pts[i+1], box)) {
-                        collisions.push({
-                            line1: line.tag,
-                            equipment: eq.tag,
-                            type: 'LINE_EQUIPMENT'
-                        });
+                        collisions.push({ line1: line.tag, equipment: eq.tag, type: 'LINE_EQUIPMENT' });
                         break;
                     }
                 }
             });
         });
         
-        // Verificar colisiones entre líneas (no conectadas entre sí)
         for (let i = 0; i < _db.lines.length; i++) {
             const lineA = _db.lines[i];
             const ptsA = lineA._cachedPoints || lineA.points3D;
             if (!ptsA || ptsA.length < 2) continue;
-            
             for (let j = i + 1; j < _db.lines.length; j++) {
                 const lineB = _db.lines[j];
                 const ptsB = lineB._cachedPoints || lineB.points3D;
                 if (!ptsB || ptsB.length < 2) continue;
-                
-                // Ignorar si comparten equipo
                 const shareEquipment = 
-                    (lineA.origin && lineB.origin && lineA.origin.equipTag === lineB.origin.equipTag) ||
-                    (lineA.origin && lineB.destination && lineA.origin.equipTag === lineB.destination.equipTag) ||
-                    (lineA.destination && lineB.origin && lineA.destination.equipTag === lineB.origin.equipTag) ||
-                    (lineA.destination && lineB.destination && lineA.destination.equipTag === lineB.destination.equipTag);
+                    (lineA.origin && lineB.origin && lineA.origin.objTag === lineB.origin.objTag) ||
+                    (lineA.origin && lineB.destination && lineA.origin.objTag === lineB.destination.objTag) ||
+                    (lineA.destination && lineB.origin && lineA.destination.objTag === lineB.origin.objTag) ||
+                    (lineA.destination && lineB.destination && lineA.destination.objTag === lineB.destination.objTag);
                 if (shareEquipment) continue;
-                
-                // Verificar segmentos
                 let collision = false;
                 for (let a = 0; a < ptsA.length - 1 && !collision; a++) {
                     for (let b = 0; b < ptsB.length - 1 && !collision; b++) {
-                        // Simplificación: bounding boxes
-                        const segA = ptsA[a];
-                        const segA2 = ptsA[a+1];
-                        const segB = ptsB[b];
-                        const segB2 = ptsB[b+1];
-                        
+                        const segA = ptsA[a], segA2 = ptsA[a+1];
+                        const segB = ptsB[b], segB2 = ptsB[b+1];
                         const boxA = {
-                            xMin: Math.min(segA.x, segA2.x),
-                            xMax: Math.max(segA.x, segA2.x),
-                            yMin: Math.min(segA.y, segA2.y),
-                            yMax: Math.max(segA.y, segA2.y),
-                            zMin: Math.min(segA.z, segA2.z),
-                            zMax: Math.max(segA.z, segA2.z)
+                            xMin: Math.min(segA.x, segA2.x), xMax: Math.max(segA.x, segA2.x),
+                            yMin: Math.min(segA.y, segA2.y), yMax: Math.max(segA.y, segA2.y),
+                            zMin: Math.min(segA.z, segA2.z), zMax: Math.max(segA.z, segA2.z)
                         };
                         const boxB = {
-                            xMin: Math.min(segB.x, segB2.x),
-                            xMax: Math.max(segB.x, segB2.x),
-                            yMin: Math.min(segB.y, segB2.y),
-                            yMax: Math.max(segB.y, segB2.y),
-                            zMin: Math.min(segB.z, segB2.z),
-                            zMax: Math.max(segB.z, segB2.z)
+                            xMin: Math.min(segB.x, segB2.x), xMax: Math.max(segB.x, segB2.x),
+                            yMin: Math.min(segB.y, segB2.y), yMax: Math.max(segB.y, segB2.y),
+                            zMin: Math.min(segB.z, segB2.z), zMax: Math.max(segB.z, segB2.z)
                         };
-                        
                         if (!(boxA.xMax < boxB.xMin || boxA.xMin > boxB.xMax ||
                               boxA.yMax < boxB.yMin || boxA.yMin > boxB.yMax ||
                               boxA.zMax < boxB.zMin || boxA.zMin > boxB.zMax)) {
-                            collisions.push({
-                                line1: lineA.tag,
-                                line2: lineB.tag,
-                                type: 'LINE_LINE'
-                            });
+                            collisions.push({ line1: lineA.tag, line2: lineB.tag, type: 'LINE_LINE' });
                             collision = true;
                         }
                     }
                 }
             }
         }
-        
         return collisions;
     }
 
-    // ==================== REPORTE DE SPOOL ====================
     function getSpoolReport(lineTag) {
         const line = _db.lines.find(l => l.tag === lineTag);
         if (!line) return null;
-        
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return null;
-        
         let totalLen = 0;
         for (let i = 0; i < pts.length - 1; i++) {
             totalLen += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
         }
-        
         const codos = pts.filter(p => p.isControlPoint).length;
         const componentes = line.components?.length || 0;
         const juntas = codos * 2 + componentes * 2 + (line.origin ? 1 : 0) + (line.destination ? 1 : 0);
-        
         return {
             tag: line.tag,
             longitudTotal: totalLen,
@@ -288,37 +264,17 @@ const SmartFlowCore = (function() {
             if (_exists(linea.tag, 'lines')) {
                 return _notifyUI(`Error: La línea ${linea.tag} ya existe.`, true);
             }
-
             if (linea.spec && _db.specs[linea.spec]) {
                 const s = _db.specs[linea.spec];
                 linea.material = s.mat;
                 linea.rating = s.rating;
                 linea.schedule = s.sch;
             }
-
             _db.lines.push(linea);
             this._saveState();
             _notifyUI(`Línea ${linea.tag} creada correctamente.`, false);
             _renderUI();
             return true;
-        },
-
-        connectLineToPort: function(lineTag, equipTag, puertoId) {
-            const line = _db.lines.find(l => l.tag === lineTag);
-            const equip = _db.equipos.find(e => e.tag === equipTag);
-            
-            if (!line || !equip) return _notifyUI("Vínculo fallido: Datos no encontrados.", true);
-
-            const puerto = equip.puertos?.find(p => p.id === puertoId);
-            if (!puerto) return _notifyUI("El puerto no existe en el equipo.", true);
-
-            line.origin = { equipTag: equipTag, portId: puertoId };
-            puerto.connectedLine = lineTag;
-
-            syncPhysicalData();
-            this._saveState();
-            _notifyUI(`Conexión exitosa: ${lineTag} unido a ${equipTag}`, false);
-            _renderUI();
         },
 
         syncPhysicalData: syncPhysicalData,
@@ -342,12 +298,11 @@ const SmartFlowCore = (function() {
             return true;
         },
 
-        updatePuerto: function(equipTag, puertoId, cambios) {
-            const eq = _db.equipos.find(e => e.tag === equipTag);
-            if (!eq) return _notifyUI(`Equipo ${equipTag} no encontrado.`, true);
-            const puerto = eq.puertos?.find(p => p.id === puertoId);
-            if (!puerto) return _notifyUI(`Puerto ${puertoId} no encontrado en ${equipTag}.`, true);
-
+        updatePuerto: function(ownerTag, puertoId, cambios) {
+            const owner = findObjectByTag(ownerTag);
+            if (!owner) return _notifyUI(`Objeto ${ownerTag} no encontrado.`, true);
+            const puerto = owner.puertos?.find(p => p.id === puertoId);
+            if (!puerto) return _notifyUI(`Puerto ${puertoId} no encontrado en ${ownerTag}.`, true);
             if (cambios.diametro !== undefined) puerto.diametro = cambios.diametro;
             if (cambios.pos) {
                 puerto.relX = cambios.pos.x;
@@ -359,7 +314,6 @@ const SmartFlowCore = (function() {
                 const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
                 if (len > 0) puerto.orientacion = { dx: dx/len, dy: dy/len, dz: dz/len };
             }
-
             syncPhysicalData();
             this._saveState();
             _renderUI();
@@ -393,7 +347,7 @@ const SmartFlowCore = (function() {
 
         exportProject: function() {
             return JSON.stringify({
-                version: "3.1",
+                version: "4.0",
                 date: new Date().toISOString(),
                 data: _db
             });
@@ -434,61 +388,45 @@ const SmartFlowCore = (function() {
 
         auditModel: function() {
             let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n";
-            let errors = 0;
-            let warnings = 0;
-
+            let errors = 0, warnings = 0;
             _db.lines.forEach(line => {
                 const diamLinea = line.diameter;
-
-                if (line.origin && line.origin.equipTag) {
-                    const eq = _db.equipos.find(e => e.tag === line.origin.equipTag);
-                    const nz = eq?.puertos?.find(p => p.id === line.origin.portId);
+                if (line.origin && line.origin.objTag) {
+                    const obj = findObjectByTag(line.origin.objTag);
+                    const nz = obj?.puertos?.find(p => p.id === line.origin.portId);
                     if (nz && nz.diametro !== diamLinea) {
-                        report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con boquilla ${nz.id} (${nz.diametro}")\n`;
+                        report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`;
                         errors++;
                     }
                 }
-
-                if (line.destination && line.destination.equipTag) {
-                    const eq = _db.equipos.find(e => e.tag === line.destination.equipTag);
-                    const nz = eq?.puertos?.find(p => p.id === line.destination.portId);
+                if (line.destination && line.destination.objTag) {
+                    const obj = findObjectByTag(line.destination.objTag);
+                    const nz = obj?.puertos?.find(p => p.id === line.destination.portId);
                     if (nz && nz.diametro !== diamLinea) {
-                        report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con boquilla ${nz.id} (${nz.diametro}")\n`;
+                        report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`;
                         errors++;
                     }
                 }
-
                 const pts = line._cachedPoints || line.points3D;
                 if (!pts || pts.length < 2) {
                     report += `⚠️ ERROR [${line.tag}]: Línea sin geometría definida.\n`;
                     errors++;
                 }
             });
-
             const collisions = auditCollisions();
             collisions.forEach(c => {
-                if (c.type === 'LINE_EQUIPMENT') {
-                    report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con equipo ${c.equipment}\n`;
-                } else {
-                    report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con línea ${c.line2}\n`;
-                }
+                if (c.type === 'LINE_EQUIPMENT') report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con equipo ${c.equipment}\n`;
+                else report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con línea ${c.line2}\n`;
                 warnings++;
             });
-
-            if (errors === 0 && warnings === 0) {
-                report += "✅ Modelo íntegro. Sin discrepancias de diámetro o colisiones.";
-            } else {
-                report += `Se encontraron ${errors} errores y ${warnings} advertencias.`;
-            }
-
+            if (errors === 0 && warnings === 0) report += "✅ Modelo íntegro. Sin discrepancias de diámetro o colisiones.";
+            else report += `Se encontraron ${errors} errores y ${warnings} advertencias.`;
             _notifyUI(report, errors > 0);
             return report;
         },
 
         auditCollisions: auditCollisions,
-
         getSpoolReport: getSpoolReport,
-
         getDb: function() { return _db; },
         getEquipos: function() { return _db.equipos; },
         getLines: function() { return _db.lines; },
