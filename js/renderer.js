@@ -1,13 +1,12 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v17.6
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.0
 // Archivo: js/renderer.js
 // Propósito: Manejar toda la lógica de proyección isométrica,
 //            dibujo en Canvas 2D con jerarquía visual profesional,
-//            tuberías con volumen mediante borde contrastante,
-//            texto isométrico deformado, acotación inteligente,
-//            exportación (PDF/PCF) con vectores de orientación,
-//            visualización de errores de auditoría y auto-center inteligente.
+//            tuberías con volumen, texto isométrico, acotación,
+//            exportación (PDF/PCF), detección volumétrica de clics,
+//            y visualización de puertos lógicos en líneas.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -94,13 +93,20 @@ const SmartFlowRenderer = (function() {
         _ctx.fillText(`ORIGEN (0,${_currentElevation/1000}m,0)`, o.x + 15, o.y - 8);
     }
 
-    // -------------------- 3. DIBUJO DE EQUIPOS (sin cambios) --------------------
+    // -------------------- 3. DIBUJO DE EQUIPOS --------------------
     function drawTank(eq) {
         const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
         const w = (eq.diametro / 2) * _cam.scale;
         const h = eq.altura * _cam.scale;
         const topY = p.y - h/2;
         const bottomY = p.y + h/2;
+        
+        _ctx.beginPath(); 
+        _ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI); 
+        _ctx.fillStyle = '#2563eb'; 
+        _ctx.fill(); 
+        _ctx.strokeStyle = '#fff';
+        _ctx.stroke();
         
         _ctx.fillStyle = '#1e40af';
         _ctx.fillRect(p.x - w, topY, w, h);
@@ -110,13 +116,6 @@ const SmartFlowRenderer = (function() {
         _ctx.beginPath(); 
         _ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI); 
         _ctx.fillStyle = '#60a5fa'; 
-        _ctx.fill(); 
-        _ctx.strokeStyle = '#fff';
-        _ctx.stroke();
-        
-        _ctx.beginPath(); 
-        _ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI); 
-        _ctx.fillStyle = '#2563eb'; 
         _ctx.fill(); 
         _ctx.stroke();
         
@@ -201,14 +200,15 @@ const SmartFlowRenderer = (function() {
         drawPuertos(eq);
     }
 
-    function drawPuertos(eq) {
-        if (!eq.puertos) return;
+    function drawPuertos(obj) {
+        if (!obj.puertos) return;
+        const posBase = obj.posX !== undefined ? { x: obj.posX, y: obj.posY, z: obj.posZ } : (obj._cachedPoints && obj._cachedPoints.length > 0 ? obj._cachedPoints[0] : { x: 0, y: 0, z: 0 });
         
-        eq.puertos.forEach(nz => {
+        obj.puertos.forEach(nz => {
             const pos = { 
-                x: eq.posX + (nz.relX || 0), 
-                y: eq.posY + (nz.relY || 0), 
-                z: eq.posZ + (nz.relZ || 0)
+                x: posBase.x + (nz.relX || nz.relPos?.x || 0), 
+                y: posBase.y + (nz.relY || nz.relPos?.y || 0), 
+                z: posBase.z + (nz.relZ || nz.relPos?.z || 0)
             };
             const proj = project(pos);
             
@@ -247,7 +247,7 @@ const SmartFlowRenderer = (function() {
             _ctx.lineWidth = 1;
             _ctx.stroke();
             
-            drawIsoText(`${nz.id} ${nz.diametro || 3}"`, proj.x - 12, proj.y - 6, 'XY');
+            drawIsoText(`${nz.id} ${nz.diametro || obj.diameter || 3}"`, proj.x - 12, proj.y - 6, 'XY');
         });
     }
 
@@ -308,7 +308,7 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    // -------------------- 6. DIBUJO DE TUBERÍAS CON VOLUMEN (sin cambios) --------------------
+    // -------------------- 6. DIBUJO DE TUBERÍAS CON VOLUMEN --------------------
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -452,15 +452,15 @@ const SmartFlowRenderer = (function() {
         if (!_core) return false;
         const db = _core.getDb();
         
-        if (line.origin && line.origin.equipTag) {
-            const eq = db.equipos.find(e => e.tag === line.origin.equipTag);
-            const nz = eq?.puertos?.find(p => p.id === line.origin.portId);
+        if (line.origin && line.origin.objTag) {
+            const obj = db.equipos.find(e => e.tag === line.origin.objTag) || db.lines.find(l => l.tag === line.origin.objTag);
+            const nz = obj?.puertos?.find(p => p.id === line.origin.portId);
             if (nz && nz.diametro !== line.diameter) return true;
         }
         
-        if (line.destination && line.destination.equipTag) {
-            const eq = db.equipos.find(e => e.tag === line.destination.equipTag);
-            const nz = eq?.puertos?.find(p => p.id === line.destination.portId);
+        if (line.destination && line.destination.objTag) {
+            const obj = db.equipos.find(e => e.tag === line.destination.objTag) || db.lines.find(l => l.tag === line.destination.objTag);
+            const nz = obj?.puertos?.find(p => p.id === line.destination.portId);
             if (nz && nz.diametro !== line.diameter) return true;
         }
         
@@ -473,14 +473,15 @@ const SmartFlowRenderer = (function() {
         
         if (line.origin) {
             const db = _core.getDb();
-            const eq = db.equipos.find(e => e.tag === line.origin.equipTag);
-            if (eq) {
-                const puerto = eq.puertos?.find(p => p.id === line.origin.portId);
+            const obj = db.equipos.find(e => e.tag === line.origin.objTag) || db.lines.find(l => l.tag === line.origin.objTag);
+            if (obj) {
+                const puerto = obj.puertos?.find(p => p.id === line.origin.portId);
                 if (puerto) {
+                    const posBase = obj.posX !== undefined ? { x: obj.posX, y: obj.posY, z: obj.posZ } : (obj._cachedPoints && obj._cachedPoints.length > 0 ? obj._cachedPoints[0] : { x: 0, y: 0, z: 0 });
                     pts[0] = {
-                        x: eq.posX + (puerto.relX || 0),
-                        y: eq.posY + (puerto.relY || 0),
-                        z: eq.posZ + (puerto.relZ || 0)
+                        x: posBase.x + (puerto.relX || puerto.relPos?.x || 0),
+                        y: posBase.y + (puerto.relY || puerto.relPos?.y || 0),
+                        z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0)
                     };
                 }
             }
@@ -488,14 +489,15 @@ const SmartFlowRenderer = (function() {
         
         if (line.destination) {
             const db = _core.getDb();
-            const eq = db.equipos.find(e => e.tag === line.destination.equipTag);
-            if (eq) {
-                const puerto = eq.puertos?.find(p => p.id === line.destination.portId);
+            const obj = db.equipos.find(e => e.tag === line.destination.objTag) || db.lines.find(l => l.tag === line.destination.objTag);
+            if (obj) {
+                const puerto = obj.puertos?.find(p => p.id === line.destination.portId);
                 if (puerto) {
+                    const posBase = obj.posX !== undefined ? { x: obj.posX, y: obj.posY, z: obj.posZ } : (obj._cachedPoints && obj._cachedPoints.length > 0 ? obj._cachedPoints[0] : { x: 0, y: 0, z: 0 });
                     pts[pts.length - 1] = {
-                        x: eq.posX + (puerto.relX || 0),
-                        y: eq.posY + (puerto.relY || 0),
-                        z: eq.posZ + (puerto.relZ || 0)
+                        x: posBase.x + (puerto.relX || puerto.relPos?.x || 0),
+                        y: posBase.y + (puerto.relY || puerto.relPos?.y || 0),
+                        z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0)
                     };
                 }
             }
@@ -542,7 +544,6 @@ const SmartFlowRenderer = (function() {
         
         const hasAuditError = lineHasAuditError(line);
         
-        // Capas de dibujo (sombra, borde, color, brillo)
         _ctx.save();
         drawPath();
         _ctx.shadowColor = hasAuditError ? '#ef4444' : '#000000';
@@ -638,6 +639,11 @@ const SmartFlowRenderer = (function() {
             const dz = pts[1].z - pts[0].z;
             const plane = Math.abs(dx) > Math.abs(dz) ? 'XY' : 'ZY';
             drawIsoText(line.tag, projMid.x, projMid.y - 25 * _cam.scale, plane);
+        }
+        
+        // Dibujar puertos de la línea (generados por accesorios de derivación)
+        if (line.puertos) {
+            drawPuertos(line);
         }
     }
 
@@ -1008,85 +1014,87 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    function drawSelection(element) {
-        if (!element) return;
-        _ctx.strokeStyle = '#facc15';
-        _ctx.lineWidth = 4;
-        
-        if (element.type === 'equipment') {
-            const eq = element.obj;
-            if (eq.tipo === 'colector') {
-                const pIzq = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
-                const pDer = project({ x: eq.posX + eq.largo, y: eq.posY, z: eq.posZ });
-                _ctx.beginPath();
-                _ctx.moveTo(pIzq.x, pIzq.y);
-                _ctx.lineTo(pDer.x, pDer.y);
-                _ctx.stroke();
-            } else {
-                const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
-                const w = (eq.diametro / 2) * _cam.scale;
-                const h = eq.altura * _cam.scale;
-                _ctx.beginPath();
-                _ctx.ellipse(p.x, p.y - h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI);
-                _ctx.stroke();
-            }
-        } else if (element.type === 'line') {
-            const line = element.obj;
-            const pts = line._cachedPoints || line.points3D;
-            if (pts && pts.length) {
-                _ctx.beginPath();
-                const proj = pts.map(p => project(p));
-                _ctx.moveTo(proj[0].x, proj[0].y);
-                for (let i = 1; i < proj.length; i++) {
-                    _ctx.lineTo(proj[i].x, proj[i].y);
-                }
-                _ctx.stroke();
-            }
-        }
+    // -------------------- 7. DETECCIÓN VOLUMÉTRICA DE CLICS --------------------
+    function isPointInCylinder(p, eq) {
+        const dx = p.x - eq.posX;
+        const dz = p.z - eq.posZ;
+        const radius = eq.diametro / 2;
+        if (dx*dx + dz*dz > radius*radius) return false;
+        const halfH = eq.altura / 2;
+        if (p.y < eq.posY - halfH || p.y > eq.posY + halfH) return false;
+        return true;
     }
 
-    function render() {
-        if (!_ctx || !_core) return;
+    function isPointInHorizontalCylinder(p, eq) {
+        const dx = p.x - eq.posX;
+        const halfL = eq.largo / 2;
+        if (Math.abs(dx) > halfL) return false;
+        const dy = p.y - eq.posY;
+        const dz = p.z - eq.posZ;
+        const radius = eq.diametro / 2;
+        if (dy*dy + dz*dz > radius*radius) return false;
+        return true;
+    }
+
+    function isPointInBox(p, eq) {
+        const halfL = (eq.largo || 1000) / 2;
+        const halfW = (eq.ancho || eq.diametro || 1000) / 2;
+        const halfH = (eq.altura || 1000) / 2;
+        return Math.abs(p.x - eq.posX) <= halfL &&
+               Math.abs(p.y - eq.posY) <= halfH &&
+               Math.abs(p.z - eq.posZ) <= halfW;
+    }
+
+    function pickElement(mouseCanvas) {
+        if (!_core) return null;
         const db = _core.getDb();
-        if (!db) return;
+        const equipos = db?.equipos || [];
+        const lines = db?.lines || [];
         
-        _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-        _ctx.fillStyle = '#000';
-        _ctx.fillRect(0, 0, _canvas.width, _canvas.height);
-        _ctx.save();
+        const worldClick = inverseProject(mouseCanvas.x, mouseCanvas.y);
         
-        drawGrid(_currentElevation);
-        drawOrigin();
-        
-        if (db.lines) {
-            db.lines.forEach(line => {
-                drawPipeWithElbows(line);
-                drawPipeComponents(line);
-            });
+        for (let i = equipos.length - 1; i >= 0; i--) {
+            const eq = equipos[i];
+            let inside = false;
+            if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
+                inside = isPointInCylinder(worldClick, eq);
+            } else if (eq.tipo === 'tanque_h') {
+                inside = isPointInHorizontalCylinder(worldClick, eq);
+            } else if (eq.tipo === 'bomba' || eq.tipo === 'intercambiador' || eq.tipo === 'colector') {
+                inside = isPointInBox(worldClick, eq);
+            } else {
+                inside = isPointInBox(worldClick, eq);
+            }
+            if (inside) return { type: 'equipment', obj: eq };
         }
         
-        if (db.equipos) {
-            db.equipos.forEach(eq => {
-                if (['tanque_v', 'torre', 'reactor', 'separador', 'clarificador', 'filtro_arena', 'tanque_acero'].includes(eq.tipo)) {
-                    drawTank(eq);
-                } else if (eq.tipo === 'tanque_h') {
-                    drawCilindroHorizontal(eq, '#3b82f6');
-                } else if (['bomba', 'bomba_sumergible'].includes(eq.tipo)) {
-                    drawBomba(eq);
-                } else if (eq.tipo === 'colector') {
-                    drawColector(eq);
-                } else {
-                    drawRectEquip(eq, '#3b82f6');
-                }
-            });
+        for (let line of lines) {
+            const pts = line._cachedPoints || line.points3D;
+            if (!pts || pts.length < 2) continue;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const p1 = pts[i], p2 = pts[i+1];
+                const proj1 = project(p1), proj2 = project(p2);
+                const dist = pointToSegmentDistance(mouseCanvas, proj1, proj2);
+                if (dist < 12) return { type: 'line', obj: line };
+            }
         }
-        
-        const selected = _core.getSelected();
-        if (selected) drawSelection(selected);
-        
-        _ctx.restore();
+        return null;
     }
 
+    function pointToSegmentDistance(p, a, b) {
+        const ax = p.x - a.x, ay = p.y - a.y;
+        const bx = b.x - a.x, by = b.y - a.y;
+        const dot = ax * bx + ay * by;
+        const len2 = bx * bx + by * by;
+        if (len2 === 0) return Math.hypot(ax, ay);
+        let t = dot / len2;
+        t = Math.max(0, Math.min(1, t));
+        const projX = a.x + t * bx;
+        const projY = a.y + t * by;
+        return Math.hypot(p.x - projX, p.y - projY);
+    }
+
+    // -------------------- 8. AUTO-CENTER MEJORADO --------------------
     function autoCenter() {
         if (!_canvas || !_core) return;
         const db = _core.getDb();
@@ -1094,13 +1102,24 @@ const SmartFlowRenderer = (function() {
         const lines = db?.lines || [];
         
         let points = [];
-        equipos.forEach(eq => points.push({ x: eq.posX, y: eq.posY, z: eq.posZ }));
+        equipos.forEach(eq => {
+            const radius = (eq.diametro / 2) || 500;
+            points.push({ x: eq.posX, y: eq.posY, z: eq.posZ });
+            points.push({ x: eq.posX + radius, y: eq.posY, z: eq.posZ });
+            points.push({ x: eq.posX - radius, y: eq.posY, z: eq.posZ });
+            points.push({ x: eq.posX, y: eq.posY, z: eq.posZ + radius });
+            points.push({ x: eq.posX, y: eq.posY, z: eq.posZ - radius });
+            if (eq.tipo === 'tanque_h') {
+                const halfL = eq.largo / 2;
+                points.push({ x: eq.posX + halfL, y: eq.posY, z: eq.posZ });
+                points.push({ x: eq.posX - halfL, y: eq.posY, z: eq.posZ });
+            }
+        });
+        
         let centroid = { x: 0, y: 0, z: 0 };
         if (equipos.length > 0) {
             equipos.forEach(eq => { centroid.x += eq.posX; centroid.y += eq.posY; centroid.z += eq.posZ; });
-            centroid.x /= equipos.length;
-            centroid.y /= equipos.length;
-            centroid.z /= equipos.length;
+            centroid.x /= equipos.length; centroid.y /= equipos.length; centroid.z /= equipos.length;
         }
         const MAX_DIST = 15000;
         lines.forEach(line => {
@@ -1115,7 +1134,10 @@ const SmartFlowRenderer = (function() {
                 }
             });
         });
-        if (points.length === 0) points = [{ x: -2000, y: 0, z: -2000 }, { x: 2000, y: 2000, z: 2000 }];
+        
+        if (points.length === 0) {
+            points = [{ x: -2000, y: 0, z: -2000 }, { x: 2000, y: 2000, z: 2000 }];
+        }
         
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         points.forEach(p => {
@@ -1244,7 +1266,6 @@ const SmartFlowRenderer = (function() {
         
         let pcfContent = "";
         
-        // 1. Exportar boquillas de equipos (NOZZLE)
         db.equipos?.forEach(eq => {
             if (!eq.puertos) return;
             eq.puertos.forEach(nz => {
@@ -1259,7 +1280,6 @@ const SmartFlowRenderer = (function() {
             });
         });
         
-        // 2. Exportar líneas y componentes
         lines.forEach(line => {
             const pts = line._cachedPoints || line.points3D;
             if (!pts || pts.length < 2) return;
@@ -1330,7 +1350,8 @@ const SmartFlowRenderer = (function() {
 
     window.SmartFlowRenderer = {
         init, render, autoCenter, pan, zoom, project, inverseProject,
-        setElevation, resizeCanvas, exportPDF, exportPCF, getCam: () => _cam
+        setElevation, resizeCanvas, exportPDF, exportPCF, getCam: () => _cam,
+        pickElement, calculateComponentPosition
     };
     return window.SmartFlowRenderer;
 })();
