@@ -1,11 +1,10 @@
-
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.1
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
 // Propósito: Inicializar todos los módulos, cablear eventos de UI,
 //            gestionar el ciclo de vida de la aplicación y
 //            manejar guardado/carga de proyectos.
-//            Soporta accesibilidad y enrutamiento automático.
+//            Soporta accesibilidad, enrutamiento automático y autocompletado.
 // ============================================================
 
 (function() {
@@ -112,6 +111,11 @@
         
         // Inicializar Commands
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
+        
+        // Inicializar Autocomplete
+        if (typeof SmartFlowAutocomplete !== 'undefined' && commandText) {
+            SmartFlowAutocomplete.init(commandText, SmartFlowCore, SmartFlowCatalog, SmartFlowCommands);
+        }
         
         notify("SmartProject - Sistema listo", false);
     }
@@ -234,6 +238,9 @@
     }
     
     function pickElement(mouseCanvas) {
+        if (SmartFlowRenderer && SmartFlowRenderer.pickElement) {
+            return SmartFlowRenderer.pickElement(mouseCanvas);
+        }
         const db = SmartFlowCore.getDb();
         const equipos = db?.equipos || [];
         const lines = db?.lines || [];
@@ -347,6 +354,9 @@
                 }
                 commandText.value = '';
                 if (commandPanel) commandPanel.style.display = 'none';
+                if (typeof SmartFlowAutocomplete !== 'undefined') {
+                    SmartFlowAutocomplete.hideSuggestions();
+                }
             }
         });
         vincular('btnAddTank', () => {
@@ -416,3 +426,4 @@
     
     init();
 })();
+
