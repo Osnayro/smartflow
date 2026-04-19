@@ -1,10 +1,9 @@
 
 // ============================================================
-// MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v12.1
+// MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.0
 // Archivo: js/catalog.js
-// Propósito: Definir la biblioteca de equipos, accesorios y componentes
-//            para industrias: Petrolera, Petroquímica, Química,
-//            Alimentos, Farmacéutica y Tratamiento de Aguas.
+// Propósito: Definir la biblioteca de equipos, accesorios y componentes.
+//            v2.0: Añade generación de puertos lógicos en accesorios de derivación.
 // ============================================================
 
 const SmartFlowCatalog = (function() {
@@ -272,8 +271,6 @@ const SmartFlowCatalog = (function() {
         ELBOW_90_HDPE: { tipo: 'ELBOW_90_HDPE', nombre: 'Codo 90° HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', angulo: 90, material: 'HDPE' },
         ELBOW_90_PVC: { tipo: 'ELBOW_90_PVC', nombre: 'Codo 90° PVC', spec: 'PVC_SCH80', conexion: 'CEMENTADO', angulo: 90, material: 'PVC' },
         ELBOW_90_SANITARY: { tipo: 'ELBOW_90_SR', nombre: 'Codo 90° Sanitario', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP' },
-        
-        // CODOS DE ACERO ROSCADOS
         CODO_90_ACERO_3IN: { tipo: 'ELBOW_90_ACERO', nombre: 'Codo 90° Acero 3 pulgadas', spec: 'ACERO_SCH80', conexion: 'NPT_HEMBRA', material: 'Acero al Carbono', angulo: 90, longitud_centro_cara: 75 },
         
         // BRIDAS
@@ -281,8 +278,6 @@ const SmartFlowCatalog = (function() {
         SLIP_ON_FLANGE_150: { tipo: 'SLIP_ON_FLANGE', nombre: 'Brida Slip-On', spec: 'ACERO_150_RF', clase: '150', norma: 'ASME B16.5' },
         BLIND_FLANGE_150: { tipo: 'BLIND_FLANGE', nombre: 'Brida Ciega', spec: 'ACERO_150_RF', clase: '150', norma: 'ASME B16.5' },
         LAP_JOINT_FLANGE_150: { tipo: 'LAP_JOINT_FLANGE', nombre: 'Brida Loca Acero', spec: 'ACERO_150_RF', clase: '150', norma: 'ASME B16.5', material: 'Acero al Carbono', espesor: { 2: 12, 3: 15, 4: 18, 6: 22 } },
-        
-        // PORTABRIDAS
         STUB_END_PPR: { tipo: 'STUB_END', nombre: 'Portabrida PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR', longitud: { 2: 50, 3: 60, 4: 75, 6: 90 } },
         STUB_END_HDPE: { tipo: 'STUB_END', nombre: 'Portabrida HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', material: 'HDPE' },
         
@@ -343,6 +338,7 @@ const SmartFlowCatalog = (function() {
         TEMPERATURE_TRANSMITTER: { tipo: 'INSTRUMENT', nombre: 'Transmisor de Temperatura', señal: '4-20 mA' },
         ROTAMETER: { tipo: 'INSTRUMENT', nombre: 'Rotámetro', conexion: 'ROSCADO' },
         SIGHT_GLASS: { tipo: 'INSTRUMENT', nombre: 'Visor de Flujo', conexion: 'ROSCADO' },
+        LEVEL_SWITCH_RANA: { tipo: 'LEVEL_SWITCH_RANA', nombre: 'Switch de Nivel Tipo Rana', conexion: '1/2 NPT' },
 
         // SOPORTES
         PIPE_SHOE: { tipo: 'PIPE_SHOE', nombre: 'Zapata', material: 'Acero al Carbono' },
@@ -382,7 +378,87 @@ const SmartFlowCatalog = (function() {
         SAMPLE_VALVE: { tipo: 'SAMPLE_VALVE', nombre: 'Válvula de Muestreo', material: 'Acero Inoxidable' }
     };
 
-    // -------------------- 4. DIMENSIONES ESTÁNDAR POR DIÁMETRO --------------------
+    // ==================== 4. GENERACIÓN DE PUERTOS PARA ACCESORIOS DE DERIVACIÓN ====================
+    // Funciones auxiliares para calcular vectores directores
+    function calculateLineDirection(line, param) {
+        const pts = line._cachedPoints || line.points3D;
+        if (!pts || pts.length < 2) return { dx: 1, dy: 0, dz: 0 };
+        let lengths = [], totalLen = 0;
+        for (let i = 0; i < pts.length - 1; i++) {
+            let d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+            lengths.push(d); totalLen += d;
+        }
+        if (totalLen === 0) return { dx: 1, dy: 0, dz: 0 };
+        const targetLen = totalLen * param;
+        let currentAccum = 0, segIndex = 0;
+        for (let i = 0; i < lengths.length; i++) {
+            if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) {
+                segIndex = i; break;
+            }
+            currentAccum += lengths[i];
+        }
+        const p1 = pts[segIndex], p2 = pts[segIndex + 1];
+        const dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z;
+        const len = Math.hypot(dx, dy, dz) || 1;
+        return { dx: dx/len, dy: dy/len, dz: dz/len };
+    }
+
+    function getPerpendicularVector(dir) {
+        let perp = { dx: -dir.dy, dy: dir.dx, dz: 0 };
+        if (Math.abs(dir.dx) < 0.1 && Math.abs(dir.dy) < 0.1) {
+            perp = { dx: 1, dy: 0, dz: 0 };
+        }
+        const len = Math.hypot(perp.dx, perp.dy, perp.dz);
+        return { dx: perp.dx/len, dy: perp.dy/len, dz: perp.dz/len };
+    }
+
+    // Asignar funciones generadoras a componentes de derivación
+    components.TEE_EQUAL = {
+        ...components.TEE_EQUAL_CS,
+        generarPuertos: (line, param, diametro) => {
+            const dir = calculateLineDirection(line, param);
+            const perp = getPerpendicularVector(dir);
+            return [
+                { id: 'RUN1', label: 'Entrada', relPos: { x: -dir.dx*50, y: -dir.dy*50, z: -dir.dz*50 }, orientacion: dir, diametro },
+                { id: 'RUN2', label: 'Salida', relPos: { x: dir.dx*50, y: dir.dy*50, z: dir.dz*50 }, orientacion: dir, diametro },
+                { id: 'BRANCH', label: 'Derivación', relPos: { x: perp.dx*50, y: perp.dy*50, z: perp.dz*50 }, orientacion: perp, diametro }
+            ];
+        }
+    };
+
+    components.TEE_REDUCING = {
+        ...components.TEE_REDUCING_CS,
+        generarPuertos: (line, param, diametro) => {
+            const dir = calculateLineDirection(line, param);
+            const perp = getPerpendicularVector(dir);
+            return [
+                { id: 'RUN1', label: 'Entrada', relPos: { x: -dir.dx*50, y: -dir.dy*50, z: -dir.dz*50 }, orientacion: dir, diametro },
+                { id: 'RUN2', label: 'Salida', relPos: { x: dir.dx*50, y: dir.dy*50, z: dir.dz*50 }, orientacion: dir, diametro },
+                { id: 'BRANCH', label: 'Derivación', relPos: { x: perp.dx*50, y: perp.dy*50, z: perp.dz*50 }, orientacion: perp, diametro: diametro * 0.75 }
+            ];
+        }
+    };
+
+    components.CROSS = {
+        ...components.CROSS_CS,
+        generarPuertos: (line, param, diametro) => {
+            const dir = calculateLineDirection(line, param);
+            const perp1 = getPerpendicularVector(dir);
+            const perp2 = {
+                dx: dir.dy * perp1.dz - dir.dz * perp1.dy,
+                dy: dir.dz * perp1.dx - dir.dx * perp1.dz,
+                dz: dir.dx * perp1.dy - dir.dy * perp1.dx
+            };
+            return [
+                { id: 'RUN1', label: 'Entrada', relPos: { x: -dir.dx*50, y: -dir.dy*50, z: -dir.dz*50 }, orientacion: dir, diametro },
+                { id: 'RUN2', label: 'Salida', relPos: { x: dir.dx*50, y: dir.dy*50, z: dir.dz*50 }, orientacion: dir, diametro },
+                { id: 'BRANCH1', label: 'Derivación 1', relPos: { x: perp1.dx*50, y: perp1.dy*50, z: perp1.dz*50 }, orientacion: perp1, diametro },
+                { id: 'BRANCH2', label: 'Derivación 2', relPos: { x: perp2.dx*50, y: perp2.dy*50, z: perp2.dz*50 }, orientacion: perp2, diametro }
+            ];
+        }
+    };
+
+    // -------------------- 5. DIMENSIONES ESTÁNDAR POR DIÁMETRO --------------------
     const dimensiones = {
         insercion_ppr: { 2: 45, 3: 60, 4: 75, 6: 90 },
         insercion_hdpe: { 2: 50, 3: 65, 4: 80, 6: 100 },
@@ -412,7 +488,6 @@ const SmartFlowCatalog = (function() {
         createEquipment: function(tipo, tag, x, y, z, opciones = {}) {
             const def = equipment[tipo];
             if (!def) return null;
-            
             let base = {
                 tag, tipo, posX: x, posY: y, posZ: z,
                 diametro: opciones.diametro || 1000,
@@ -423,7 +498,6 @@ const SmartFlowCatalog = (function() {
                 diametro_entrada: opciones.diametro_entrada || 3,
                 altura_salida_desde_base: opciones.altura_salida_desde_base
             };
-            
             base.puertos = def.generarPuertos(base);
             return base;
         },
@@ -434,5 +508,4 @@ const SmartFlowCatalog = (function() {
             return { ...def, ...opciones, id: compId };
         }
     };
-
 })();
