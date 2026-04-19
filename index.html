@@ -1,6 +1,4 @@
 
-
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,12 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>SmartProject | AcQuaBlue</title>
     
-    <!-- Librerías externas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
-        /* ========== VARIABLES CORPORATIVAS ========== */
         :root {
             --primary-bg: #0a0e17;
             --panel-bg: rgba(20, 28, 45, 0.95);
@@ -37,7 +33,6 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* ========== PANTALLA DE CARGA (SPLASH) ========== */
         #splash-screen {
             position: fixed;
             top: 0; left: 0;
@@ -86,7 +81,6 @@
         @keyframes fill-bar { 0% { width: 0%; } 100% { width: 100%; } }
         .splash-hidden { opacity: 0; visibility: hidden; }
 
-        /* ========== PANEL DE BIENVENIDA ========== */
         #welcome-panel {
             position: fixed;
             top: 0; left: 0;
@@ -165,7 +159,6 @@
 
         .welcome-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 
-        /* ========== MODAL NOMBRE DE PROYECTO ========== */
         #project-name-modal {
             position: fixed; top: 0; left: 0;
             width: 100%; height: 100%;
@@ -202,7 +195,6 @@
         }
         .modal-btn.cancel { background: #334155; }
 
-        /* ========== INTERFAZ PRINCIPAL ========== */
         .toolbar {
             background: var(--toolbar-bg);
             padding: 10px 16px;
@@ -249,7 +241,6 @@
         canvas { display: block; width: 100%; height: 100%; cursor: grab; }
         canvas:active { cursor: grabbing; }
 
-        /* ========== PANELES FLOTANTES ========== */
         .command-panel {
             position: fixed; left: 10px; bottom: 10px;
             width: 90%; max-width: 500px;
@@ -340,7 +331,6 @@
         }
         .property-content { padding: 12px; }
 
-        /* ========== RESPONSIVE ========== */
         @media (max-width: 768px) {
             .toolbar button { font-size: 10px; padding: 6px 8px; }
             .property-panel { width: 300px; right: 10px; }
@@ -352,7 +342,6 @@
 </head>
 <body>
 
-    <!-- SPLASH SCREEN -->
     <div id="splash-screen">
         <div class="splash-content">
             <div class="corporate-header">
@@ -373,7 +362,6 @@
         </div>
     </div>
 
-    <!-- PANEL DE BIENVENIDA -->
     <div id="welcome-panel">
         <div class="welcome-container">
             <div class="home-logo-wrapper">
@@ -390,7 +378,6 @@
         </div>
     </div>
 
-    <!-- MODAL NOMBRE DE PROYECTO -->
     <div id="project-name-modal">
         <div class="modal-content">
             <h3>Nuevo Proyecto</h3>
@@ -402,7 +389,6 @@
         </div>
     </div>
 
-    <!-- BARRA DE HERRAMIENTAS -->
     <div class="toolbar" role="toolbar" aria-label="Barra de herramientas principal">
         <div class="toolbar-logo">
             <img src="img/logo.PNG" alt="Logo" style="height: 28px;" onerror="this.style.display='none'">
@@ -427,7 +413,6 @@
         <button id="btnToggleCatalog" class="btn-speak" aria-label="Mostrar catálogo">📦 Catálogo</button>
     </div>
 
-    <!-- ÁREA DEL CANVAS -->
     <div class="canvas-container">
         <canvas id="isoCanvas"></canvas>
         <div style="position:absolute; top:20px; left:20px; color:rgba(0,242,255,0.2); font-size:11px; pointer-events:none; text-transform:uppercase;">
@@ -435,29 +420,25 @@
         </div>
     </div>
 
-    <!-- PANEL DE COMANDOS -->
     <div id="commandPanel" class="command-panel" role="dialog" aria-label="Panel de comandos">
         <div class="command-header">
             <strong>🤖 Comandos IA</strong>
             <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;" aria-label="Cerrar panel">✖</button>
         </div>
-        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE&#10;route from TK-01 N1 to B-01 SUC diameter 3&#10;seleccionar TK-01&#10;leer escena&#10;help"></textarea>
+        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;crear tanque_v TK-01 at (0,1450,0) diam 2380 altura 2900 material PE&#10;ruta desde TK-01 N1 a B-01 SUC diametro 3&#10;seleccionar TK-01&#10;leer escena&#10;ayuda"></textarea>
         <div class="command-buttons">
             <button id="runCommands" class="btn-primary" aria-label="Ejecutar comandos">Ejecutar</button>
             <button id="clearCommand" aria-label="Limpiar panel">Limpiar</button>
         </div>
     </div>
 
-    <!-- NOTIFICACIONES -->
     <div id="notification" class="notification" role="status"></div>
 
-    <!-- BARRA DE ESTADO -->
     <div class="status-bar">
         <div id="statusMsg">SISTEMA LISTO | SmartProject</div>
         <div>AcQuaBlue International Corp. | Ing. Osnay Romero</div>
     </div>
 
-    <!-- PANEL DE HERRAMIENTAS -->
     <div class="tools-panel" id="toolsPanel" role="toolbar" aria-label="Herramientas de dibujo">
         <button id="toolSelect" class="active" aria-label="Seleccionar">🔍 Seleccionar</button>
         <button id="toolMoveEq" aria-label="Mover equipo">✋ Mover equipo</button>
@@ -465,7 +446,6 @@
         <button id="toolAddPoint" aria-label="Añadir punto">➕ Añadir punto</button>
     </div>
 
-    <!-- PANEL DE ELEVACIÓN -->
     <div class="elevation-panel" id="elevationPanel">
         <span style="font-size:12px;">📐 Elev. (mm):</span>
         <button onclick="setElevation(0)" style="padding:2px 8px;" aria-label="Elevación 0">0</button>
@@ -475,7 +455,6 @@
         <button id="btnSetElev" style="padding:2px 8px;" aria-label="Establecer elevación">Set</button>
     </div>
 
-    <!-- PANEL DE CATÁLOGO -->
     <div id="catalogPanel" class="catalog-panel" style="display:none" role="dialog" aria-label="Catálogo de equipos">
         <div class="catalog-header">📦 Catálogo <span style="float:right">▼</span></div>
         <div class="catalog-content" id="catalogContent">
@@ -510,7 +489,6 @@
         </div>
     </div>
 
-    <!-- PANEL DE PROPIEDADES -->
     <div id="propertyPanel" class="property-panel" style="display:none" role="dialog" aria-label="Propiedades del equipo">
         <div class="property-header">📋 Propiedades <span style="float:right">✖</span></div>
         <div class="property-content" id="propertyContent">
@@ -518,16 +496,15 @@
         </div>
     </div>
 
-    <!-- SCRIPTS DE LA APLICACIÓN -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/accessibility.js"></script>
     <script src="js/router.js"></script>
+    <script src="js/autocomplete.js"></script>
     <script src="js/main.js"></script>
 
-    <!-- SCRIPT DE INICIALIZACIÓN Y FLUJO DE BIENVENIDA -->
     <script>
         window.currentProjectName = "Proyecto_SmartFlow";
 
