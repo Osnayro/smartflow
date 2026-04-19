@@ -1,10 +1,11 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v3.2
+// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.0
 // Archivo: js/commands.js
-// Propósito: Interpretar comandos de texto/voz y ejecutar acciones.
+// Propósito: Interpretar comandos de texto en español e inglés.
 //            Soporte completo para crear, editar, eliminar, rutear,
-//            auditoría, generación de BOM, importación PCF y accesibilidad.
+//            auditoría, generación de BOM, importación PCF, accesibilidad
+//            y gestión de puertos lógicos en accesorios de derivación.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -14,6 +15,65 @@ const SmartFlowCommands = (function() {
     let _renderer = null;
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
+
+    // -------------------- 0. NORMALIZACIÓN DE COMANDOS (BILINGÜE) --------------------
+    const commandAliases = {
+        // Creación
+        'crear': 'create',
+        'create': 'create',
+        'crea': 'create',
+        // Conexión
+        'conectar': 'connect',
+        'connect': 'connect',
+        'ruta': 'route',
+        'route': 'route',
+        // Eliminación
+        'eliminar': 'delete',
+        'delete': 'delete',
+        'borrar': 'delete',
+        // Edición
+        'editar': 'edit',
+        'edit': 'edit',
+        'mover': 'move',
+        'move': 'move',
+        'establecer': 'set',
+        'set': 'set',
+        'añadir': 'add',
+        'add': 'add',
+        'quitar': 'remove',
+        'remove': 'remove',
+        // Listados
+        'listar': 'list',
+        'list': 'list',
+        // Auditoría
+        'auditar': 'audit',
+        'audit': 'audit',
+        // Reportes
+        'bom': 'bom',
+        'mto': 'bom',
+        'generar': 'generate',
+        'generate': 'generate',
+        // Ayuda
+        'ayuda': 'help',
+        'help': 'help',
+        // Deshacer/Rehacer
+        'deshacer': 'undo',
+        'undo': 'undo',
+        'rehacer': 'redo',
+        'redo': 'redo'
+    };
+
+    function normalizeCommand(cmd) {
+        const parts = cmd.trim().split(/\s+/);
+        if (parts.length === 0) return cmd;
+        const firstWord = parts[0].toLowerCase();
+        const mapped = commandAliases[firstWord];
+        if (mapped) {
+            parts[0] = mapped;
+            return parts.join(' ');
+        }
+        return cmd;
+    }
 
     // -------------------- 1. PARSER DE CREACIÓN DE EQUIPOS --------------------
     function parseCreate(cmd) {
@@ -40,8 +100,8 @@ const SmartFlowCommands = (function() {
         let params = {};
         for (let i = 5; i < parts.length; i++) {
             let key = parts[i];
-            if (key === 'diam') params.diametro = parseFloat(parts[++i]);
-            else if (key === 'height') params.altura = parseFloat(parts[++i]);
+            if (key === 'diam' || key === 'diametro') params.diametro = parseFloat(parts[++i]);
+            else if (key === 'height' || key === 'altura') params.altura = parseFloat(parts[++i]);
             else if (key === 'largo') params.largo = parseFloat(parts[++i]);
             else if (key === 'material') params.material = parts[++i].toUpperCase();
             else if (key === 'spec') params.spec = parts[++i];
@@ -60,7 +120,7 @@ const SmartFlowCommands = (function() {
         const equipo = _catalog.createEquipment(tipo, tag, x, y, z, params);
         if (equipo) {
             _core.addEquipment(equipo);
-            _notifyUI(`Equipo ${tag} (${equipoDef.nombre}) creado en (${x}, ${y}, ${z})`, false);
+            _notifyUI(`Equipo ${tag} (${equipoDef.nombre}) creado en (${x}, ${y}, ${z})`, false, { equipment: equipo });
         }
         return true;
     }
@@ -75,13 +135,13 @@ const SmartFlowCommands = (function() {
         let i = 3;
         
         while (i < parts.length) {
-            if (parts[i] === 'diameter') {
+            if (parts[i] === 'diameter' || parts[i] === 'diametro') {
                 diameter = parseFloat(parts[++i]);
             } else if (parts[i] === 'material') {
                 material = parts[++i].toUpperCase();
             } else if (parts[i] === 'spec') {
                 spec = parts[++i];
-            } else if (parts[i] === 'from' || parts[i] === 'route') {
+            } else if (parts[i] === 'from' || parts[i] === 'route' || parts[i] === 'ruta') {
                 i++;
                 while (i < parts.length) {
                     const coordStr = parts[i];
@@ -115,7 +175,7 @@ const SmartFlowCommands = (function() {
         };
         
         _core.addLine(nuevaLinea);
-        _notifyUI(`Línea ${tag} creada con ${points.length} puntos`, false);
+        _notifyUI(`Línea ${tag} creada con ${points.length} puntos`, false, { line: nuevaLinea });
         _renderUI();
         return true;
     }
@@ -140,10 +200,10 @@ const SmartFlowCommands = (function() {
         
         while (idx < parts.length) {
             const key = parts[idx++].toLowerCase();
-            if (key === 'entries') numEntradas = parseInt(parts[idx++]);
-            else if (key === 'spacing') spacing = parseFloat(parts[idx++]);
-            else if (key === 'output') outputPos = parts[idx++].toLowerCase();
-            else if (key === 'diameter') diametro = parseFloat(parts[idx++]);
+            if (key === 'entries' || key === 'entradas') numEntradas = parseInt(parts[idx++]);
+            else if (key === 'spacing' || key === 'espaciado') spacing = parseFloat(parts[idx++]);
+            else if (key === 'output' || key === 'salida') outputPos = parts[idx++].toLowerCase();
+            else if (key === 'diameter' || key === 'diametro') diametro = parseFloat(parts[idx++]);
             else if (key === 'material') material = parts[idx++].toUpperCase();
             else if (key === 'spec') spec = parts[idx++];
         }
@@ -159,39 +219,41 @@ const SmartFlowCommands = (function() {
         colector.puertos = def.generarPuertos(colector);
         
         _core.addEquipment(colector);
-        _notifyUI(`Colector ${tag} creado con ${numEntradas} entradas y salida ${outputPos}`, false);
+        _notifyUI(`Colector ${tag} creado con ${numEntradas} entradas y salida ${outputPos}`, false, { equipment: colector });
         return true;
     }
 
     // -------------------- 2. PARSER DE CONEXIÓN --------------------
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
-        if (parts[0] !== 'connect') return false;
+        if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
         
         const fromEquip = parts[1];
         const fromNozzle = parts[2];
-        if (parts[3] !== 'to') return false;
+        if (parts[3] !== 'to' && parts[3] !== 'a') return false;
         const toEquip = parts[4];
         const toNozzle = parts[5];
         
         let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
         for (let i = 6; i < parts.length; i++) {
-            if (parts[i] === 'diameter') diameter = parseFloat(parts[++i]);
+            if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
             else if (parts[i] === 'material') material = parts[++i].toUpperCase();
             else if (parts[i] === 'spec') spec = parts[++i];
         }
         
         const db = _core.getDb();
-        const eqFrom = db.equipos.find(e => e.tag === fromEquip);
-        const eqTo = db.equipos.find(e => e.tag === toEquip);
+        let fromObj = db.equipos.find(e => e.tag === fromEquip);
+        if (!fromObj) fromObj = db.lines.find(l => l.tag === fromEquip);
+        let toObj = db.equipos.find(e => e.tag === toEquip);
+        if (!toObj) toObj = db.lines.find(l => l.tag === toEquip);
         
-        if (!eqFrom || !eqTo) {
-            _notifyUI("Equipo no encontrado", true);
+        if (!fromObj || !toObj) {
+            _notifyUI("Equipo o línea no encontrado", true);
             return true;
         }
         
-        const nzFrom = eqFrom.puertos?.find(n => n.id === fromNozzle);
-        const nzTo = eqTo.puertos?.find(n => n.id === toNozzle);
+        const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+        const nzTo = toObj.puertos?.find(n => n.id === toNozzle);
         
         if (!nzFrom || !nzTo) {
             _notifyUI("Puerto no encontrado", true);
@@ -203,25 +265,19 @@ const SmartFlowCommands = (function() {
         
         const nuevaLinea = {
             tag, diameter, material, spec,
-            origin: { equipTag: fromEquip, portId: fromNozzle },
-            destination: { equipTag: toEquip, portId: toNozzle },
+            origin: { objType: fromObj.tipo ? 'equipment' : 'line', equipTag: fromEquip, portId: fromNozzle },
+            destination: { objType: toObj.tipo ? 'equipment' : 'line', equipTag: toEquip, portId: toNozzle },
             waypoints: [],
             _cachedPoints: null
         };
         
         _core.addLine(nuevaLinea);
         
-        if (eqFrom.puertos) {
-            const pFrom = eqFrom.puertos.find(p => p.id === fromNozzle);
-            if (pFrom) pFrom.connectedLine = tag;
-        }
-        if (eqTo.puertos) {
-            const pTo = eqTo.puertos.find(p => p.id === toNozzle);
-            if (pTo) pTo.connectedLine = tag;
-        }
+        nzFrom.connectedLine = tag;
+        nzTo.connectedLine = tag;
         
         _core.syncPhysicalData();
-        _notifyUI(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip}.${toNozzle} (${tag})`, false);
+        _notifyUI(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip}.${toNozzle} (${tag})`, false, { line: nuevaLinea });
         _renderUI();
         return true;
     }
@@ -229,18 +285,18 @@ const SmartFlowCommands = (function() {
     // -------------------- 3. PARSER DE RUTA AUTOMÁTICA --------------------
     function parseRoute(cmd) {
         const parts = cmd.split(/\s+/);
-        if (parts[0] !== 'route') return false;
-        if (parts[1] !== 'from') return false;
+        if (parts[0] !== 'route' && parts[0] !== 'ruta') return false;
+        if (parts[1] !== 'from' && parts[1] !== 'desde') return false;
         
         const fromEquip = parts[2];
         const fromNozzle = parts[3];
-        if (parts[4] !== 'to') return false;
+        if (parts[4] !== 'to' && parts[4] !== 'a' && parts[4] !== 'hasta') return false;
         const toEquip = parts[5];
         const toNozzle = parts[6];
         
         let diameter = 3, material = 'PPR', spec = 'PPR_PN12_5';
         for (let i = 7; i < parts.length; i++) {
-            if (parts[i] === 'diameter') diameter = parseFloat(parts[++i]);
+            if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
             else if (parts[i] === 'material') material = parts[++i].toUpperCase();
             else if (parts[i] === 'spec') spec = parts[++i];
         }
@@ -256,12 +312,12 @@ const SmartFlowCommands = (function() {
     // -------------------- 4. PARSER DE ELIMINACIÓN --------------------
     function parseDelete(cmd) {
         const parts = cmd.split(/\s+/);
-        if (parts[0] !== 'delete') return false;
+        if (parts[0] !== 'delete' && parts[0] !== 'eliminar') return false;
         
         const type = parts[1];
         const tag = parts[2];
         
-        if (type === 'equipment') {
+        if (type === 'equipment' || type === 'equipo') {
             const db = _core.getDb();
             const index = db.equipos.findIndex(e => e.tag === tag);
             if (index === -1) {
@@ -281,7 +337,7 @@ const SmartFlowCommands = (function() {
             _renderUI();
             return true;
             
-        } else if (type === 'line') {
+        } else if (type === 'line' || type === 'línea') {
             const db = _core.getDb();
             const index = db.lines.findIndex(l => l.tag === tag);
             if (index === -1) {
@@ -293,6 +349,13 @@ const SmartFlowCommands = (function() {
             db.equipos.forEach(eq => {
                 if (eq.puertos) {
                     eq.puertos.forEach(p => {
+                        if (p.connectedLine === tag) delete p.connectedLine;
+                    });
+                }
+            });
+            db.lines.forEach(l => {
+                if (l.puertos) {
+                    l.puertos.forEach(p => {
                         if (p.connectedLine === tag) delete p.connectedLine;
                     });
                 }
@@ -310,13 +373,13 @@ const SmartFlowCommands = (function() {
     // -------------------- 5. PARSER DE EDICIÓN --------------------
     function parseEditCommand(cmd) {
         const parts = cmd.split(/\s+/);
-        if (parts[0] !== 'edit') return false;
+        if (parts[0] !== 'edit' && parts[0] !== 'editar') return false;
         
-        if (parts[1] === 'equipment') {
+        if (parts[1] === 'equipment' || parts[1] === 'equipo') {
             const tag = parts[2];
             const action = parts[3];
             
-            if (action === 'move') {
+            if (action === 'move' || action === 'mover') {
                 let coordStr = '';
                 for (let i = 4; i < parts.length; i++) {
                     coordStr += parts[i];
@@ -331,45 +394,56 @@ const SmartFlowCommands = (function() {
                     _notifyUI(`Equipo ${tag} movido a (${x}, ${y}, ${z})`, false);
                     return true;
                 }
-            } else if (action === 'set' && parts[4] === 'puerto') {
-                const puertoId = parts[5];
-                const subParam = parts[6];
-                
-                if (subParam === 'diam') {
-                    const nuevoDiam = parseFloat(parts[7]);
-                    if (!isNaN(nuevoDiam)) {
-                        _core.updatePuerto(tag, puertoId, { diametro: nuevoDiam });
-                        _notifyUI(`Puerto ${puertoId} de ${tag} diámetro ${nuevoDiam}"`, false);
-                        return true;
-                    }
-                } else if (subParam === 'pos' || subParam === 'dir') {
-                    let coordStr = '';
-                    for (let i = 7; i < parts.length; i++) {
-                        coordStr += parts[i];
-                        if (parts[i].includes(')')) break;
-                    }
-                    const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
-                    if (m) {
-                        const x = parseFloat(m[1]);
-                        const y = parseFloat(m[2]);
-                        const z = parseFloat(m[3]);
-                        
-                        if (subParam === 'pos') {
+            } else if (action === 'set' || action === 'establecer') {
+                if (parts[4] === 'puerto') {
+                    const puertoId = parts[5];
+                    const subParam = parts[6];
+                    
+                    if (subParam === 'diam' || subParam === 'diametro') {
+                        const nuevoDiam = parseFloat(parts[7]);
+                        if (!isNaN(nuevoDiam)) {
+                            _core.updatePuerto(tag, puertoId, { diametro: nuevoDiam });
+                            _notifyUI(`Puerto ${puertoId} de ${tag} diámetro ${nuevoDiam}"`, false);
+                            return true;
+                        }
+                    } else if (subParam === 'pos' || subParam === 'posicion') {
+                        let coordStr = '';
+                        for (let i = 7; i < parts.length; i++) {
+                            coordStr += parts[i];
+                            if (parts[i].includes(')')) break;
+                        }
+                        const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+                        if (m) {
+                            const x = parseFloat(m[1]);
+                            const y = parseFloat(m[2]);
+                            const z = parseFloat(m[3]);
                             _core.updatePuerto(tag, puertoId, { pos: { x, y, z } });
                             _notifyUI(`Puerto ${puertoId} de ${tag} posición (${x}, ${y}, ${z})`, false);
-                        } else {
+                            return true;
+                        }
+                    } else if (subParam === 'dir' || subParam === 'direccion') {
+                        let coordStr = '';
+                        for (let i = 7; i < parts.length; i++) {
+                            coordStr += parts[i];
+                            if (parts[i].includes(')')) break;
+                        }
+                        const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+                        if (m) {
+                            const x = parseFloat(m[1]);
+                            const y = parseFloat(m[2]);
+                            const z = parseFloat(m[3]);
                             _core.updatePuerto(tag, puertoId, { dir: { dx: x, dy: y, dz: z } });
                             _notifyUI(`Puerto ${puertoId} de ${tag} dirección (${x}, ${y}, ${z})`, false);
+                            return true;
                         }
-                        return true;
                     }
                 }
             }
-        } else if (parts[1] === 'line') {
+        } else if (parts[1] === 'line' || parts[1] === 'línea') {
             const tag = parts[2];
             const action = parts[3];
             
-            if (action === 'set') {
+            if (action === 'set' || action === 'establecer') {
                 const property = parts[4];
                 const value = parts[5];
                 
@@ -377,7 +451,7 @@ const SmartFlowCommands = (function() {
                     _core.updateLine(tag, { material: value.toUpperCase() });
                     _notifyUI(`Línea ${tag} material ${value}`, false);
                     return true;
-                } else if (property === 'diameter') {
+                } else if (property === 'diameter' || property === 'diametro') {
                     _core.updateLine(tag, { diameter: parseFloat(value) });
                     _notifyUI(`Línea ${tag} diámetro ${value}"`, false);
                     return true;
@@ -386,7 +460,7 @@ const SmartFlowCommands = (function() {
                     _notifyUI(`Línea ${tag} especificación ${value}`, false);
                     return true;
                 }
-            } else if (action === 'add' && parts[4] === 'waypoint') {
+            } else if ((action === 'add' || action === 'añadir') && (parts[4] === 'waypoint' || parts[4] === 'punto')) {
                 let coordStr = '';
                 for (let i = 5; i < parts.length; i++) {
                     coordStr += parts[i];
@@ -400,7 +474,7 @@ const SmartFlowCommands = (function() {
                     if (line) {
                         if (!line.waypoints) line.waypoints = [];
                         let after = -1;
-                        const afterIdx = parts.indexOf('after');
+                        const afterIdx = parts.indexOf('after') !== -1 ? parts.indexOf('after') : parts.indexOf('despues');
                         if (afterIdx !== -1) after = parseInt(parts[afterIdx + 1]) - 1;
                         if (after >= 0 && after < line.waypoints.length) {
                             line.waypoints.splice(after + 1, 0, wp);
@@ -413,7 +487,7 @@ const SmartFlowCommands = (function() {
                         return true;
                     }
                 }
-            } else if (action === 'remove' && parts[4] === 'waypoint') {
+            } else if ((action === 'remove' || action === 'quitar') && (parts[4] === 'waypoint' || parts[4] === 'punto')) {
                 const idx = parseInt(parts[5]) - 1;
                 const db = _core.getDb();
                 const line = db.lines.find(l => l.tag === tag);
@@ -424,10 +498,10 @@ const SmartFlowCommands = (function() {
                     _notifyUI(`Waypoint ${idx + 1} eliminado de ${tag}`, false);
                     return true;
                 }
-            } else if (action === 'add' && parts[4] === 'component') {
+            } else if ((action === 'add' || action === 'añadir') && (parts[4] === 'component' || parts[4] === 'componente')) {
                 const compType = parts[5];
                 let position = 0.5;
-                const atIdx = parts.indexOf('at');
+                const atIdx = parts.indexOf('at') !== -1 ? parts.indexOf('at') : parts.indexOf('en');
                 if (atIdx !== -1) position = parseFloat(parts[atIdx + 1]);
                 
                 const db = _core.getDb();
@@ -445,8 +519,21 @@ const SmartFlowCommands = (function() {
                     };
                     if (!line.components) line.components = [];
                     line.components.push(comp);
-                    _core.updateLine(tag, { components: line.components });
-                    _notifyUI(`Componente ${compType} añadido a ${tag} en posición ${position}`, false);
+                    
+                    // NUEVO: Generar puertos lógicos si el componente es de derivación
+                    if (compDef.generarPuertos) {
+                        const nuevosPuertos = compDef.generarPuertos(line, position, line.diameter);
+                        if (!line.puertos) line.puertos = [];
+                        nuevosPuertos.forEach((p, idx) => {
+                            p.id = `${comp.tag}_${idx}`;
+                            line.puertos.push(p);
+                        });
+                        _core.updateLine(tag, { components: line.components, puertos: line.puertos });
+                        _notifyUI(`Componente ${compType} añadido a ${tag} con ${nuevosPuertos.length} puertos lógicos`, false);
+                    } else {
+                        _core.updateLine(tag, { components: line.components });
+                        _notifyUI(`Componente ${compType} añadido a ${tag} en posición ${position}`, false);
+                    }
                     _renderUI();
                     return true;
                 }
@@ -457,7 +544,8 @@ const SmartFlowCommands = (function() {
 
     // -------------------- 6. PARSER DE LISTADOS --------------------
     function parseListComponents(cmd) {
-        if (cmd.trim() !== 'list components') return false;
+        const trimmed = cmd.trim().toLowerCase();
+        if (trimmed !== 'list components' && trimmed !== 'listar componentes') return false;
         const types = _catalog.listComponentTypes();
         let msg = "Componentes disponibles:\n";
         types.sort().forEach(t => {
@@ -469,7 +557,8 @@ const SmartFlowCommands = (function() {
     }
 
     function parseListSpecs(cmd) {
-        if (cmd.trim() !== 'list specs') return false;
+        const trimmed = cmd.trim().toLowerCase();
+        if (trimmed !== 'list specs' && trimmed !== 'listar especificaciones') return false;
         const specs = _catalog.listSpecs();
         let msg = "Especificaciones disponibles:\n";
         specs.sort().forEach(s => {
@@ -482,7 +571,8 @@ const SmartFlowCommands = (function() {
     }
 
     function parseListEquipment(cmd) {
-        if (cmd.trim() !== 'list equipment') return false;
+        const trimmed = cmd.trim().toLowerCase();
+        if (trimmed !== 'list equipment' && trimmed !== 'listar equipos') return false;
         const types = _catalog.listEquipmentTypes();
         let msg = "Equipos disponibles:\n";
         types.sort().forEach(t => {
@@ -495,8 +585,8 @@ const SmartFlowCommands = (function() {
 
     // -------------------- 7. GENERACIÓN DE BOM --------------------
     function parseBOM(cmd) {
-        const trimmed = cmd.trim();
-        if (trimmed === 'bom' || trimmed === 'mto' || trimmed === 'generate bom') {
+        const trimmed = cmd.trim().toLowerCase();
+        if (trimmed === 'bom' || trimmed === 'mto' || trimmed === 'generate bom' || trimmed === 'generar bom') {
             generateBOM();
             return true;
         }
@@ -537,7 +627,8 @@ const SmartFlowCommands = (function() {
 
     // -------------------- 8. AUDITORÍA --------------------
     function parseAudit(cmd) {
-        if (cmd.trim() === 'audit' || cmd.trim() === 'audit model') {
+        const trimmed = cmd.trim().toLowerCase();
+        if (trimmed === 'audit' || trimmed === 'auditar' || trimmed === 'audit model' || trimmed === 'auditar modelo') {
             if (_core && _core.auditModel) _core.auditModel();
             else _notifyUI("Auditoría no disponible.", true);
             return true;
@@ -547,19 +638,20 @@ const SmartFlowCommands = (function() {
 
     // -------------------- 9. AYUDA --------------------
     function parseHelp(cmd) {
-        if (cmd.toLowerCase() !== 'help') return false;
+        const lower = cmd.toLowerCase();
+        if (lower !== 'help' && lower !== 'ayuda') return false;
         let ayuda = "═══════════════════════════════════════════════════════════\n";
         ayuda += "              SMARTFLOW PRO - COMANDOS DISPONIBLES\n";
         ayuda += "═══════════════════════════════════════════════════════════\n\n";
-        ayuda += "CREACIÓN:\n  create [tipo] [tag] at (x,y,z) [diam N] [height N] [material M]\n  create line [tag] route (x1,y1,z1) (x2,y2,z2) ... [diameter D]\n  create manifold [tag] at (x,y,z) entries N spacing D output left|center|right\n\n";
-        ayuda += "CONEXIÓN:\n  connect [equipo] [puerto] to [equipo] [puerto] diameter D\n  route from [equipo] [puerto] to [equipo] [puerto] diameter D\n\n";
-        ayuda += "ELIMINACIÓN:\n  delete equipment [tag]\n  delete line [tag]\n\n";
-        ayuda += "EDICIÓN DE EQUIPOS:\n  edit equipment [tag] move to (x,y,z)\n  edit equipment [tag] set puerto [id] pos (x,y,z)\n  edit equipment [tag] set puerto [id] dir (dx,dy,dz)\n  edit equipment [tag] set puerto [id] diam N\n\n";
-        ayuda += "EDICIÓN DE LÍNEAS:\n  edit line [tag] set material [M]\n  edit line [tag] set diameter [D]\n  edit line [tag] set spec [S]\n  edit line [tag] add waypoint (x,y,z) [after N]\n  edit line [tag] remove waypoint N\n  edit line [tag] add component [tipo] at [0-1]\n\n";
-        ayuda += "LISTADOS:\n  list components\n  list equipment\n  list specs\n\n";
-        ayuda += "REPORTES:\n  bom | mto | generate bom - Generar lista de materiales (CSV)\n  audit | audit model - Verificar diámetros y colisiones\n\n";
-        ayuda += "ACCESIBILIDAD (comandos de texto):\n  seleccionar [tag] - Selecciona y describe un elemento\n  leer selección - Describe el elemento actual\n  leer escena - Resume equipos y líneas\n  ¿dónde estoy? - Informa posición de cámara\n  lista de equipos - Enumera todos los equipos\n  lista de líneas - Enumera todas las líneas\n  centrar vista - Centra la vista\n  ayuda accesibilidad - Muestra estos comandos\n  silencio - Detiene la voz\n  modo verbose - Alterna descripciones detalladas\n\n";
-        ayuda += "OTROS:\n  undo | redo | help\n═══════════════════════════════════════════════════════════\n";
+        ayuda += "CREACIÓN:\n  create/crear [tipo] [tag] at (x,y,z) [diam/diametro N] [height/altura N]\n  create line/crear línea [tag] route/ruta (x1,y1,z1) ...\n  create manifold [tag] at (x,y,z) entries/entradas N spacing/espaciado D\n\n";
+        ayuda += "CONEXIÓN:\n  connect/conectar [obj] [puerto] to/a [obj] [puerto]\n  route/ruta from/desde [obj] [puerto] to/a [obj] [puerto]\n\n";
+        ayuda += "ELIMINACIÓN:\n  delete/eliminar equipment/equipo [tag]\n  delete/eliminar line/línea [tag]\n\n";
+        ayuda += "EDICIÓN DE EQUIPOS:\n  edit/editar equipment/equipo [tag] move/mover to (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] pos/posicion (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] dir/direccion (dx,dy,dz)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] diam/diametro N\n\n";
+        ayuda += "EDICIÓN DE LÍNEAS:\n  edit/editar line/línea [tag] set/establecer material [M]\n  edit/editar line/línea [tag] set/establecer diameter/diametro [D]\n  edit/editar line/línea [tag] set/establecer spec [S]\n  edit/editar line/línea [tag] add/añadir waypoint/punto (x,y,z) [after/despues N]\n  edit/editar line/línea [tag] remove/quitar waypoint/punto N\n  edit/editar line/línea [tag] add/añadir component/componente [tipo] at/en [0-1]\n\n";
+        ayuda += "LISTADOS:\n  list/listar components/componentes\n  list/listar equipment/equipos\n  list/listar specs/especificaciones\n\n";
+        ayuda += "REPORTES:\n  bom | mto | generate/generar bom\n  audit/auditar | audit/auditar model/modelo\n\n";
+        ayuda += "ACCESIBILIDAD:\n  seleccionar [tag], leer selección, leer escena, ¿dónde estoy?, lista de equipos, lista de líneas, centrar vista, ayuda accesibilidad, silencio, modo verbose\n\n";
+        ayuda += "OTROS:\n  undo/deshacer | redo/rehacer | help/ayuda\n═══════════════════════════════════════════════════════════\n";
         _notifyUI(ayuda, false);
         return true;
     }
@@ -587,7 +679,8 @@ const SmartFlowCommands = (function() {
     // -------------------- 11. EJECUCIÓN DE COMANDOS --------------------
     function executeCommand(cmd) {
         if (!cmd || cmd.startsWith('//')) return false;
-        const trimmed = cmd.trim();
+        const normalized = normalizeCommand(cmd);
+        const trimmed = normalized.trim();
         if (parseCreateLine(trimmed)) return true;
         if (parseCreateManifold(trimmed)) return true;
         if (parseCreate(trimmed)) return true;
@@ -601,8 +694,8 @@ const SmartFlowCommands = (function() {
         if (parseBOM(trimmed)) return true;
         if (parseAudit(trimmed)) return true;
         if (parseHelp(trimmed)) return true;
-        if (trimmed === 'undo') { _core.undo(); _renderUI(); return true; }
-        if (trimmed === 'redo') { _core.redo(); _renderUI(); return true; }
+        if (trimmed === 'undo' || trimmed === 'deshacer') { _core.undo(); _renderUI(); return true; }
+        if (trimmed === 'redo' || trimmed === 'rehacer') { _core.redo(); _renderUI(); return true; }
         return false;
     }
 
