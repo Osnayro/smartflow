@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.1 FINAL
+// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.2
 // Archivo: js/commands.js
 // Propósito: Interpretar comandos de texto en español e inglés.
 //            Soporte completo para crear, editar, eliminar, rutear,
@@ -346,23 +346,42 @@ const SmartFlowCommands = (function() {
         _notifyUI(ayuda, false); return true;
     }
 
-    // -------------------- 10. IMPORTACIÓN PCF MEJORADA --------------------
+    // -------------------- 10. IMPORTACIÓN PCF MEJORADA (v4.2) --------------------
     const skeyToInternal = {
+        // Equipos
         'TANK': { type: 'equipment', internal: 'tanque_v' },
         'PUMP': { type: 'equipment', internal: 'bomba' },
         'VESS': { type: 'equipment', internal: 'tanque_v' },
+        // Tubería
         'STRA': { type: 'pipe', internal: 'PIPE' },
+        // Válvulas
         'VALV': { type: 'component', internal: 'GATE_VALVE' },
         'VAGF': { type: 'component', internal: 'GATE_VALVE' },
         'VGLF': { type: 'component', internal: 'GLOBE_VALVE' },
         'VBAL': { type: 'component', internal: 'BALL_VALVE' },
         'VBAF': { type: 'component', internal: 'BUTTERFLY_VALVE' },
         'VCFF': { type: 'component', internal: 'CHECK_VALVE' },
+        // Codos
         'ELBW': { type: 'component', internal: 'ELBOW_90_LR' },
+        'ELL4': { type: 'component', internal: 'ELBOW_45' },
+        'ELLL': { type: 'component', internal: 'ELBOW_90_LR' },
+        'ELLS': { type: 'component', internal: 'ELBOW_90_SR' },
+        // Tees
         'TEES': { type: 'component', internal: 'TEE_EQUAL' },
         'TEER': { type: 'component', internal: 'TEE_REDUCING' },
+        'CROS': { type: 'component', internal: 'CROSS' },
+        // Bridas y accesorios
         'FLWN': { type: 'component', internal: 'WELD_NECK_FLANGE' },
-        'INSI': { type: 'component', internal: 'PRESSURE_GAUGE' },
+        'FLSO': { type: 'component', internal: 'SLIP_ON_FLANGE' },
+        'FLBL': { type: 'component', internal: 'BLIND_FLANGE' },
+        'CAPF': { type: 'component', internal: 'CAP' },
+        'REDC': { type: 'component', internal: 'CONCENTRIC_REDUCER' },
+        'REDE': { type: 'component', internal: 'ECCENTRIC_REDUCER' },
+        // Instrumentos
+        'INSI': { type: 'component', internal: 'PRESSURE_GAUGE' },  // Genérico para instrumentos
+        'INPG': { type: 'component', internal: 'PRESSURE_GAUGE' },
+        'INTG': { type: 'component', internal: 'TEMPERATURE_GAUGE' },
+        'INFM': { type: 'component', internal: 'FLOW_METER' },
         'INLV': { type: 'component', internal: 'LEVEL_SWITCH_RANA' }
     };
 
@@ -373,6 +392,36 @@ const SmartFlowCommands = (function() {
         const equiposMap = new Map(), lineasMap = new Map();
         let currentComponent = null;
         
+        // Función auxiliar para procesar el componente acumulado antes de pasar al siguiente
+        function processAccumulatedComponent() {
+            if (!currentComponent || !currentComponent.skey) return;
+
+            const mapping = skeyToInternal[currentComponent.skey];
+            if (mapping) {
+                if (mapping.type === 'equipment') {
+                    const pos = currentComponent.pos || {x:0, y:0, z:0};
+                    const tag = currentComponent.itemCode || `${mapping.internal}_${equiposMap.size + 1}`;
+                    if (!equiposMap.has(tag)) {
+                        const equipo = _catalog.createEquipment(mapping.internal, tag, pos.x, pos.y, pos.z, {
+                            diametro: currentComponent.diameter || 1000,
+                            altura: currentComponent.height || 1500,
+                            material: currentComponent.material || 'PPR'
+                        });
+                        if (equipo) { equiposMap.set(tag, equipo); _core.addEquipment(equipo); }
+                    }
+                } else if (mapping.type === 'component' && currentLine) {
+                    componentes.push({
+                        type: mapping.internal,
+                        tag: currentComponent.itemCode || `${mapping.internal}_${componentes.length + 1}`,
+                        param: 0.5,
+                        description: currentComponent.description,
+                        material: currentComponent.material
+                    });
+                }
+            }
+            currentComponent = null;
+        }
+
         function finalizeLine() {
             if (currentLine && puntos.length >= 2) {
                 if (!currentLine.tag) currentLine.tag = `L-${(lineasMap.size + 1)}`;
@@ -389,65 +438,74 @@ const SmartFlowCommands = (function() {
             if (line.startsWith('!') || line.length === 0) continue;
             const parts = line.split(/\s+/);
             const firstWord = parts[0];
-            
-            if (firstWord === 'PIPE' || firstWord === 'STRA') {
-                if (currentLine) finalizeLine();
-                currentLine = { tag: '', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' };
-                puntos = []; componentes = [];
-            } else if (line.startsWith('END-POINT')) {
+
+            // 1. Detección de inicio de nuevos bloques (Equipos, Componentes, Tubería)
+            const newBlockWords = ['PIPE', 'VALVE', 'TEE', 'TANK', 'PUMP', 'INSTRUMENT', 'ELBOW', 'FLANGE', 'STRA'];
+            if (newBlockWords.includes(firstWord)) {
+                processAccumulatedComponent(); // Guardamos el componente anterior
+                if (firstWord === 'PIPE' || firstWord === 'STRA') {
+                    finalizeLine();
+                    currentLine = { tag: '', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' };
+                    puntos = []; componentes = [];
+                } else {
+                    currentComponent = { type: firstWord };
+                }
+                continue;
+            }
+
+            // 2. Extracción de Atributos
+            if (line.startsWith('END-POINT')) {
+                // Formato: END-POINT x1 y1 z1 x2 y2 z2 diametro (a veces el diámetro está al final)
                 if (parts.length >= 7) {
                     const p1 = { x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) };
                     const p2 = { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) };
-                    if (currentLine) { if (puntos.length === 0) puntos.push(p1); puntos.push(p2); }
-                    else if (currentComponent) { currentComponent.pos = p1; }
+                    const diam = parts.length >= 8 ? parseFloat(parts[7]) : null;
+                    
+                    if (currentLine) {
+                        if (puntos.length === 0) puntos.push(p1);
+                        puntos.push(p2);
+                        if (diam && !currentLine.diameter) currentLine.diameter = diam / 25.4; // Convertir mm a pulgadas aprox
+                    }
+                    if (currentComponent) {
+                        currentComponent.pos = p1;
+                        if (diam) currentComponent.diameter = diam;
+                    }
                 }
-            } else if (firstWord === 'TANK' || firstWord === 'PUMP') {
-                currentComponent = { type: firstWord };
-            } else if (firstWord === 'INSTRUMENT') {
-                currentComponent = { type: 'INSTRUMENT' };
-            } else if (line.startsWith('PCF_ELEM_SKEY') || line.startsWith('SKEY')) {
+            } 
+            else if (line.startsWith('PCF_ELEM_SKEY')) {
                 const skey = parts[1]?.replace(/'/g, '') || '';
                 if (currentComponent) currentComponent.skey = skey;
                 else if (currentLine) currentLine.skey = skey;
-            } else if (line.startsWith('ITEM-CODE')) {
+            }
+            else if (line.startsWith('ITEM-CODE')) {
                 const code = line.substring(line.indexOf('ITEM-CODE') + 9).trim().replace(/'/g, '');
                 if (currentComponent) currentComponent.itemCode = code;
                 else if (currentLine) currentLine.tag = code;
-            } else if (line.startsWith('DESCRIPTION')) {
+            }
+            else if (line.startsWith('DESCRIPTION')) {
                 const desc = line.substring(line.indexOf('DESCRIPTION') + 11).trim().replace(/'/g, '');
                 if (currentComponent) currentComponent.description = desc;
-            } else if (line.startsWith('HEIGHT')) {
+            }
+            else if (line.startsWith('MATERIAL')) {
+                const mat = parts[1]?.replace(/'/g, '') || '';
+                if (currentComponent) currentComponent.material = mat;
+                else if (currentLine) currentLine.material = mat;
+            }
+            else if (line.startsWith('HEIGHT')) {
                 if (currentComponent) currentComponent.height = parseFloat(parts[1]);
-            } else if (line.startsWith('DIAMETER')) {
+            }
+            else if (line.startsWith('DIAMETER')) {
                 if (currentComponent) currentComponent.diameter = parseFloat(parts[1]);
             }
-            
-            if (currentComponent && currentComponent.pos && currentComponent.skey) {
-                const mapping = skeyToInternal[currentComponent.skey];
-                if (mapping) {
-                    if (mapping.type === 'equipment') {
-                        const pos = currentComponent.pos;
-                        const tag = currentComponent.itemCode || `${mapping.internal}_${equiposMap.size + 1}`;
-                        if (!equiposMap.has(tag)) {
-                            const equipo = _catalog.createEquipment(mapping.internal, tag, pos.x, pos.y, pos.z, {
-                                diametro: currentComponent.diameter || 1000,
-                                altura: currentComponent.height || 1500
-                            });
-                            if (equipo) { equiposMap.set(tag, equipo); _core.addEquipment(equipo); }
-                        }
-                    } else if (mapping.type === 'component' && currentLine) {
-                        componentes.push({
-                            type: mapping.internal,
-                            tag: currentComponent.itemCode || `${mapping.internal}_${componentes.length + 1}`,
-                            param: 0.5,
-                            description: currentComponent.description
-                        });
-                    }
-                }
-                currentComponent = null;
+            else if (line.startsWith('PIPING-SPEC')) {
+                const spec = parts.slice(1).join(' ').replace(/'/g, '');
+                if (currentLine) currentLine.spec = spec;
             }
         }
-        finalizeLine();
+        
+        processAccumulatedComponent(); // Procesar el último componente
+        finalizeLine(); // Finalizar la última línea
+        
         _core.syncPhysicalData();
         _core._saveState();
         _renderUI();
