@@ -1177,155 +1177,125 @@ const SmartFlowRenderer = (function() {
         doc.save(`${window.currentProjectName || 'Proyecto'}_Isometrico_${Date.now()}.pdf`);
         _notifyUI("PDF generado correctamente.", false);
     }
+más.
 
-    // ============================================================
-    // EXPORTACIÓN PCF MEJORADA CON VECTORES DE ORIENTACIÓN
-    // ============================================================
-    const skeyMap = {
-        'GATE_VALVE': 'VAGF', 'GLOBE_VALVE': 'VGLF', 'BUTTERFLY_VALVE': 'VBAF', 'BALL_VALVE': 'VBAL',
-        'VALVE_BALL': 'VBAL', 'CHECK_VALVE': 'VCFF', 'DIAPHRAGM_VALVE': 'VDIA', 'CONTROL_VALVE': 'VCON',
-        'PRESSURE_RELIEF': 'VPRV', 'SAFETY_VALVE': 'VSFT', 'WELD_NECK_FLANGE': 'FLWN', 'SLIP_ON_FLANGE': 'FLSO',
-        'BLIND_FLANGE': 'FLBL', 'LAP_JOINT_FLANGE': 'FLLJ', 'ELBOW_90_LR': 'ELBW', 'ELBOW_90_SR': 'ELBS',
-        'ELBOW_45': 'ELL4', 'ELBOW_90_PPR': 'ELBW', 'ELBOW_45_PPR': 'ELL4', 'CODO_90_ACERO_3IN': 'ELBW',
-        'CONCENTRIC_REDUCER': 'RECN', 'ECCENTRIC_REDUCER': 'REEC', 'TEE_EQUAL': 'TEE', 'TEE_REDUCING': 'TEER',
-        'TEE_PPR': 'TEE', 'CROSS': 'CROS', 'CAP': 'CAPF', 'PIPE_SHOE': 'SHOE', 'U_BOLT': 'UBOL',
-        'GUIDE': 'GUID', 'ANCHOR': 'ANCH', 'TRANSITION': 'TRAN', 'UNION': 'UNIO', 'BULKHEAD': 'BULK',
-        'Y_STRAINER': 'STRY', 'PRESSURE_GAUGE': 'INPG', 'TEMPERATURE_GAUGE': 'INTG', 'FLOW_METER': 'INFM',
-        'LEVEL_SWITCH_RANA': 'INSLS'
-    };
 
-    function calculateComponentPosition(line, param) {
+// ============================================================
+// FUNCIÓN DE EXPORTACIÓN PCF MEJORADA (COMPATIBILIDAD CHEVRON)
+// ============================================================
+function exportPCF() {
+    if (!_core) { _notifyUI("Error: Core no inicializado.", true); return; }
+    const db = _core.getDb();
+    const lines = db?.lines || [];
+    if (lines.length === 0) { _notifyUI("No hay líneas para exportar.", true); return; }
+    
+    let pcfContent = "";
+    const projectName = window.currentProjectName || db?.projectName || 'ACQ-PROJECT';
+    
+    // --- ENCABEZADO ISOGEN ESTÁNDAR ---
+    pcfContent += `ISOGEN-FILES ISOGEN.FLS\n`;
+    pcfContent += `UNITS-BORMM             MM\n`;
+    pcfContent += `UNITS-COOR              MM\n`;
+    pcfContent += `UNITS-WEIGHT            KG\n`;
+    pcfContent += `PROJECT-IDENTIFIER      '${projectName}'\n`;
+    pcfContent += `PIPELINE-REFERENCE      '${lines[0]?.tag || 'L-100'}'\n`;
+    pcfContent += `DATE-DMY                '${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}'\n\n`;
+
+    // --- PROCESAR LÍNEAS ---
+    lines.forEach(line => {
         const pts = line._cachedPoints || line.points3D;
-        if (!pts || pts.length < 2) return null;
-        let lengths = [], totalLen = 0;
+        if (!pts || pts.length < 2) return;
+        const diamMM = (line.diameter || 4) * 25.4;
+        const spec = line.spec || 'PPR_PN12_5';
+        const material = line.material || 'PPR';
+        
+        // Atributos de formato para ISOGEN
+        pcfContent += `PIPELINE-REFERENCE      '${line.tag}'\n`;
+        pcfContent += `PIPING-SPEC             '${spec}'\n`;
+        pcfContent += `INSULATION-SPEC         'NO-INSULATION'\n`;
+        pcfContent += `COMPONENT-ATTRIBUTE1    '${material}'\n\n`;
+        
+        // --- EXPORTAR SEGMENTOS DE TUBERÍA ---
         for (let i = 0; i < pts.length - 1; i++) {
-            let d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
-            lengths.push(d); totalLen += d;
-        }
-        if (totalLen === 0) return null;
-        const targetLen = totalLen * param;
-        let currentAccum = 0, segIndex = 0, t = 0;
-        for (let i = 0; i < lengths.length; i++) {
-            if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) {
-                segIndex = i;
-                let segLen = lengths[i];
-                if (segLen > 0) t = (targetLen - currentAccum) / segLen;
-                else t = 0;
-                t = Math.min(1, Math.max(0, t));
-                break;
+            const p1 = pts[i], p2 = pts[i+1];
+            if (!p1.isControlPoint && !p2.isControlPoint) {
+                const dirVec = { dx: p2.x - p1.x, dy: p2.y - p1.y, dz: p2.z - p1.z };
+                const len = Math.hypot(dirVec.dx, dirVec.dy, dirVec.dz) || 1;
+                const dir = { dx: dirVec.dx/len, dy: dirVec.dy/len, dz: dirVec.dz/len };
+                
+                pcfContent += `PIPE\n`;
+                pcfContent += `    END-POINT           ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} ${p1.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+                pcfContent += `    END-POINT           ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} ${p2.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+                pcfContent += `    PCF_ELEM_SKEY       PIPE\n`;
+                pcfContent += `    ITEM-CODE           ${line.tag}-PIPE-${i+1}\n`;
+                pcfContent += `    DESCRIPTION         'Tubo ${material} ${line.diameter}"'\n`;
+                pcfContent += `    MATERIAL            '${material}'\n`;
+                pcfContent += `    ENTRY               ${dir.dx.toFixed(3)} ${dir.dy.toFixed(3)} ${dir.dz.toFixed(3)}\n`;
+                pcfContent += `    EXIT                ${dir.dx.toFixed(3)} ${dir.dy.toFixed(3)} ${dir.dz.toFixed(3)}\n`;
+                pcfContent += `    FABRICATION-ITEM\n\n`;
             }
-            currentAccum += lengths[i];
         }
-        const p1 = pts[segIndex], p2 = pts[segIndex + 1];
-        const compPos = { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t, z: p1.z + (p2.z - p1.z) * t };
-        const dirVec = { dx: p2.x - p1.x, dy: p2.y - p1.y, dz: p2.z - p1.z };
-        const len = Math.hypot(dirVec.dx, dirVec.dy, dirVec.dz) || 1;
-        return { p1: compPos, p2: compPos, dir: { dx: dirVec.dx/len, dy: dirVec.dy/len, dz: dirVec.dz/len } };
-    }
-
-    function generatePCFHeader(line) {
-        const db = _core.getDb();
-        const projectName = window.currentProjectName || db?.projectName || 'ACQ-PROJECT';
-        return [
-            `ISOGEN-FILES PCF.STYLE`,
-            `UNITS-BORMM             MM`,
-            `UNITS-COOR              MM`,
-            `UNITS-WEIGHT            KG`,
-            `PIPELINE-REFERENCE      ${line.tag}`,
-            `REVISION                ${line.revision || '0'}`,
-            `PROJECT-IDENTIFIER      ${projectName}`,
-            `ATTRIBUTE1              ${line.service || 'PROCESS'}`,
-            `ATTRIBUTE2              ${line.spec || 'UNSPECIFIED'}`,
-            `END-POSITION-CHECK      OFF`
-        ].join('\n');
-    }
-
-    function formatComponentPCF(comp, pos, diameterMM, dirVec) {
-        const skey = skeyMap[comp.type] || 'MISC';
-        let lines = [
-            `${comp.type}`,
-            `    END-POINT           ${pos.p1.x.toFixed(2)} ${pos.p1.y.toFixed(2)} ${pos.p1.z.toFixed(2)}  ${diameterMM.toFixed(2)}`,
-            `    END-POINT           ${pos.p2.x.toFixed(2)} ${pos.p2.y.toFixed(2)} ${pos.p2.z.toFixed(2)}  ${diameterMM.toFixed(2)}`,
-            `    SKEY                ${skey}`,
-            `    ITEM-CODE           ${comp.itemCode || comp.type}`,
-            `    ITEM-DESCRIPTION    ${comp.description || comp.nombre || comp.type}`
-        ];
-        if (dirVec) {
-            lines.push(`    ENTRY               ${dirVec.dx.toFixed(3)} ${dirVec.dy.toFixed(3)} ${dirVec.dz.toFixed(3)}`);
-            lines.push(`    EXIT                ${dirVec.dx.toFixed(3)} ${dirVec.dy.toFixed(3)} ${dirVec.dz.toFixed(3)}`);
-        }
-        lines.push(`    FABRICATION-ITEM`);
-        return lines.join('\n');
-    }
-
-    function exportPCF() {
-        if (!_core) { _notifyUI("Error: Core no inicializado.", true); return; }
-        const db = _core.getDb();
-        const lines = db?.lines || [];
-        if (lines.length === 0) { _notifyUI("No hay líneas para exportar.", true); return; }
         
-        let pcfContent = "";
-        
-        db.equipos?.forEach(eq => {
-            if (!eq.puertos) return;
-            eq.puertos.forEach(nz => {
-                const pos = { x: eq.posX + (nz.relX || 0), y: eq.posY + (nz.relY || 0), z: eq.posZ + (nz.relZ || 0) };
-                const dir = nz.orientacion || { dx: 0, dy: 0, dz: 1 };
-                pcfContent += `NOZZLE\n`;
-                pcfContent += `    COMPONENT-IDENTIFIER ${eq.tag}-${nz.id}\n`;
-                pcfContent += `    END-POINT           ${pos.x.toFixed(2)} ${pos.y.toFixed(2)} ${pos.z.toFixed(2)}  ${(nz.diametro*25.4).toFixed(2)}\n`;
-                pcfContent += `    DIRECTION           ${dir.dx.toFixed(3)} ${dir.dy.toFixed(3)} ${dir.dz.toFixed(3)}\n`;
-                pcfContent += `    SKEY                NOZZ\n`;
-                pcfContent += `    ITEM-DESCRIPTION    Boquilla ${nz.id} ${nz.diametro}"\n\n`;
-            });
-        });
-        
-        lines.forEach(line => {
-            const pts = line._cachedPoints || line.points3D;
-            if (!pts || pts.length < 2) return;
-            const diamMM = (line.diameter || 4) * 25.4;
-            
-            pcfContent += generatePCFHeader(line) + "\n";
-            
-            for (let i = 0; i < pts.length - 1; i++) {
-                const p1 = pts[i], p2 = pts[i+1];
-                if (!p1.isControlPoint && !p2.isControlPoint) {
-                    const dirVec = { dx: p2.x - p1.x, dy: p2.y - p1.y, dz: p2.z - p1.z };
-                    const len = Math.hypot(dirVec.dx, dirVec.dy, dirVec.dz) || 1;
-                    const dir = { dx: dirVec.dx/len, dy: dirVec.dy/len, dz: dirVec.dz/len };
-                    pcfContent += "PIPE\n";
-                    pcfContent += `    END-POINT           ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} ${p1.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
-                    pcfContent += `    END-POINT           ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} ${p2.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
-                    pcfContent += `    ENTRY               ${dir.dx.toFixed(3)} ${dir.dy.toFixed(3)} ${dir.dz.toFixed(3)}\n`;
-                    pcfContent += `    EXIT                ${dir.dx.toFixed(3)} ${dir.dy.toFixed(3)} ${dir.dz.toFixed(3)}\n`;
-                    pcfContent += `    ITEM-CODE           PIPE-${line.material || 'PPR'}-${line.diameter}IN\n`;
-                    pcfContent += `    SKEY                PIPE\n`;
-                    pcfContent += `    FABRICATION-ITEM\n`;
-                }
-            }
-            
-            if (line.components && line.components.length > 0) {
-                line.components.forEach(comp => {
-                    const pos = calculateComponentPosition(line, comp.param || 0.5);
-                    if (pos) {
-                        pcfContent += formatComponentPCF(comp, pos, diamMM, pos.dir) + "\n";
+        // --- EXPORTAR COMPONENTES (VÁLVULAS, CODOS, ETC.) ---
+        if (line.components && line.components.length > 0) {
+            line.components.forEach(comp => {
+                const pos = calculateComponentPosition(line, comp.param || 0.5);
+                if (pos) {
+                    const skey = skeyMap[comp.type] || 'MISC';
+                    const itemCode = comp.itemCode || comp.tag || `${comp.type}_${Date.now()}`;
+                    const description = comp.description || comp.nombre || comp.type;
+                    const material = comp.material || line.material || 'PPR';
+                    
+                    pcfContent += `${comp.type}\n`;
+                    pcfContent += `    END-POINT           ${pos.p1.x.toFixed(2)} ${pos.p1.y.toFixed(2)} ${pos.p1.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+                    pcfContent += `    END-POINT           ${pos.p2.x.toFixed(2)} ${pos.p2.y.toFixed(2)} ${pos.p2.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+                    pcfContent += `    PCF_ELEM_SKEY       ${skey}\n`;
+                    pcfContent += `    ITEM-CODE           '${itemCode}'\n`;
+                    pcfContent += `    DESCRIPTION         '${description}'\n`;
+                    pcfContent += `    MATERIAL            '${material}'\n`;
+                    if (pos.dir) {
+                        pcfContent += `    ENTRY               ${pos.dir.dx.toFixed(3)} ${pos.dir.dy.toFixed(3)} ${pos.dir.dz.toFixed(3)}\n`;
+                        pcfContent += `    EXIT                ${pos.dir.dx.toFixed(3)} ${pos.dir.dy.toFixed(3)} ${pos.dir.dz.toFixed(3)}\n`;
                     }
-                });
-            }
-            pcfContent += "\n";
+                    pcfContent += `    FABRICATION-ITEM\n\n`;
+                }
+            });
+        }
+    });
+    
+    // --- EXPORTAR BOQUILLAS DE EQUIPOS (NOZZLES) ---
+    db.equipos?.forEach(eq => {
+        if (!eq.puertos) return;
+        eq.puertos.forEach(nz => {
+            const pos = { 
+                x: eq.posX + (nz.relX || 0), 
+                y: eq.posY + (nz.relY || 0), 
+                z: eq.posZ + (nz.relZ || 0) 
+            };
+            const dir = nz.orientacion || { dx: 0, dy: 0, dz: 1 };
+            const diamMM = (nz.diametro || 3) * 25.4;
+            
+            pcfContent += `NOZZLE\n`;
+            pcfContent += `    COMPONENT-IDENTIFIER '${eq.tag}-${nz.id}'\n`;
+            pcfContent += `    END-POINT           ${pos.x.toFixed(2)} ${pos.y.toFixed(2)} ${pos.z.toFixed(2)}  ${diamMM.toFixed(2)}\n`;
+            pcfContent += `    PCF_ELEM_SKEY       NOZZ\n`;
+            pcfContent += `    DIRECTION           ${dir.dx.toFixed(3)} ${dir.dy.toFixed(3)} ${dir.dz.toFixed(3)}\n`;
+            pcfContent += `    DESCRIPTION         'Boquilla ${nz.id} ${nz.diametro}"'\n\n`;
         });
-        
-        const blob = new Blob([pcfContent], { type: 'text/plain' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        const projectName = window.currentProjectName || 'Proyecto';
-        const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
-        a.download = `${projectName}_PCF_${timestamp}.pcf`;
-        a.click();
-        _notifyUI("Archivo PCF exportado correctamente con vectores de orientación.", false);
-    }
+    });
+    
+    // --- DESCARGA DEL ARCHIVO ---
+    const blob = new Blob([pcfContent], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+    a.download = `${projectName}_PCF_${timestamp}.pcf`;
+    a.click();
+    
+    _notifyUI("✅ Archivo PCF exportado con compatibilidad ISOGEN/Chevron.", false);
+}
 
-    function init(canvasElement, coreInstance, notifyFn) {
+   function init(canvasElement, coreInstance, notifyFn) {
         _canvas = canvasElement;
         _ctx = _canvas.getContext('2d');
         _core = coreInstance;
