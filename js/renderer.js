@@ -1,6 +1,5 @@
-
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.2
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.1 FINAL
 // Archivo: js/renderer.js
 // Propósito: Manejar toda la lógica de proyección isométrica,
 //            dibujo en Canvas 2D con jerarquía visual profesional,
@@ -345,7 +344,7 @@ const SmartFlowRenderer = (function() {
         drawPath(); _ctx.strokeStyle = '#0a0e17'; _ctx.lineWidth = mainWidth + 4; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = '#1e293b'; _ctx.lineWidth = mainWidth + 2; _ctx.stroke();
         drawPath();
-        const spec = line.spec && window.SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
+        const spec = line.spec && SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
         let mainColor;
         if (hasAuditError) mainColor = '#ef4444';
         else if (line.hasClash) mainColor = '#ef4444';
@@ -563,103 +562,14 @@ const SmartFlowRenderer = (function() {
         _notifyUI("Archivo PCF exportado correctamente con vectores de orientación.", false);
     }
 
-    // ============================================================
-    // FUNCIÓN PRINCIPAL DE RENDERIZADO
-    // ============================================================
-    function render() {
-        if (!_ctx || !_canvas) return;
-        
-        // Limpiar canvas
-        _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-        
-        // Fondo oscuro
-        _ctx.fillStyle = '#0a0e17';
-        _ctx.fillRect(0, 0, _canvas.width, _canvas.height);
-        
-        // Dibujar rejilla y origen
-        drawGrid(_currentElevation);
-        drawOrigin();
-        
-        if (!_core) return;
-        const db = _core.getDb();
-        if (!db) return;
-        
-        // Dibujar equipos
-        const equipos = db.equipos || [];
-        // Ordenar por elevación para correcta superposición (los más bajos primero)
-        equipos.sort((a, b) => (a.posY || 0) - (b.posY || 0));
-        
-        equipos.forEach(eq => {
-            switch (eq.tipo) {
-                case 'tanque_v':
-                case 'torre':
-                case 'reactor':
-                    drawTank(eq);
-                    break;
-                case 'bomba':
-                    drawBomba(eq);
-                    break;
-                case 'colector':
-                    drawColector(eq);
-                    break;
-                case 'tanque_h':
-                    drawCilindroHorizontal(eq, '#2563eb');
-                    break;
-                default:
-                    drawRectEquip(eq, '#475569');
-            }
-        });
-        
-        // Dibujar líneas (tuberías)
-        const lines = db.lines || [];
-        lines.forEach(line => {
-            drawPipeWithElbows(line);
-            drawPipeComponents(line);
-        });
-    }
-
     function init(canvasElement, coreInstance, notifyFn) {
-        _canvas = canvasElement;
-        _ctx = _canvas.getContext('2d');
-        _core = coreInstance;
-        _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
-        _currentElevation = 0;
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        render();
+        _canvas = canvasElement; _ctx = _canvas.getContext('2d'); _core = coreInstance; _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
+        _currentElevation = 0; resizeCanvas(); window.addEventListener('resize', resizeCanvas); render();
     }
 
-    function resizeCanvas() {
-        if (!_canvas) return;
-        const container = _canvas.parentElement;
-        if (container) {
-            _canvas.width = container.clientWidth;
-            _canvas.height = container.clientHeight;
-        }
-        render();
-    }
+    function resizeCanvas() { if (!_canvas) return; const container = _canvas.parentElement; if (container) { _canvas.width = container.clientWidth; _canvas.height = container.clientHeight; } render(); }
+    function setElevation(level) { _currentElevation = level; render(); }
 
-    function setElevation(level) {
-        _currentElevation = level;
-        render();
-    }
-
-    // Exponer API pública
-    window.SmartFlowRenderer = {
-        init,
-        render,
-        autoCenter,
-        pan,
-        zoom,
-        project,
-        inverseProject,
-        setElevation,
-        resizeCanvas,
-        exportPDF,
-        exportPCF,
-        getCam: () => _cam,
-        pickElement,
-        calculateComponentPosition
-    };
+    window.SmartFlowRenderer = { init, render, autoCenter, pan, zoom, project, inverseProject, setElevation, resizeCanvas, exportPDF, exportPCF, getCam: () => _cam, pickElement, calculateComponentPosition };
     return window.SmartFlowRenderer;
 })();
