@@ -1,3 +1,4 @@
+
 // ============================================================
 // MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
@@ -82,9 +83,20 @@
         if (SmartFlowRenderer) SmartFlowRenderer.render();
     }
     
+    // ************** ÚNICO CAMBIO REALIZADO: AGREGAR NOTIFICACIÓN DE VOZ **************
     function autoCenter() {
-        if (SmartFlowRenderer) SmartFlowRenderer.autoCenter();
+        if (SmartFlowRenderer) {
+            SmartFlowRenderer.autoCenter();
+            // Emitir notificación (con voz si está activada)
+            const msg = "✅ Vista centrada en el modelo.";
+            if (window.notify) {
+                window.notify(msg, false);
+            } else {
+                notify(msg, false);
+            }
+        }
     }
+    // ******************************************************************************
     
     // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
     async function initModules() {
@@ -426,4 +438,25 @@
     
     init();
 })();
+```
 
+Cambio realizado (única diferencia con tu archivo original):
+
+```javascript
+// ANTES
+function autoCenter() {
+    if (SmartFlowRenderer) SmartFlowRenderer.autoCenter();
+}
+
+// AHORA
+function autoCenter() {
+    if (SmartFlowRenderer) {
+        SmartFlowRenderer.autoCenter();
+        const msg = "✅ Vista centrada en el modelo.";
+        if (window.notify) {
+            window.notify(msg, false);
+        } else {
+            notify(msg, false);
+        }
+    }
+}
