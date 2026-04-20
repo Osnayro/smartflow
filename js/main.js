@@ -1,12 +1,10 @@
-
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.3.2
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
 // Propósito: Inicializar todos los módulos, cablear eventos de UI,
 //            gestionar el ciclo de vida de la aplicación y
 //            manejar guardado/carga de proyectos.
 //            Soporta accesibilidad, enrutamiento automático y autocompletado.
-//            CORRECCIÓN PUNTUAL: Botón Centrar con notificación de voz.
 // ============================================================
 
 (function() {
@@ -84,32 +82,11 @@
         if (SmartFlowRenderer) SmartFlowRenderer.render();
     }
     
-    // ========== FUNCIÓN AUTO-CENTER CORREGIDA ==========
     function autoCenter() {
-        if (SmartFlowRenderer && typeof SmartFlowRenderer.autoCenter === 'function') {
-            SmartFlowRenderer.autoCenter();
-            
-            // Usar el mismo sistema de notificación que ya funciona en el resto de la app
-            const msg = "✅ Vista centrada en el modelo.";
-            
-            // Si existe window.notify (inyectado por accessibility.js), lo usamos.
-            if (window.notify) {
-                window.notify(msg, false);
-            } else {
-                // Fallback a la función local notify
-                notify(msg, false);
-            }
-        } else {
-            const errorMsg = "❌ No se pudo centrar la vista. Renderer no disponible.";
-            if (window.notify) {
-                window.notify(errorMsg, true);
-            } else {
-                notify(errorMsg, true);
-            }
-        }
+        if (SmartFlowRenderer) SmartFlowRenderer.autoCenter();
     }
     
-    // -------------------- 4. INICIALIZACIÓN DE MÓDULOS (VERSIÓN ORIGINAL FUNCIONAL) --------------------
+    // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
     async function initModules() {
         SmartFlowCore.init(notify, render);
         SmartFlowRenderer = window.SmartFlowRenderer;
@@ -147,7 +124,7 @@
     function guardarProyecto() {
         const state = SmartFlowCore.exportProject();
         localStorage.setItem('smartproject_v2_project', state);
-        (window.notify || notify)("Proyecto guardado en el navegador.", false);
+        notify("Proyecto guardado en el navegador.", false);
     }
     
     function cargarProyecto() {
@@ -157,12 +134,12 @@
                 const state = JSON.parse(data);
                 SmartFlowCore.importState(state.data || state);
                 autoCenter();
-                (window.notify || notify)("Proyecto cargado correctamente.", false);
+                notify("Proyecto cargado correctamente.", false);
             } catch (e) {
-                (window.notify || notify)("Error al cargar el proyecto: archivo corrupto.", true);
+                notify("Error al cargar el proyecto: archivo corrupto.", true);
             }
         } else {
-            (window.notify || notify)("No hay proyecto guardado.", true);
+            notify("No hay proyecto guardado.", true);
         }
     }
     
@@ -170,7 +147,6 @@
         if (confirm("¿Desea crear un nuevo proyecto? Se perderán los cambios no guardados.")) {
             SmartFlowCore.nuevoProyecto();
             autoCenter();
-            (window.notify || notify)("Nuevo proyecto creado.", false);
         }
     }
     
@@ -196,12 +172,12 @@
                 });
             }
         });
-        if (items.length === 0) { (window.notify || notify)("No hay elementos para exportar.", true); return; }
+        if (items.length === 0) { notify("No hay elementos para exportar.", true); return; }
         const ws = XLSX.utils.aoa_to_sheet([["Tag", "Descripción", "Unidad", "Cantidad"], ...items]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "MTO");
         XLSX.writeFile(wb, `MTO_${Date.now()}.xlsx`);
-        (window.notify || notify)("MTO exportado correctamente.", false);
+        notify("MTO exportado correctamente.", false);
     }
     
     function resumenProyecto() {
@@ -217,7 +193,7 @@
             if (l.components) l.components.forEach(c => { if (c.type.includes('VALVE')) totalValvulas++; });
         });
         const resumen = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${colectores.length} colectores, ${lines.length} tuberías, ${totalCodos} codos, ${totalValvulas} válvulas.`;
-        (window.notify || notify)(resumen, false);
+        notify(resumen, false);
         if (voiceEnabled && window.speechSynthesis) {
             const u = new SpeechSynthesisUtterance(resumen);
             u.lang = 'es-ES';
@@ -362,7 +338,7 @@
         vincular('btnNew', nuevoProyecto);
         vincular('btnOpen', cargarProyecto);
         vincular('btnSave', guardarProyecto);
-        vincular('btnReset', autoCenter); // <--- USA LA NUEVA FUNCIÓN
+        vincular('btnReset', autoCenter);
         vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
         vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
         vincular('clearCommand', () => { if (commandText) commandText.value = ''; });
@@ -430,7 +406,7 @@
             const val = parseInt(customElev?.value);
             if (!isNaN(val)) setElevation(val);
         });
-        vincular('btnApplyNorm', () => (window.notify || notify)("Función de normas en desarrollo.", false));
+        vincular('btnApplyNorm', () => notify("Función de normas en desarrollo.", false));
         
         window.addEventListener('resize', () => {
             if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
@@ -450,3 +426,4 @@
     
     init();
 })();
+
