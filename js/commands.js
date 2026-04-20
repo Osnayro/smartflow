@@ -656,27 +656,328 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // -------------------- 10. IMPORTACIÓN PCF --------------------
-    function importPCF(fileContent) {
-        const lines = fileContent.split('\n');
-        let currentPipe = null, puntos = [], componentes = [];
-        for (let line of lines) {
-            line = line.trim();
-            if (line.startsWith('!PCF') || line.startsWith('UNITS')) continue;
-            if (line === 'PIPE') { currentPipe = { tag: 'L-IMP', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' }; puntos = []; componentes = []; }
-            else if (line === 'ENDPIPE') { if (currentPipe && puntos.length >= 2) { const db = _core.getDb(); const tag = `L-${(db.lines || []).length + 1}`; _core.addLine({ tag, diameter: currentPipe.diameter, material: currentPipe.material, spec: currentPipe.spec, waypoints: puntos.slice(1, -1), _cachedPoints: puntos, components: componentes }); } currentPipe = null; }
-            else if (line.startsWith('COMPONENT-IDENTIFIER') && currentPipe) { currentPipe.tag = line.split(' ')[1] || currentPipe.tag; }
-            else if (line.startsWith('DIAMETER') && currentPipe) { currentPipe.diameter = Math.round(parseFloat(line.split(' ')[1]) / 25.4); }
-            else if (line.startsWith('MATERIAL') && currentPipe) { currentPipe.material = line.split(' ')[1] || currentPipe.material; }
-            else if (line.startsWith('SPEC') && currentPipe) { currentPipe.spec = line.split(' ')[1] || currentPipe.spec; }
-            else if (line.startsWith('POINT') && currentPipe) { const p = line.split(/\s+/); if (p.length >= 4) { const x = parseFloat(p[1]), y = parseFloat(p[2]), z = parseFloat(p[3]); if (!isNaN(x)&&!isNaN(y)&&!isNaN(z)) puntos.push({x,y,z}); } }
-            else if (line.startsWith('COMPONENT') && currentPipe) { const p = line.split(/\s+/); if (p.length >= 3) componentes.push({ type: p[1], tag: p[2], param: 0.5 }); }
-        }
-        _renderUI(); _notifyUI('Archivo PCF importado correctamente.', false);
-        return true;
-    }
 
-    // -------------------- 11. EJECUCIÓN DE COMANDOS --------------------
+
+// ============================================================
+// NUEVO IMPORTADOR PCF MEJORADO (Soporte para TANK, PUMP, INSTRUMENT)
+// ============================================================
+
+// Mapa de SKEYs de ISOGEN a tipos internos de SmartProject
+const skeyToInternal = {
+    // Equipos
+    'TANK': { type: 'equipment', internal: 'tanque_v' },
+    'PUMP': { type: 'equipment', internal: 'bomba' },
+    'VESS': { type: 'equipment', internal: 'tanque_v' }, // Recipiente genérico
+    'EXCH': { type: 'equipment', internal: 'intercambiador' },
+    
+    // Tuberías
+    'STRA': { type: 'pipe', internal: 'PIPE' },
+    'PIPE': { type: 'pipe', internal: 'PIPE' },
+    
+    // Válvulas
+    'VALV': { type: 'component', internal: 'GATE_VALVE' }, // Por defecto compuerta
+    'VAGF': { type: 'component', internal: 'GATE_VALVE' },
+    'VGLF': { type: 'component', internal: 'GLOBE_VALVE' },
+    'VBAL': { type: 'component', internal: 'BALL_VALVE' },
+    'VBAF': { type: 'component', internal: 'BUTTERFLY_VALVE' },
+    'VCFF': { type: 'component', internal: 'CHECK_VALVE' },
+    'VDIA': { type: 'component', internal: 'DIAPHRAGM_VALVE' },
+    'VCON': { type: 'component', internal: 'CONTROL_VALVE' },
+    
+    // Codos
+    'ELBW': { type: 'component', internal: 'ELBOW_90_LR' },
+    'ELBS': { type: 'component', internal: 'ELBOW_90_SR' },
+    'ELL4': { type: 'component', internal: 'ELBOW_45' },
+    
+    // Tees y derivaciones
+    'TEES': { type: 'component', internal: 'TEE_EQUAL' },
+    'TEER': { type: 'component', internal: 'TEE_REDUCING' },
+    'CROS': { type: 'component', internal: 'CROSS' },
+    
+    // Bridas
+    'FLWN': { type: 'component', internal: 'WELD_NECK_FLANGE' },
+    'FLSO': { type: 'component', internal: 'SLIP_ON_FLANGE' },
+    'FLBL': { type: 'component', internal: 'BLIND_FLANGE' },
+    'FLLJ': { type: 'component', internal: 'LAP_JOINT_FLANGE' },
+    
+    // Reductores
+    'RECN': { type: 'component', internal: 'CONCENTRIC_REDUCER' },
+    'REEC': { type: 'component', internal: 'ECCENTRIC_REDUCER' },
+    
+    // Instrumentos
+    'INSI': { type: 'component', internal: 'PRESSURE_GAUGE' }, // Por defecto manómetro
+    'INPG': { type: 'component', internal: 'PRESSURE_GAUGE' },
+    'INTG': { type: 'component', internal: 'TEMPERATURE_GAUGE' },
+    'INFM': { type: 'component', internal: 'FLOW_METER' },
+    'INLV': { type: 'component', internal: 'LEVEL_SWITCH_RANA' }, // Switch de nivel
+    
+    // Filtros
+    'STRY': { type: 'component', internal: 'Y_STRAINER' },
+    
+    // Tapones
+    'CAPF': { type: 'component', internal: 'CAP' }
+};
+
+function importPCF(fileContent) {
+    if (!_core) {
+        _notifyUI("Error: Core no inicializado.", true);
+        return;
+    }
+    
+    const lines = fileContent.split('\n');
+    
+    // Estado del parser
+    let currentLine = null;          // Línea de tubería en construcción
+    let currentComponent = null;     // Componente en construcción
+    let puntos = [];                // Puntos de la línea actual
+    let componentes = [];           // Componentes de la línea actual
+    
+    // Mapa para almacenar equipos encontrados (evita duplicados)
+    const equiposMap = new Map();
+    // Mapa para almacenar líneas encontradas
+    const lineasMap = new Map();
+    
+    // Variables para metadatos globales
+    let projectName = 'IMPORT-PCF';
+    let pipelineRef = '';
+    let pipingSpec = 'PPR_PN12_5';
+    
+    // Función auxiliar para extraer valor de atributo
+    function extractAttribute(line, attrName) {
+        const regex = new RegExp(`${attrName}\\s+(.+)`, 'i');
+        const match = line.match(regex);
+        return match ? match[1].trim().replace(/'/g, '') : null;
+    }
+    
+    // Función para convertir diámetro (asume pulgadas)
+    function parseDiameter(diamStr) {
+        if (!diamStr) return 4;
+        const num = parseFloat(diamStr);
+        return isNaN(num) ? 4 : num;
+    }
+    
+    // Función para parsear un punto (X Y Z)
+    function parsePoint(xStr, yStr, zStr) {
+        return {
+            x: parseFloat(xStr) || 0,
+            y: parseFloat(yStr) || 0,
+            z: parseFloat(zStr) || 0
+        };
+    }
+    
+    // Función para finalizar la línea actual y guardarla
+    function finalizeLine() {
+        if (currentLine && puntos.length >= 2) {
+            // Si no tiene tag, generar uno
+            if (!currentLine.tag) {
+                const db = _core.getDb();
+                currentLine.tag = `L-${(db.lines?.length || 0) + 1}`;
+            }
+            
+            currentLine._cachedPoints = puntos;
+            currentLine.waypoints = puntos.slice(1, -1);
+            currentLine.components = componentes;
+            
+            lineasMap.set(currentLine.tag, currentLine);
+            _core.addLine(currentLine);
+        }
+        currentLine = null;
+        puntos = [];
+        componentes = [];
+    }
+    
+    // Primera pasada: extraer metadatos globales
+    for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith('PROJECT-IDENTIFIER')) {
+            projectName = extractAttribute(line, 'PROJECT-IDENTIFIER') || projectName;
+        } else if (line.startsWith('PIPELINE-REFERENCE')) {
+            pipelineRef = extractAttribute(line, 'PIPELINE-REFERENCE') || pipelineRef;
+        } else if (line.startsWith('PIPING-SPEC')) {
+            pipingSpec = extractAttribute(line, 'PIPING-SPEC') || pipingSpec;
+        }
+    }
+    
+    // Segunda pasada: parsear elementos
+    for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith('!') || line.length === 0) continue;
+        
+        // Detectar inicio de componente
+        const firstWord = line.split(/\s+/)[0];
+        
+        // Si es un tipo de elemento conocido que no es PIPE, finalizar línea actual
+        if (['VALVE', 'ELBOW', 'TEE', 'FLANGE', 'INSTRUMENT', 'TANK', 'PUMP', 'REDUCER', 'STRAINER'].includes(firstWord)) {
+            if (currentLine && firstWord !== 'PIPE') {
+                finalizeLine();
+            }
+        }
+        
+        // Parseo según tipo de elemento
+        if (firstWord === 'PIPE' || firstWord === 'STRA') {
+            // Iniciar nueva línea si no hay una activa
+            if (!currentLine) {
+                currentLine = {
+                    tag: '',
+                    diameter: 4,
+                    material: 'PPR',
+                    spec: pipingSpec,
+                    origin: null,
+                    destination: null
+                };
+                puntos = [];
+                componentes = [];
+            }
+            
+        } else if (line.startsWith('END-POINT')) {
+            const parts = line.split(/\s+/);
+            if (parts.length >= 7) {
+                const x1 = parts[1], y1 = parts[2], z1 = parts[3];
+                const x2 = parts[4], y2 = parts[5], z2 = parts[6];
+                const diam = parts[7];
+                
+                const p1 = parsePoint(x1, y1, z1);
+                const p2 = parsePoint(x2, y2, z2);
+                
+                if (currentLine) {
+                    // Si es el primer END-POINT de la línea
+                    if (puntos.length === 0) {
+                        puntos.push(p1);
+                    }
+                    puntos.push(p2);
+                    
+                    // Actualizar diámetro
+                    if (diam && !diam.includes('INCH')) {
+                        currentLine.diameter = parseDiameter(diam);
+                    }
+                } else if (currentComponent) {
+                    // Para componentes, guardar los puntos de conexión
+                    currentComponent.endPoint1 = p1;
+                    currentComponent.endPoint2 = p2;
+                }
+            }
+            
+        } else if (firstWord === 'TANK') {
+            // Crear un equipo tanque
+            currentComponent = { type: 'TANK' };
+            
+        } else if (firstWord === 'PUMP') {
+            // Crear un equipo bomba
+            currentComponent = { type: 'PUMP' };
+            
+        } else if (firstWord === 'INSTRUMENT') {
+            currentComponent = { type: 'INSTRUMENT' };
+            
+        } else if (firstWord === 'VALVE') {
+            currentComponent = { type: 'VALVE' };
+            
+        } else if (firstWord === 'ELBOW') {
+            currentComponent = { type: 'ELBOW' };
+            
+        } else if (firstWord === 'TEE') {
+            currentComponent = { type: 'TEE' };
+            
+        } else if (firstWord === 'FLANGE') {
+            currentComponent = { type: 'FLANGE' };
+            
+        } else if (line.startsWith('PCF_ELEM_SKEY') || line.startsWith('SKEY')) {
+            const skey = line.split(/\s+/)[1]?.replace(/'/g, '') || '';
+            if (currentComponent) {
+                currentComponent.skey = skey;
+            } else if (currentLine) {
+                currentLine.skey = skey;
+            }
+            
+        } else if (line.startsWith('ITEM-CODE')) {
+            const code = extractAttribute(line, 'ITEM-CODE');
+            if (currentComponent) {
+                currentComponent.itemCode = code;
+            } else if (currentLine) {
+                currentLine.itemCode = code;
+            }
+            
+        } else if (line.startsWith('DESCRIPTION')) {
+            const desc = extractAttribute(line, 'DESCRIPTION');
+            if (currentComponent) {
+                currentComponent.description = desc;
+            } else if (currentLine) {
+                currentLine.description = desc;
+            }
+            
+        } else if (line.startsWith('MATERIAL')) {
+            const mat = extractAttribute(line, 'MATERIAL');
+            if (currentLine) {
+                // Mapear materiales comunes
+                if (mat?.toUpperCase().includes('PPR')) currentLine.material = 'PPR';
+                else if (mat?.toUpperCase().includes('ACERO')) currentLine.material = 'Acero_Carbono';
+                else if (mat?.toUpperCase().includes('BRONCE')) currentLine.material = 'Bronce';
+                else currentLine.material = mat || 'PPR';
+            }
+            
+        } else if (line.startsWith('HEIGHT')) {
+            const height = parseFloat(line.split(/\s+/)[1]);
+            if (currentComponent) currentComponent.height = height;
+            
+        } else if (line.startsWith('DIAMETER')) {
+            const diam = parseFloat(line.split(/\s+/)[1]);
+            if (currentComponent) currentComponent.diameter = diam;
+            
+        } else if (line.startsWith('ANGLE')) {
+            const angle = parseFloat(line.split(/\s+/)[1]);
+            if (currentComponent) currentComponent.angle = angle;
+        }
+        
+        // Procesar componente cuando tenemos suficiente información
+        if (currentComponent && currentComponent.endPoint1 && currentComponent.skey) {
+            const skey = currentComponent.skey;
+            const mapping = skeyToInternal[skey];
+            
+            if (mapping) {
+                if (mapping.type === 'equipment') {
+                    // Crear equipo
+                    const pos = currentComponent.endPoint1;
+                    const tag = currentComponent.itemCode || `${mapping.internal}_${equiposMap.size + 1}`;
+                    
+                    if (!equiposMap.has(tag)) {
+                        const equipo = _catalog.createEquipment(mapping.internal, tag, pos.x, pos.y, pos.z, {
+                            diametro: currentComponent.diameter || 1000,
+                            altura: currentComponent.height || 1500,
+                            material: 'CS'
+                        });
+                        if (equipo) {
+                            equiposMap.set(tag, equipo);
+                            _core.addEquipment(equipo);
+                        }
+                    }
+                } else if (mapping.type === 'component' && currentLine) {
+                    // Añadir componente a la línea actual
+                    const comp = {
+                        type: mapping.internal,
+                        tag: currentComponent.itemCode || `${mapping.internal}_${componentes.length + 1}`,
+                        param: 0.5, // Posición por defecto (se podría calcular mejor)
+                        description: currentComponent.description
+                    };
+                    componentes.push(comp);
+                }
+            }
+            
+            currentComponent = null;
+        }
+    }
+    
+    // Finalizar última línea si existe
+    finalizeLine();
+    
+    // Sincronizar y renderizar
+    _core.syncPhysicalData();
+    _core._saveState();
+    _renderUI();
+    
+    _notifyUI(`✅ PCF importado: ${equiposMap.size} equipos, ${lineasMap.size} líneas.`, false);
+    return true;
+}
+
+  // -------------------- 11. EJECUCIÓN DE COMANDOS --------------------
     function executeCommand(cmd) {
         if (!cmd || cmd.startsWith('//')) return false;
         const normalized = normalizeCommand(cmd);
