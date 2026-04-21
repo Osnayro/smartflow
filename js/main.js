@@ -1,10 +1,10 @@
+
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v12.0
 // Archivo: js/main.js
 // Propósito: Inicializar todos los módulos, cablear eventos de UI,
 //            gestionar el ciclo de vida de la aplicación y
 //            manejar guardado/carga de proyectos.
-//            Soporta accesibilidad, enrutamiento automático y autocompletado.
 // ============================================================
 
 (function() {
@@ -32,8 +32,6 @@
     const btnAddPump = document.getElementById('btnAddPump');
     const btnMTO = document.getElementById('btnMTO');
     const btnPDF = document.getElementById('btnPDF');
-    const btnExportPCF = document.getElementById('btnExportPCF');
-    const btnImportPCF = document.getElementById('btnImportPCF');
     const btnUndo = document.getElementById('btnUndo');
     const btnRedo = document.getElementById('btnRedo');
     const btnVoice = document.getElementById('btnVoice');
@@ -51,7 +49,6 @@
     // -------------------- 2. ESTADO DE LA APLICACIÓN --------------------
     let toolMode = 'select';
     let voiceEnabled = true;
-    let SmartFlowRenderer = null;
     
     let draggingEquipment = false;
     let draggedEquip = null;
@@ -61,12 +58,15 @@
     
     // -------------------- 3. FUNCIONES DE UI --------------------
     function notify(msg, isErr = false) {
+        console.log("[notify] " + msg);
         if (notificationEl) {
             notificationEl.textContent = msg;
             notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
             notificationEl.style.display = 'block';
         }
-        if (statusMsgEl) statusMsgEl.innerHTML = msg;
+        if (statusMsgEl) {
+            statusMsgEl.innerHTML = msg;
+        }
         
         if (voiceEnabled && window.speechSynthesis) {
             window.speechSynthesis.cancel();
@@ -75,65 +75,107 @@
             setTimeout(() => window.speechSynthesis.speak(u), 50);
         }
         
-        setTimeout(() => { if (notificationEl) notificationEl.style.display = 'none'; }, 4000);
+        setTimeout(() => {
+            if (notificationEl) notificationEl.style.display = 'none';
+        }, 4000);
     }
     
     function render() {
-        if (SmartFlowRenderer) SmartFlowRenderer.render();
+        if (typeof SmartFlowRenderer !== 'undefined') {
+            SmartFlowRenderer.render();
+        }
     }
     
     function autoCenter() {
-        if (SmartFlowRenderer) SmartFlowRenderer.autoCenter();
+        console.log("[main.js] autoCenter() llamado");
+        
+        if (typeof SmartFlowRenderer === 'undefined') {
+            console.error("[main.js] SmartFlowRenderer no definido");
+            notify("Error: Renderer no disponible", true);
+            return;
+        }
+        
+        if (!canvas) {
+            console.error("[main.js] Canvas no encontrado");
+            return;
+        }
+        
+        if (canvas.width === 0 || canvas.height === 0) {
+            console.log("[main.js] Canvas sin dimensiones, reintentando...");
+            setTimeout(() => autoCenter(), 50);
+            return;
+        }
+        
+        try {
+            SmartFlowRenderer.autoCenter();
+            render();
+            console.log("[main.js] Vista centrada correctamente");
+            notify("Vista centrada", false);
+        } catch (e) {
+            console.error("[main.js] Error al centrar:", e);
+            notify("Error al centrar la vista", true);
+        }
     }
     
     // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
-    async function initModules() {
+    function waitForModules(callback) {
+        let attempts = 0;
+        const maxAttempts = 100;
+        
+        function check() {
+            attempts++;
+            
+            const coreReady = typeof SmartFlowCore !== 'undefined';
+            const rendererReady = typeof SmartFlowRenderer !== 'undefined';
+            const commandsReady = typeof SmartFlowCommands !== 'undefined';
+            const catalogReady = typeof SmartFlowCatalog !== 'undefined';
+            
+            console.log(`[main.js] Intento ${attempts}: Core=${coreReady}, Renderer=${rendererReady}, Commands=${commandsReady}, Catalog=${catalogReady}`);
+            
+            if (coreReady && rendererReady && commandsReady && catalogReady) {
+                console.log("[main.js] Todos los módulos listos. Inicializando...");
+                callback();
+            } else if (attempts < maxAttempts) {
+                setTimeout(check, 100);
+            } else {
+                console.error("[main.js] Timeout esperando módulos");
+                notify("Error: No se cargaron los módulos JS", true);
+            }
+        }
+        
+        check();
+    }
+    
+    function initModules() {
+        console.log("[main.js] Inicializando módulos...");
+        
         SmartFlowCore.init(notify, render);
-        SmartFlowRenderer = window.SmartFlowRenderer;
-        if (SmartFlowRenderer) {
-            SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
-        }
+        SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
+        SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, render);
         
-        // Inicializar Accesibilidad
-        if (typeof SmartFlowAccessibility !== 'undefined') {
-            SmartFlowAccessibility.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify);
-            window.notify = function(msg, isErr, context) {
-                SmartFlowAccessibility.notifyWithDescription(msg, isErr, context);
-            };
-            SmartFlowCore.init(window.notify, render);
-            if (SmartFlowRenderer) SmartFlowRenderer.init(canvas, SmartFlowCore, window.notify);
-        }
-        
-        // Inicializar Router
-        if (typeof SmartFlowRouter !== 'undefined') {
-            SmartFlowRouter.init(SmartFlowCore, window.notify || notify);
-        }
-        
-        // Inicializar Commands
-        SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
-        
-        // Inicializar Autocomplete
-        if (typeof SmartFlowAutocomplete !== 'undefined' && commandText) {
-            SmartFlowAutocomplete.init(commandText, SmartFlowCore, SmartFlowCatalog, SmartFlowCommands);
-        }
-        
-        notify("SmartProject - Sistema listo", false);
+        notify("SmartFlow Pro v12.0 - Catálogo Industrial Extendido", false);
     }
     
     // -------------------- 5. GESTIÓN DE PROYECTOS --------------------
     function guardarProyecto() {
-        const state = SmartFlowCore.exportProject();
-        localStorage.setItem('smartproject_v2_project', state);
-        notify("Proyecto guardado en el navegador.", false);
+        if (typeof SmartFlowCore !== 'undefined') {
+            const state = SmartFlowCore.exportProject();
+            localStorage.setItem('smartflow_v12_project', state);
+            notify("Proyecto guardado en el navegador.", false);
+        }
     }
     
     function cargarProyecto() {
-        const data = localStorage.getItem('smartproject_v2_project');
+        const data = localStorage.getItem('smartflow_v12_project');
         if (data) {
             try {
                 const state = JSON.parse(data);
-                SmartFlowCore.importState(state.data || state);
-                autoCenter();
+                if (typeof SmartFlowCore !== 'undefined') {
+                    SmartFlowCore.importState(state.data || state);
+                }
+                setTimeout(() => {
+                    autoCenter();
+                }, 100);
                 notify("Proyecto cargado correctamente.", false);
             } catch (e) {
                 notify("Error al cargar el proyecto: archivo corrupto.", true);
@@ -145,34 +187,101 @@
     
     function nuevoProyecto() {
         if (confirm("¿Desea crear un nuevo proyecto? Se perderán los cambios no guardados.")) {
-            SmartFlowCore.nuevoProyecto();
-            autoCenter();
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.nuevoProyecto();
+            }
+            setTimeout(() => {
+                autoCenter();
+            }, 100);
+            notify("Nuevo proyecto creado.", false);
         }
     }
     
-    // -------------------- 6. MTO EXPANDIDO --------------------
+    // -------------------- 6. MTO EXPANDIDO (v12.0) --------------------
     function exportarMTO() {
+        if (typeof SmartFlowCore === 'undefined') {
+            notify("Core no disponible", true);
+            return;
+        }
+        
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
+        
         let items = [];
-        equipos.forEach(eq => items.push([eq.tag, eq.tipo, "Und", 1]));
+        
+        equipos.forEach(eq => {
+            items.push([eq.tag, eq.tipo, "Und", 1]);
+        });
+        
         lines.forEach(line => {
             let length = 0;
             const pts = line._cachedPoints || line.points3D;
-            if (pts) for (let i = 0; i < pts.length - 1; i++) length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+            if (pts) {
+                for (let i = 0; i < pts.length - 1; i++) {
+                    length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+                }
+            }
             items.push([line.tag, `Tubería ${line.material || 'PPR'} ${line.diameter}"`, "m", (length / 1000).toFixed(2)]);
+            
             if (pts && pts.length > 2) {
                 const codos = pts.filter(p => !p.isControlPoint).length - 2;
-                if (codos > 0) items.push([`CODO-${line.tag}`, `Codo 90° ${line.material} ${line.diameter}"`, "Und", codos]);
+                if (codos > 0) {
+                    items.push([`CODO-${line.tag}`, `Codo 90° ${line.material} ${line.diameter}"`, "Und", codos]);
+                }
             }
+            
             if (line.components) {
                 line.components.forEach(comp => {
-                    let desc = comp.type;
+                    let desc = "";
+                    switch (comp.type) {
+                        case 'TRANSITION': desc = `Adaptador Transición ${line.diameter}" (PPR/Metal)`; break;
+                        case 'UNION': desc = `Unión Americana/Universal ${line.diameter}" ${line.material}`; break;
+                        case 'BULKHEAD': desc = `Pasamuros para Tanque PE ${line.diameter}"`; break;
+                        case 'Y_STRAINER': desc = `Filtro tipo Y ${line.diameter}"`; break;
+                        case 'VALVE_BALL': desc = `Válvula de Bola ${line.diameter}" ${line.material}`; break;
+                        case 'BALL_VALVE': desc = `Válvula de Bola ${line.diameter}" ${line.material}`; break;
+                        case 'GATE_VALVE': desc = `Válvula Compuerta ${line.diameter}" ${line.material}`; break;
+                        case 'GLOBE_VALVE': desc = `Válvula Globo ${line.diameter}" ${line.material}`; break;
+                        case 'BUTTERFLY_VALVE': desc = `Válvula Mariposa ${line.diameter}" ${line.material}`; break;
+                        case 'CHECK_VALVE': desc = `Válvula Check ${line.diameter}" ${line.material}`; break;
+                        case 'DIAPHRAGM_VALVE': desc = `Válvula Diafragma ${line.diameter}" ${line.material}`; break;
+                        case 'CONTROL_VALVE': desc = `Válvula de Control ${line.diameter}" ${line.material}`; break;
+                        case 'CONCENTRIC_REDUCER': desc = `Reductor Concéntrico ${line.diameter}"`; break;
+                        case 'ECCENTRIC_REDUCER': desc = `Reductor Excéntrico ${line.diameter}"`; break;
+                        case 'WELD_NECK_FLANGE': desc = `Brida Cuello Soldable ${line.diameter}"`; break;
+                        case 'SLIP_ON_FLANGE': desc = `Brida Slip-On ${line.diameter}"`; break;
+                        case 'BLIND_FLANGE': desc = `Brida Ciega ${line.diameter}"`; break;
+                        case 'TEE_EQUAL': desc = `Tee Recta ${line.diameter}"`; break;
+                        case 'TEE_REDUCING': desc = `Tee Reductora ${line.diameter}"`; break;
+                        case 'CROSS': desc = `Cruz ${line.diameter}"`; break;
+                        case 'CAP': desc = `Tapón ${line.diameter}"`; break;
+                        case 'ELBOW_90_LR': desc = `Codo 90° Radio Largo ${line.diameter}"`; break;
+                        case 'ELBOW_90_SR': desc = `Codo 90° Radio Corto ${line.diameter}"`; break;
+                        case 'ELBOW_45': desc = `Codo 45° ${line.diameter}"`; break;
+                        case 'PRESSURE_GAUGE': desc = `Manómetro`; break;
+                        case 'TEMPERATURE_GAUGE': desc = `Termómetro`; break;
+                        case 'FLOW_METER': desc = `Caudalímetro`; break;
+                        case 'PIPE_SHOE': desc = `Zapata`; break;
+                        case 'U_BOLT': desc = `Abrazadera U-Bolt`; break;
+                        case 'GUIDE': desc = `Guía`; break;
+                        case 'ANCHOR': desc = `Anclaje Fijo`; break;
+                        default: desc = `${comp.type} ${line.diameter}"`;
+                    }
                     items.push([comp.tag || `ACC-${line.tag}`, desc, "Und", 1]);
                 });
             }
         });
-        if (items.length === 0) { notify("No hay elementos para exportar.", true); return; }
+        
+        if (items.length === 0) {
+            notify("No hay elementos para exportar.", true);
+            return;
+        }
+        
+        if (typeof XLSX === 'undefined') {
+            notify("Librería XLSX no disponible.", true);
+            return;
+        }
+        
         const ws = XLSX.utils.aoa_to_sheet([["Tag", "Descripción", "Unidad", "Cantidad"], ...items]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "MTO");
@@ -181,19 +290,33 @@
     }
     
     function resumenProyecto() {
+        if (typeof SmartFlowCore === 'undefined') {
+            notify("Core no disponible", true);
+            return;
+        }
+        
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
+        
         const tanques = equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
         const bombas = equipos.filter(e => e.tipo.includes('bomba'));
         const colectores = equipos.filter(e => e.tipo === 'colector');
-        let totalCodos = 0, totalValvulas = 0;
+        
+        let totalCodos = 0;
+        let totalValvulas = 0;
         lines.forEach(l => {
             const pts = l._cachedPoints || l.points3D;
             if (pts) totalCodos += Math.max(0, pts.filter(p => !p.isControlPoint).length - 2);
-            if (l.components) l.components.forEach(c => { if (c.type.includes('VALVE')) totalValvulas++; });
+            if (l.components) {
+                l.components.forEach(c => {
+                    if (c.type && c.type.includes('VALVE')) totalValvulas++;
+                });
+            }
         });
+        
         const resumen = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${colectores.length} colectores, ${lines.length} tuberías, ${totalCodos} codos, ${totalValvulas} válvulas.`;
         notify(resumen, false);
+        
         if (voiceEnabled && window.speechSynthesis) {
             const u = new SpeechSynthesisUtterance(resumen);
             u.lang = 'es-ES';
@@ -204,7 +327,10 @@
     // -------------------- 7. CONFIGURACIÓN DE HERRAMIENTAS --------------------
     function setTool(mode) {
         toolMode = mode;
-        [toolSelect, toolMoveEq, toolEditPipe, toolAddPoint].forEach(btn => { if (btn) btn.classList.remove('active'); });
+        [toolSelect, toolMoveEq, toolEditPipe, toolAddPoint].forEach(btn => {
+            if (btn) btn.classList.remove('active');
+        });
+        
         if (mode === 'select' && toolSelect) toolSelect.classList.add('active');
         else if (mode === 'moveEq' && toolMoveEq) toolMoveEq.classList.add('active');
         else if (mode === 'editPipe' && toolEditPipe) toolEditPipe.classList.add('active');
@@ -212,15 +338,23 @@
     }
     
     function setElevation(level) {
-        SmartFlowCore.setElevation(level);
-        if (SmartFlowRenderer) SmartFlowRenderer.setElevation(level);
+        if (typeof SmartFlowCore !== 'undefined') {
+            SmartFlowCore.setElevation(level);
+        }
+        if (typeof SmartFlowRenderer !== 'undefined') {
+            SmartFlowRenderer.setElevation(level);
+        }
         if (customElev) customElev.value = level;
+        notify(`Elevación: ${level} mm`, false);
     }
     
     function toggleVoice() {
         voiceEnabled = !voiceEnabled;
-        SmartFlowCore.setVoice(voiceEnabled);
-        if (btnVoice) btnVoice.textContent = voiceEnabled ? "Voz ON" : "Voz OFF";
+        if (typeof SmartFlowCore !== 'undefined') {
+            SmartFlowCore.setVoice(voiceEnabled);
+        }
+        if (btnVoice) btnVoice.textContent = voiceEnabled ? "🔊 Voz ON" : "🔇 Voz OFF";
+        notify(voiceEnabled ? "Voz activada" : "Voz desactivada", false);
     }
     
     // -------------------- 8. EVENTOS DEL CANVAS --------------------
@@ -238,30 +372,39 @@
     }
     
     function pickElement(mouseCanvas) {
-        if (SmartFlowRenderer && SmartFlowRenderer.pickElement) {
-            return SmartFlowRenderer.pickElement(mouseCanvas);
+        if (typeof SmartFlowCore === 'undefined' || typeof SmartFlowRenderer === 'undefined') {
+            return null;
         }
+        
         const db = SmartFlowCore.getDb();
         const equipos = db?.equipos || [];
         const lines = db?.lines || [];
         const project = SmartFlowRenderer.project;
+        
         for (let eq of equipos) {
             const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
             if (eq.tipo === 'colector') {
                 const pIzq = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
                 const pDer = project({ x: eq.posX + eq.largo, y: eq.posY, z: eq.posZ });
-                if (pointToSegmentDistance(mouseCanvas, pIzq, pDer) < 15) return { type: 'equipment', obj: eq };
+                if (pointToSegmentDistance(mouseCanvas, pIzq, pDer) < 15) {
+                    return { type: 'equipment', obj: eq };
+                }
             } else {
                 const w = (eq.diametro / 2) * SmartFlowRenderer.getCam().scale;
-                if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < w + 10) return { type: 'equipment', obj: eq };
+                if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < w + 10) {
+                    return { type: 'equipment', obj: eq };
+                }
             }
         }
+        
         for (let line of lines) {
             const pts = line._cachedPoints || line.points3D;
             if (!pts) continue;
             const proj = pts.map(p => project(p));
             for (let i = 0; i < proj.length - 1; i++) {
-                if (pointToSegmentDistance(mouseCanvas, proj[i], proj[i+1]) < 12) return { type: 'line', obj: line };
+                if (pointToSegmentDistance(mouseCanvas, proj[i], proj[i+1]) < 12) {
+                    return { type: 'line', obj: line };
+                }
             }
         }
         return null;
@@ -269,16 +412,23 @@
     
     function initCanvasEvents() {
         if (!canvas) return;
-        let panLocal = false, panStartLocal = { x: 0, y: 0 };
+        
+        let panLocal = false;
+        let panStartLocal = { x: 0, y: 0 };
+        
         canvas.addEventListener('mousedown', (e) => {
             const rect = canvas.getBoundingClientRect();
             const mouse = {
                 x: (e.clientX - rect.left) * canvas.width / rect.width,
                 y: (e.clientY - rect.top) * canvas.height / rect.height
             };
+            
             const picked = pickElement(mouse);
+            
             if (toolMode === 'select') {
-                SmartFlowCore.setSelected(picked);
+                if (typeof SmartFlowCore !== 'undefined') {
+                    SmartFlowCore.setSelected(picked);
+                }
                 render();
             } else if (toolMode === 'moveEq' && picked?.type === 'equipment') {
                 draggingEquipment = true;
@@ -295,15 +445,20 @@
         });
         
         window.addEventListener('mousemove', (e) => {
-            if (draggingEquipment && draggedEquip) {
+            if (draggingEquipment && draggedEquip && typeof SmartFlowRenderer !== 'undefined') {
                 const dx = (e.clientX - dragLastPos.x) / SmartFlowRenderer.getCam().scale;
                 const dy = (e.clientY - dragLastPos.y) / SmartFlowRenderer.getCam().scale;
+                
                 const db = SmartFlowCore.getDb();
                 const eq = db.equipos.find(eq => eq.tag === draggedEquip.tag);
-                if (eq) { eq.posX += dx; eq.posZ += dy; }
+                if (eq) {
+                    eq.posX += dx;
+                    eq.posZ += dy;
+                }
+                
                 dragLastPos = { x: e.clientX, y: e.clientY };
                 render();
-            } else if (panLocal) {
+            } else if (panLocal && typeof SmartFlowRenderer !== 'undefined') {
                 const dx = e.clientX - panStartLocal.x;
                 const dy = e.clientY - panStartLocal.y;
                 SmartFlowRenderer.pan(dx, dy);
@@ -312,118 +467,156 @@
         });
         
         window.addEventListener('mouseup', () => {
-            if (draggingEquipment) {
+            if (draggingEquipment && typeof SmartFlowCore !== 'undefined') {
                 SmartFlowCore.syncPhysicalData();
                 SmartFlowCore._saveState();
             }
             draggingEquipment = false;
             panLocal = false;
-            canvas.style.cursor = 'grab';
+            if (canvas) canvas.style.cursor = 'grab';
         });
         
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            SmartFlowRenderer.zoom(e.deltaY);
+            if (typeof SmartFlowRenderer !== 'undefined') {
+                SmartFlowRenderer.zoom(e.deltaY);
+            }
         });
     }
     
     // -------------------- 9. CABLEADO DE BOTONES --------------------
     function bindEvents() {
+        console.log("[main.js] Vinculando eventos...");
+        
         const vincular = (id, accion) => {
             const el = document.getElementById(id);
-            if (el) el.onclick = accion;
-            else console.warn("Botón no encontrado: " + id);
+            if (el) {
+                el.onclick = accion;
+                console.log("[main.js] Botón vinculado: " + id);
+            } else {
+                console.warn("[main.js] Botón NO encontrado: " + id);
+            }
         };
-        
+
         vincular('btnNew', nuevoProyecto);
         vincular('btnOpen', cargarProyecto);
         vincular('btnSave', guardarProyecto);
         vincular('btnReset', autoCenter);
+        
         vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
         vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
         vincular('clearCommand', () => { if (commandText) commandText.value = ''; });
         vincular('runCommands', () => {
-            if (commandText) {
-                const cmd = commandText.value.trim();
-                let processed = false;
-                if (typeof SmartFlowAccessibility !== 'undefined') {
-                    processed = SmartFlowAccessibility.processAccessibilityCommand(cmd);
-                }
-                if (!processed) {
-                    SmartFlowCommands.executeBatch(cmd);
-                }
-                commandText.value = '';
+            if (commandText && typeof SmartFlowCommands !== 'undefined') {
+                SmartFlowCommands.executeBatch(commandText.value);
                 if (commandPanel) commandPanel.style.display = 'none';
-                if (typeof SmartFlowAutocomplete !== 'undefined') {
-                    SmartFlowAutocomplete.hideSuggestions();
-                }
             }
         });
+
         vincular('btnAddTank', () => {
-            const equipos = SmartFlowCore.getEquipos();
-            const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
-            const ult = equipos[equipos.length - 1];
-            const x = ult ? ult.posX + 3000 : 0;
-            SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
+            if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
+                const equipos = SmartFlowCore.getEquipos();
+                const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
+                const ult = equipos[equipos.length - 1];
+                const x = ult ? ult.posX + 3000 : 0;
+                SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
+            }
         });
+        
         vincular('btnAddPump', () => {
-            const equipos = SmartFlowCore.getEquipos();
-            const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
-            const ult = equipos[equipos.length - 1];
-            const x = ult ? ult.posX + 3000 : 5000;
-            SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
+            if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
+                const equipos = SmartFlowCore.getEquipos();
+                const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
+                const ult = equipos[equipos.length - 1];
+                const x = ult ? ult.posX + 3000 : 5000;
+                SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
+            }
         });
+
         vincular('toolSelect', () => setTool('select'));
         vincular('toolMoveEq', () => setTool('moveEq'));
         vincular('toolEditPipe', () => setTool('editPipe'));
         vincular('toolAddPoint', () => setTool('addPoint'));
+
         vincular('btnMTO', exportarMTO);
-        vincular('btnPDF', () => { if (SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF(); });
-        vincular('btnExportPCF', () => { if (SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF(); });
-        vincular('btnImportPCF', () => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.pcf,.txt';
-            input.onchange = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => { SmartFlowCommands.importPCF(ev.target.result); };
-                    reader.readAsText(file);
-                }
-            };
-            input.click();
+        vincular('btnPDF', () => { 
+            if (typeof SmartFlowRenderer !== 'undefined' && SmartFlowRenderer.exportPDF) {
+                SmartFlowRenderer.exportPDF(); 
+            }
         });
+        
         vincular('btnToggleCatalog', () => {
-            if (catalogPanel) catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
+            if (catalogPanel) {
+                catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
+            }
         });
-        vincular('btnUndo', () => { SmartFlowCore.undo(); render(); });
-        vincular('btnRedo', () => { SmartFlowCore.redo(); render(); });
+        
+        vincular('btnUndo', () => { 
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.undo(); 
+                render(); 
+            }
+        });
+        
+        vincular('btnRedo', () => { 
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.redo(); 
+                render(); 
+            }
+        });
+        
         vincular('btnVoice', toggleVoice);
         vincular('btnSpeakSummary', resumenProyecto);
-        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); render(); });
+        
+        vincular('btnRecalc', () => { 
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.syncPhysicalData(); 
+                render(); 
+            }
+            notify("Recalculado", false);
+        });
+        
         vincular('btnSetElev', () => {
             const val = parseInt(customElev?.value);
-            if (!isNaN(val)) setElevation(val);
+            if (!isNaN(val)) {
+                setElevation(val);
+            }
         });
-        vincular('btnApplyNorm', () => notify("Función de normas en desarrollo.", false));
         
-        window.addEventListener('resize', () => {
-            if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
-            autoCenter();
+        vincular('btnApplyNorm', () => {
+            notify("Función de normas en desarrollo.", false);
         });
+
+        window.addEventListener('resize', () => {
+            if (typeof SmartFlowRenderer !== 'undefined') {
+                SmartFlowRenderer.resizeCanvas();
+                autoCenter();
+            }
+        });
+        
+        console.log("[main.js] Todos los eventos vinculados correctamente.");
     }
     
     // -------------------- 10. ARRANQUE DE LA APLICACIÓN --------------------
-    async function init() {
-        await initModules();
-        bindEvents();
-        initCanvasEvents();
-        setTool('select');
-        setElevation(0);
-        autoCenter();
+    function init() {
+        console.log("[main.js] Iniciando aplicación...");
+        
+        waitForModules(() => {
+            initModules();
+            bindEvents();
+            initCanvasEvents();
+            
+            setTool('select');
+            setElevation(0);
+            
+            setTimeout(() => {
+                autoCenter();
+            }, 200);
+            
+            console.log("[main.js] Aplicación inicializada correctamente.");
+        });
     }
     
     init();
+    
 })();
-
