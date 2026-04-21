@@ -496,6 +496,7 @@
         </div>
     </div>
 
+    <!-- Carga de módulos de SmartFlow -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/renderer.js"></script>
@@ -503,72 +504,346 @@
     <script src="js/accessibility.js"></script>
     <script src="js/router.js"></script>
     <script src="js/autocomplete.js"></script>
-    <script src="js/main.js"></script>
 
+    <!-- Inicialización y vinculación de la UI -->
     <script>
-        window.currentProjectName = "Proyecto_SmartFlow";
+        (function() {
+            // Variable global para el nombre del proyecto
+            window.currentProjectName = "Proyecto_SmartFlow";
 
-        function setElevation(level) {
-            if (typeof SmartFlowCore !== 'undefined' && typeof SmartFlowRenderer !== 'undefined') {
-                SmartFlowCore.setElevation(level);
-                SmartFlowRenderer.setElevation(level);
-                document.getElementById('customElev').value = level;
+            // Función para establecer elevación (usada por los botones de elevación)
+            window.setElevation = function(level) {
+                if (typeof SmartFlowCore !== 'undefined' && typeof SmartFlowRenderer !== 'undefined') {
+                    SmartFlowCore.setElevation(level);
+                    SmartFlowRenderer.setElevation(level);
+                    document.getElementById('customElev').value = level;
+                }
+            };
+
+            // Vinculación de eventos de UI
+            function bindUIEvents() {
+                // Botón Centrar Vista (id="btnReset") - Vinculación principal
+                const btnReset = document.getElementById('btnReset');
+                if (btnReset) {
+                    btnReset.addEventListener('click', function() {
+                        if (typeof SmartFlowRenderer !== 'undefined' && SmartFlowRenderer.autoCenter) {
+                            SmartFlowRenderer.autoCenter();
+                            const statusDiv = document.getElementById('statusMsg');
+                            if (statusDiv) statusDiv.innerText = 'Vista centrada ✓';
+                        } else {
+                            alert('⚠️ El motor de renderizado aún no está listo. Espere unos segundos.');
+                        }
+                    });
+                }
+
+                // Botón Comandos
+                const btnCommand = document.getElementById('btnCommand');
+                if (btnCommand) {
+                    btnCommand.addEventListener('click', function() {
+                        const panel = document.getElementById('commandPanel');
+                        if (panel) panel.style.display = 'block';
+                    });
+                }
+
+                // Botón Cerrar panel de comandos
+                const closeCommand = document.getElementById('closeCommand');
+                if (closeCommand) {
+                    closeCommand.addEventListener('click', function() {
+                        document.getElementById('commandPanel').style.display = 'none';
+                    });
+                }
+
+                // Botón Ejecutar comandos
+                const runBtn = document.getElementById('runCommands');
+                if (runBtn) {
+                    runBtn.addEventListener('click', function() {
+                        const textarea = document.getElementById('commandText');
+                        if (textarea && window.SmartFlowCommands) {
+                            SmartFlowCommands.executeBatch(textarea.value);
+                        }
+                    });
+                }
+
+                // Botón Limpiar comandos
+                const clearBtn = document.getElementById('clearCommand');
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', function() {
+                        const textarea = document.getElementById('commandText');
+                        if (textarea) textarea.value = '';
+                    });
+                }
+
+                // Botón Agregar Tanque
+                const btnAddTank = document.getElementById('btnAddTank');
+                if (btnAddTank) {
+                    btnAddTank.addEventListener('click', function() {
+                        if (window.SmartFlowCommands) {
+                            SmartFlowCommands.executeCommand('create tanque_v TK-01 at (0,1450,0) diam 2380 height 2900 material PE');
+                        }
+                    });
+                }
+
+                // Botón Agregar Bomba
+                const btnAddPump = document.getElementById('btnAddPump');
+                if (btnAddPump) {
+                    btnAddPump.addEventListener('click', function() {
+                        if (window.SmartFlowCommands) {
+                            SmartFlowCommands.executeCommand('create bomba B-01 at (0,800,0) diam 800 height 800 material SS');
+                        }
+                    });
+                }
+
+                // Botón MTO
+                const btnMTO = document.getElementById('btnMTO');
+                if (btnMTO) {
+                    btnMTO.addEventListener('click', function() {
+                        if (window.SmartFlowCommands) {
+                            SmartFlowCommands.executeCommand('bom');
+                        }
+                    });
+                }
+
+                // Botón Exportar PDF
+                const btnPDF = document.getElementById('btnPDF');
+                if (btnPDF) {
+                    btnPDF.addEventListener('click', function() {
+                        if (typeof SmartFlowRenderer !== 'undefined' && SmartFlowRenderer.exportPDF) {
+                            SmartFlowRenderer.exportPDF();
+                        }
+                    });
+                }
+
+                // Botón Exportar PCF
+                const btnExportPCF = document.getElementById('btnExportPCF');
+                if (btnExportPCF) {
+                    btnExportPCF.addEventListener('click', function() {
+                        if (typeof SmartFlowRenderer !== 'undefined' && SmartFlowRenderer.exportPCF) {
+                            SmartFlowRenderer.exportPCF();
+                        }
+                    });
+                }
+
+                // Botón Importar PCF
+                const btnImportPCF = document.getElementById('btnImportPCF');
+                if (btnImportPCF) {
+                    btnImportPCF.addEventListener('click', function() {
+                        const fileInput = document.createElement('input');
+                        fileInput.type = 'file';
+                        fileInput.accept = '.pcf,.txt,text/plain';
+                        fileInput.style.display = 'none';
+                        document.body.appendChild(fileInput);
+                        
+                        fileInput.addEventListener('change', function(e) {
+                            const file = e.target.files[0];
+                            if (!file) return;
+                            
+                            const reader = new FileReader();
+                            reader.onload = function(ev) {
+                                const content = ev.target.result;
+                                try {
+                                    if (typeof SmartFlowCommands !== 'undefined' && SmartFlowCommands.importPCF) {
+                                        SmartFlowCommands.importPCF(content);
+                                        document.getElementById('statusMsg').innerText = 'PCF importado correctamente ✓';
+                                    } else {
+                                        alert('Módulo de comandos no disponible.');
+                                    }
+                                } catch (err) {
+                                    alert('Error al importar PCF: ' + err.message);
+                                }
+                                document.body.removeChild(fileInput);
+                            };
+                            reader.readAsText(file);
+                        });
+                        
+                        fileInput.click();
+                    });
+                }
+
+                // Botón Voz (toggle)
+                const btnVoice = document.getElementById('btnVoice');
+                if (btnVoice) {
+                    btnVoice.addEventListener('click', function() {
+                        if (window.SmartFlowAccessibility) {
+                            const enabled = SmartFlowAccessibility.toggleVoice();
+                            btnVoice.innerText = enabled ? '🔊 Voz ON' : '🔇 Voz OFF';
+                        }
+                    });
+                }
+
+                // Botón Resumen por voz
+                const btnSpeakSummary = document.getElementById('btnSpeakSummary');
+                if (btnSpeakSummary) {
+                    btnSpeakSummary.addEventListener('click', function() {
+                        if (window.SmartFlowAccessibility) {
+                            SmartFlowAccessibility.speakSummary();
+                        }
+                    });
+                }
+
+                // Botón Catálogo
+                const btnToggleCatalog = document.getElementById('btnToggleCatalog');
+                if (btnToggleCatalog) {
+                    btnToggleCatalog.addEventListener('click', function() {
+                        const panel = document.getElementById('catalogPanel');
+                        if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                    });
+                }
+
+                // Botón Establecer elevación personalizada
+                const btnSetElev = document.getElementById('btnSetElev');
+                if (btnSetElev) {
+                    btnSetElev.addEventListener('click', function() {
+                        const input = document.getElementById('customElev');
+                        if (input) setElevation(parseInt(input.value) || 0);
+                    });
+                }
+
+                // Botones de herramientas
+                document.getElementById('toolSelect')?.addEventListener('click', function() {
+                    if (window.SmartFlowCommands) SmartFlowCommands.setTool('select');
+                });
+                document.getElementById('toolMoveEq')?.addEventListener('click', function() {
+                    if (window.SmartFlowCommands) SmartFlowCommands.setTool('move');
+                });
+                document.getElementById('toolEditPipe')?.addEventListener('click', function() {
+                    if (window.SmartFlowCommands) SmartFlowCommands.setTool('editPipe');
+                });
+                document.getElementById('toolAddPoint')?.addEventListener('click', function() {
+                    if (window.SmartFlowCommands) SmartFlowCommands.setTool('addPoint');
+                });
+
+                // Botón Undo / Redo
+                document.getElementById('btnUndo')?.addEventListener('click', function() {
+                    if (window.SmartFlowCore) SmartFlowCore.undo();
+                });
+                document.getElementById('btnRedo')?.addEventListener('click', function() {
+                    if (window.SmartFlowCore) SmartFlowCore.redo();
+                });
+
+                // Botón Recalcular
+                document.getElementById('btnRecalc')?.addEventListener('click', function() {
+                    if (window.SmartFlowCore) SmartFlowCore.recalculateAll();
+                });
+
+                // Botón Normas
+                document.getElementById('btnApplyNorm')?.addEventListener('click', function() {
+                    if (window.SmartFlowCommands) SmartFlowCommands.executeCommand('audit');
+                });
+
+                // Cerrar panel de propiedades (header click)
+                document.querySelector('#propertyPanel .property-header')?.addEventListener('click', function() {
+                    document.getElementById('propertyPanel').style.display = 'none';
+                });
             }
-        }
 
-        window.addEventListener('load', () => {
-            const splash = document.getElementById('splash-screen');
-            const welcome = document.getElementById('welcome-panel');
-            const modal = document.getElementById('project-name-modal');
-            const inputProject = document.getElementById('project-name-input');
-            const statusEl = document.getElementById('splash-status');
-            
-            const messages = [
-                "Cargando librerías de AcQuaBlue...",
-                "Sincronizando modelos de objetos inteligentes...",
-                "Optimizando motor gráfico isométrico...",
-                "Iniciando interfaz de Ing. Osnay Romero...",
-                "¡SmartProject Activo!"
+            // ===== PRUEBA DE DIAGNÓSTICO DEL BOTÓN CENTRAR =====
+            setTimeout(function() {
+                var btn = document.getElementById('btnReset');
+                if (!btn) {
+                    alert('❌ ERROR: Botón "Centrar" no encontrado en el DOM');
+                    return;
+                }
+                
+                // Reemplazar el evento click para diagnóstico
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    // 1. Verificar que el renderizador existe
+                    if (typeof SmartFlowRenderer === 'undefined') {
+                        alert('❌ SmartFlowRenderer no está definido. Verifique que js/renderer.js se cargó.');
+                        return;
+                    }
+                    
+                    // 2. Verificar que autoCenter es una función
+                    if (typeof SmartFlowRenderer.autoCenter !== 'function') {
+                        alert('❌ SmartFlowRenderer.autoCenter no es una función.');
+                        return;
+                    }
+                    
+                    // 3. Verificar estado interno (opcional)
+                    var cam = SmartFlowRenderer.getCam();
+                    alert('✅ Renderer OK. Cámara actual: scale=' + cam.scale.toFixed(3) + 
+                          ', panX=' + cam.panX.toFixed(0) + ', panY=' + cam.panY.toFixed(0));
+                    
+                    // 4. Ejecutar autoCenter
+                    try {
+                        SmartFlowRenderer.autoCenter();
+                        alert('✅ autoCenter ejecutado. Verifique si la vista cambió.');
+                    } catch (error) {
+                        alert('❌ Error en autoCenter: ' + error.message);
+                    }
+                });
+                
+                alert('✅ Prueba de Centrar activada. Pulse el botón "🔄 Centrar" para ver resultados.');
+            }, 2500);
+
+            // Función para manejar splash y welcome (conservada del original)
+            function initSplashAndWelcome() {
+                const splash = document.getElementById('splash-screen');
+                const welcome = document.getElementById('welcome-panel');
+                const modal = document.getElementById('project-name-modal');
+                const inputProject = document.getElementById('project-name-input');
+                const statusEl = document.getElementById('splash-status');
+                
+                const messages = [
+                    "Cargando librerías de AcQuaBlue...",
+                    "Sincronizando modelos de objetos inteligentes...",
+                    "Optimizando motor gráfico isométrico...",
+                    "Iniciando interfaz de Ing. Osnay Romero...",
+                    "¡SmartProject Activo!"
+                ];
+                
+                let i = 0;
+                const interval = setInterval(() => {
+                    if(i < messages.length) { statusEl.innerText = messages[i]; i++; }
+                }, 800);
+
+                setTimeout(() => { splash.classList.add('splash-hidden'); clearInterval(interval); }, 4500);
+                setTimeout(() => { welcome.classList.remove('welcome-hidden'); }, 4800);
+
+                document.getElementById('welcome-new-project').onclick = () => { modal.style.display = 'flex'; };
+                document.getElementById('welcome-open-project').onclick = () => {
+                    document.getElementById('btnOpen')?.click();
+                    welcome.classList.add('welcome-hidden');
+                };
+                document.getElementById('modal-accept').onclick = () => {
+                    const name = inputProject.value.trim();
+                    if (name) window.currentProjectName = name;
+                    modal.style.display = 'none';
+                    welcome.classList.add('welcome-hidden');
+                    if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) SmartFlowCore.nuevoProyecto();
+                    document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+                };
+                document.getElementById('modal-skip').onclick = () => {
+                    modal.style.display = 'none';
+                    welcome.classList.add('welcome-hidden');
+                    document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+                };
+            }
+
+            // Inicializar todo cuando el DOM esté listo
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    bindUIEvents();
+                    initSplashAndWelcome();
+                });
+            } else {
+                bindUIEvents();
+                initSplashAndWelcome();
+            }
+
+            // Mensajes rotativos en barra de estado
+            const logs = [
+                "SmartProject | IA: Escaneando colisiones...",
+                "SmartProject | Optimizando MTO...",
+                "SmartProject | Verificando normas...",
+                "SmartProject | Listo para comandos"
             ];
-            
-            let i = 0;
-            const interval = setInterval(() => {
-                if(i < messages.length) { statusEl.innerText = messages[i]; i++; }
-            }, 800);
-
-            setTimeout(() => { splash.classList.add('splash-hidden'); clearInterval(interval); }, 4500);
-            setTimeout(() => { welcome.classList.remove('welcome-hidden'); }, 4800);
-
-            document.getElementById('welcome-new-project').onclick = () => { modal.style.display = 'flex'; };
-            document.getElementById('welcome-open-project').onclick = () => {
-                document.getElementById('btnOpen')?.click();
-                welcome.classList.add('welcome-hidden');
-            };
-            document.getElementById('modal-accept').onclick = () => {
-                const name = inputProject.value.trim();
-                if (name) window.currentProjectName = name;
-                modal.style.display = 'none';
-                welcome.classList.add('welcome-hidden');
-                if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) SmartFlowCore.nuevoProyecto();
-                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
-            };
-            document.getElementById('modal-skip').onclick = () => {
-                modal.style.display = 'none';
-                welcome.classList.add('welcome-hidden');
-                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
-            };
-        });
-
-        const logs = [
-            "SmartProject | IA: Escaneando colisiones...",
-            "SmartProject | Optimizando MTO...",
-            "SmartProject | Verificando normas...",
-            "SmartProject | Listo para comandos"
-        ];
-        setInterval(() => {
-            const statusDiv = document.getElementById('statusMsg');
-            if (statusDiv && !statusDiv.dataset.locked) statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
-        }, 6000);
+            setInterval(() => {
+                const statusDiv = document.getElementById('statusMsg');
+                if (statusDiv && !statusDiv.dataset.locked) statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
+            }, 6000);
+        })();
     </script>
 </body>
 </html>
