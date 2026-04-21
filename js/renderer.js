@@ -1,12 +1,9 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.2
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.4.1 HIGH-END
 // Archivo: js/renderer.js
-// Propósito: Manejar toda la lógica de proyección isométrica,
-//            dibujo en Canvas 2D con jerarquía visual profesional,
-//            tuberías con volumen, texto isométrico, acotación,
-//            exportación PCF 100% compatible con AVEVA/SmartPlant,
-//            detección volumétrica de clics y visualización de puertos lógicos.
+// Mejoras: Z-Sorting, Clash Detection Visual, Cotas Profesionales.
+// Corrección: Restaurada la función drawSelection y su llamado en render.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -261,16 +258,21 @@ const SmartFlowRenderer = (function() {
         const realDistMeters = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z) / 1000;
         const midX = (prD1.x + prD2.x) / 2, midY = (prD1.y + prD2.y) / 2;
         _ctx.save(); _ctx.translate(midX, midY);
-        let textAngle = angle; if (textAngle > Math.PI/2 || textAngle < -Math.PI/2) textAngle += Math.PI;
+        let textAngle = angle;
+        // MEJORA 3: Normalizar ángulo para que el texto nunca esté de cabeza
+        if (textAngle > Math.PI/2) textAngle -= Math.PI;
+        if (textAngle < -Math.PI/2) textAngle += Math.PI;
         _ctx.rotate(textAngle);
         const textStr = `${realDistMeters.toFixed(3)} m`;
         _ctx.font = `bold ${Math.max(10, 12 * _cam.scale)}px monospace`;
         const textWidth = _ctx.measureText(textStr).width;
-        _ctx.fillStyle = '#0a0e17'; _ctx.fillRect(-textWidth/2 - 4, -18, textWidth + 8, 18);
-        _ctx.shadowColor = '#000'; _ctx.shadowBlur = 6; _ctx.fillStyle = '#facc15';
+        // Fondo semitransparente para legibilidad
+        _ctx.fillStyle = 'rgba(10, 14, 23, 0.8)';
+        _ctx.fillRect(-textWidth/2 - 4, -14, textWidth + 8, 16);
+        _ctx.fillStyle = '#facc15';
         _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
-        const textVOffset = (prD1.y > pr1.y) ? 12 : -5;
-        _ctx.fillText(textStr, 0, textVOffset - 9); _ctx.shadowBlur = 0; _ctx.restore();
+        _ctx.fillText(textStr, 0, -4);
+        _ctx.restore();
     }
 
     function lineHasAuditError(line) {
@@ -314,6 +316,16 @@ const SmartFlowRenderer = (function() {
                 }
             }
         }
+
+        // MEJORA 2: CLASH DETECTION EN TIEMPO DE RENDER
+        let hasClash = false;
+        for (let p of pts) {
+            if (isPointCollidingWithEquipment(p, 100)) {
+                hasClash = true;
+                break;
+            }
+        }
+
         const isPPR = line.material === 'PPR' || (line.spec && line.spec.includes('PPR'));
         const radioBase = isPPR ? (line.diameter * 25.4 * 0.8) : (line.diameter * 25.4 * 1.5);
         const radio = Math.min(radioBase, 350);
@@ -348,9 +360,22 @@ const SmartFlowRenderer = (function() {
         const spec = line.spec && window.SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
         let mainColor;
         if (hasAuditError) mainColor = '#ef4444';
-        else if (line.hasClash) mainColor = '#ef4444';
+        else if (hasClash) mainColor = '#ff00ff'; // Magenta para clash
         else mainColor = spec?.color || '#facc15';
         _ctx.strokeStyle = mainColor; _ctx.lineWidth = mainWidth; _ctx.stroke();
+        
+        // Resplandor adicional para clash
+        if (hasClash) {
+            _ctx.save();
+            _ctx.shadowColor = '#ff00ff';
+            _ctx.shadowBlur = 20;
+            drawPath();
+            _ctx.strokeStyle = '#ff00ff';
+            _ctx.lineWidth = mainWidth * 0.5;
+            _ctx.stroke();
+            _ctx.restore();
+        }
+
         drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(2, mainWidth * 0.25); _ctx.globalAlpha = 0.7; _ctx.stroke(); _ctx.globalAlpha = 1.0;
         drawPath(); _ctx.strokeStyle = '#fef08a'; _ctx.lineWidth = Math.max(1, mainWidth * 0.1); _ctx.globalAlpha = 0.9; _ctx.stroke(); _ctx.globalAlpha = 1.0;
         if (hasAuditError && pts.length >= 2) {
@@ -470,7 +495,57 @@ const SmartFlowRenderer = (function() {
     }
     function pointToSegmentDistance(p, a, b) { const ax = p.x - a.x, ay = p.y - a.y; const bx = b.x - a.x, by = b.y - a.y; const dot = ax * bx + ay * by; const len2 = bx * bx + by * by; if (len2 === 0) return Math.hypot(ax, ay); let t = dot / len2; t = Math.max(0, Math.min(1, t)); const projX = a.x + t * bx, projY = a.y + t * by; return Math.hypot(p.x - projX, p.y - projY); }
 
-    // -------------------- 8. AUTO-CENTER MEJORADO --------------------
+    // -------------------- 8. DIBUJO DE SELECCIÓN --------------------
+    function drawSelection(element) {
+        if (!element) return;
+        _ctx.save();
+        _ctx.strokeStyle = '#facc15';
+        _ctx.lineWidth = 4;
+        _ctx.shadowColor = '#facc15';
+        _ctx.shadowBlur = 10;
+        
+        if (element.type === 'equipment') {
+            const eq = element.obj;
+            if (eq.tipo === 'colector') {
+                const pIzq = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+                const pDer = project({ x: eq.posX + eq.largo, y: eq.posY, z: eq.posZ });
+                _ctx.beginPath();
+                _ctx.moveTo(pIzq.x, pIzq.y);
+                _ctx.lineTo(pDer.x, pDer.y);
+                _ctx.stroke();
+            } else if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
+                const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+                const w = (eq.diametro / 2) * _cam.scale;
+                const h = eq.altura * _cam.scale;
+                _ctx.beginPath();
+                _ctx.ellipse(p.x, p.y - h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI);
+                _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.ellipse(p.x, p.y + h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI);
+                _ctx.stroke();
+            } else {
+                const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+                const w = ((eq.largo || eq.diametro || 1000) / 2) * _cam.scale + 5;
+                const h = ((eq.altura || 1000) / 2) * _cam.scale + 5;
+                _ctx.strokeRect(p.x - w, p.y - h, w*2, h*2);
+            }
+        } else if (element.type === 'line') {
+            const line = element.obj;
+            const pts = line._cachedPoints || line.points3D;
+            if (pts && pts.length >= 2) {
+                _ctx.beginPath();
+                const proj = pts.map(p => project(p));
+                _ctx.moveTo(proj[0].x, proj[0].y);
+                for (let i = 1; i < proj.length; i++) {
+                    _ctx.lineTo(proj[i].x, proj[i].y);
+                }
+                _ctx.stroke();
+            }
+        }
+        _ctx.restore();
+    }
+
+    // -------------------- 9. AUTO-CENTER AVANZADO (v18.2) --------------------
     function autoCenter() {
         if (!_canvas || !_core) return;
         const db = _core.getDb(); const equipos = db?.equipos || []; const lines = db?.lines || [];
@@ -564,51 +639,56 @@ const SmartFlowRenderer = (function() {
     }
 
     // ============================================================
-    // FUNCIÓN PRINCIPAL DE RENDERIZADO
+    // FUNCIÓN PRINCIPAL DE RENDERIZADO CON Z-SORTING
     // ============================================================
     function render() {
         if (!_ctx || !_canvas) return;
-        
         _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
         _ctx.fillStyle = '#0a0e17';
         _ctx.fillRect(0, 0, _canvas.width, _canvas.height);
-        
         drawGrid(_currentElevation);
         drawOrigin();
-        
         if (!_core) return;
         const db = _core.getDb();
         if (!db) return;
-        
-        const equipos = db.equipos || [];
-        equipos.sort((a, b) => (a.posY || 0) - (b.posY || 0));
-        
-        equipos.forEach(eq => {
-            switch (eq.tipo) {
-                case 'tanque_v':
-                case 'torre':
-                case 'reactor':
-                    drawTank(eq);
-                    break;
-                case 'bomba':
-                    drawBomba(eq);
-                    break;
-                case 'colector':
-                    drawColector(eq);
-                    break;
-                case 'tanque_h':
-                    drawCilindroHorizontal(eq, '#2563eb');
-                    break;
-                default:
-                    drawRectEquip(eq, '#475569');
+
+        // MEJORA 1: Z-SORTING (Orden de Pintor)
+        let renderQueue = [];
+        (db.equipos || []).forEach(eq => {
+            renderQueue.push({
+                type: 'EQUIPMENT',
+                depth: eq.posX + eq.posZ + (eq.posY * 0.1),
+                data: eq
+            });
+        });
+        (db.lines || []).forEach(line => {
+            const pts = line._cachedPoints || line.points3D;
+            if (pts && pts.length >= 2) {
+                const avgDepth = pts.reduce((acc, p) => acc + (p.x + p.z), 0) / pts.length;
+                renderQueue.push({ type: 'LINE', depth: avgDepth, data: line });
             }
         });
-        
-        const lines = db.lines || [];
-        lines.forEach(line => {
-            drawPipeWithElbows(line);
-            drawPipeComponents(line);
+        renderQueue.sort((a, b) => a.depth - b.depth);
+
+        renderQueue.forEach(item => {
+            if (item.type === 'EQUIPMENT') {
+                const eq = item.data;
+                switch (eq.tipo) {
+                    case 'tanque_v': case 'torre': case 'reactor': drawTank(eq); break;
+                    case 'bomba': drawBomba(eq); break;
+                    case 'colector': drawColector(eq); break;
+                    case 'tanque_h': drawCilindroHorizontal(eq, '#2563eb'); break;
+                    default: drawRectEquip(eq, '#475569');
+                }
+            } else {
+                drawPipeWithElbows(item.data);
+                drawPipeComponents(item.data);
+            }
         });
+
+        // Dibujar selección encima de todo
+        const selected = _core.getSelected();
+        if (selected) drawSelection(selected);
     }
 
     function init(canvasElement, coreInstance, notifyFn) {
