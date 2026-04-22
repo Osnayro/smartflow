@@ -1,11 +1,12 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.2
+// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.4
 // Archivo: js/commands.js
 // Propósito: Interpretar comandos de texto en español e inglés.
 //            Soporte completo para crear, editar, eliminar, rutear,
 //            auditoría, generación de BOM, importación PCF mejorada,
 //            accesibilidad y gestión de puertos lógicos.
+//            Nuevo: Auto-detección de intersecciones en create line.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -77,10 +78,16 @@ const SmartFlowCommands = (function() {
         if (parts[0] !== 'create' || parts[1] !== 'line') return false;
         const tag = parts[2];
         let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5', points = [], i = 3;
+        let autofit = true; // Por defecto, auto-detectar intersecciones
+        
         while (i < parts.length) {
             if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
             else if (parts[i] === 'material') material = parts[++i].toUpperCase();
             else if (parts[i] === 'spec') spec = parts[++i];
+            else if (parts[i] === 'autofit') {
+                const val = parts[++i]?.toLowerCase();
+                autofit = val !== 'false' && val !== 'no';
+            }
             else if (parts[i] === 'from' || parts[i] === 'route' || parts[i] === 'ruta') {
                 i++;
                 while (i < parts.length) {
@@ -98,6 +105,12 @@ const SmartFlowCommands = (function() {
         const nuevaLinea = { tag, diameter, material, spec, _cachedPoints: points, waypoints: points.slice(1, -1), components: [] };
         _core.addLine(nuevaLinea);
         _notifyUI(`Línea ${tag} creada con ${points.length} puntos`, false, { line: nuevaLinea });
+        
+        // --- NUEVO: Auto-detección de intersecciones (si autofit está activo) ---
+        if (autofit && typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.procesarInterseccionesDeLinea) {
+            SmartFlowRouter.procesarInterseccionesDeLinea(nuevaLinea);
+        }
+        
         _renderUI();
         return true;
     }
@@ -334,7 +347,7 @@ const SmartFlowCommands = (function() {
     function parseHelp(cmd) {
         const lower = cmd.toLowerCase(); if (lower !== 'help' && lower !== 'ayuda') return false;
         let ayuda = "═══════════════════════════════════════════════════════════\n              SMARTFLOW PRO - COMANDOS DISPONIBLES\n═══════════════════════════════════════════════════════════\n\n";
-        ayuda += "CREACIÓN:\n  create/crear [tipo] [tag] at (x,y,z) [diam/diametro N] [height/altura N]\n  create line/crear línea [tag] route/ruta (x1,y1,z1) ...\n  create manifold [tag] at (x,y,z) entries/entradas N spacing/espaciado D\n\n";
+        ayuda += "CREACIÓN:\n  create/crear [tipo] [tag] at (x,y,z) [diam/diametro N] [height/altura N]\n  create line/crear línea [tag] route/ruta (x1,y1,z1) ... [autofit false]\n  create manifold [tag] at (x,y,z) entries/entradas N spacing/espaciado D\n\n";
         ayuda += "CONEXIÓN:\n  connect/conectar [obj] [puerto] to/a [obj] [puerto]\n  route/ruta from/desde [obj] [puerto] to/a [obj] [puerto]\n\n";
         ayuda += "ELIMINACIÓN:\n  delete/eliminar equipment/equipo [tag]\n  delete/eliminar line/línea [tag]\n\n";
         ayuda += "EDICIÓN DE EQUIPOS:\n  edit/editar equipment/equipo [tag] move/mover to (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] pos/posicion (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] dir/direccion (dx,dy,dz)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] diam/diametro N\n\n";
@@ -346,66 +359,81 @@ const SmartFlowCommands = (function() {
         _notifyUI(ayuda, false); return true;
     }
 
-    // -------------------- 10. IMPORTACIÓN PCF MEJORADA (v4.2) --------------------
+    // -------------------- 10. IMPORTACIÓN PCF MEJORADA --------------------
     const skeyToInternal = {
-        // Equipos
         'TANK': { type: 'equipment', internal: 'tanque_v' },
         'PUMP': { type: 'equipment', internal: 'bomba' },
         'VESS': { type: 'equipment', internal: 'tanque_v' },
-        // Tubería
+        'EXCH': { type: 'equipment', internal: 'intercambiador' },
         'STRA': { type: 'pipe', internal: 'PIPE' },
-        // Válvulas
+        'PIPE': { type: 'pipe', internal: 'PIPE' },
         'VALV': { type: 'component', internal: 'GATE_VALVE' },
         'VAGF': { type: 'component', internal: 'GATE_VALVE' },
         'VGLF': { type: 'component', internal: 'GLOBE_VALVE' },
         'VBAL': { type: 'component', internal: 'BALL_VALVE' },
         'VBAF': { type: 'component', internal: 'BUTTERFLY_VALVE' },
         'VCFF': { type: 'component', internal: 'CHECK_VALVE' },
-        // Codos
+        'VDIA': { type: 'component', internal: 'DIAPHRAGM_VALVE' },
+        'VCON': { type: 'component', internal: 'CONTROL_VALVE' },
         'ELBW': { type: 'component', internal: 'ELBOW_90_LR' },
+        'ELBS': { type: 'component', internal: 'ELBOW_90_SR' },
         'ELL4': { type: 'component', internal: 'ELBOW_45' },
-        'ELLL': { type: 'component', internal: 'ELBOW_90_LR' },
-        'ELLS': { type: 'component', internal: 'ELBOW_90_SR' },
-        // Tees
         'TEES': { type: 'component', internal: 'TEE_EQUAL' },
         'TEER': { type: 'component', internal: 'TEE_REDUCING' },
         'CROS': { type: 'component', internal: 'CROSS' },
-        // Bridas y accesorios
         'FLWN': { type: 'component', internal: 'WELD_NECK_FLANGE' },
         'FLSO': { type: 'component', internal: 'SLIP_ON_FLANGE' },
         'FLBL': { type: 'component', internal: 'BLIND_FLANGE' },
-        'CAPF': { type: 'component', internal: 'CAP' },
-        'REDC': { type: 'component', internal: 'CONCENTRIC_REDUCER' },
-        'REDE': { type: 'component', internal: 'ECCENTRIC_REDUCER' },
-        // Instrumentos
-        'INSI': { type: 'component', internal: 'PRESSURE_GAUGE' },  // Genérico para instrumentos
+        'FLLJ': { type: 'component', internal: 'LAP_JOINT_FLANGE' },
+        'RECN': { type: 'component', internal: 'CONCENTRIC_REDUCER' },
+        'REEC': { type: 'component', internal: 'ECCENTRIC_REDUCER' },
+        'INSI': { type: 'component', internal: 'PRESSURE_GAUGE' },
         'INPG': { type: 'component', internal: 'PRESSURE_GAUGE' },
         'INTG': { type: 'component', internal: 'TEMPERATURE_GAUGE' },
         'INFM': { type: 'component', internal: 'FLOW_METER' },
-        'INLV': { type: 'component', internal: 'LEVEL_SWITCH_RANA' }
+        'INLV': { type: 'component', internal: 'LEVEL_SWITCH_RANA' },
+        'STRY': { type: 'component', internal: 'Y_STRAINER' },
+        'CAPF': { type: 'component', internal: 'CAP' }
     };
 
     function importPCF(fileContent) {
         if (!_core) { _notifyUI("Error: Core no inicializado.", true); return; }
+        if (!_catalog) { _notifyUI("Error: Catálogo no inicializado.", true); return; }
+        
         const lines = fileContent.split('\n');
         let currentLine = null, puntos = [], componentes = [];
         const equiposMap = new Map(), lineasMap = new Map();
         let currentComponent = null;
+        let pipingSpec = 'PPR_PN12_5';
         
-        // Función auxiliar para procesar el componente acumulado antes de pasar al siguiente
+        function extractAttribute(line, attrName) {
+            const regex = new RegExp(`${attrName}\\s+(.+)`, 'i');
+            const match = line.match(regex);
+            return match ? match[1].trim().replace(/'/g, '') : null;
+        }
+        
+        function parseDiameter(diamStr) {
+            if (!diamStr) return 4;
+            const num = parseFloat(diamStr);
+            return isNaN(num) ? 4 : num;
+        }
+        
+        function parsePoint(xStr, yStr, zStr) {
+            return { x: parseFloat(xStr) || 0, y: parseFloat(yStr) || 0, z: parseFloat(zStr) || 0 };
+        }
+        
         function processAccumulatedComponent() {
             if (!currentComponent || !currentComponent.skey) return;
-
             const mapping = skeyToInternal[currentComponent.skey];
             if (mapping) {
                 if (mapping.type === 'equipment') {
-                    const pos = currentComponent.pos || {x:0, y:0, z:0};
+                    const pos = currentComponent.endPoint1 || {x:0, y:0, z:0};
                     const tag = currentComponent.itemCode || `${mapping.internal}_${equiposMap.size + 1}`;
                     if (!equiposMap.has(tag)) {
                         const equipo = _catalog.createEquipment(mapping.internal, tag, pos.x, pos.y, pos.z, {
                             diametro: currentComponent.diameter || 1000,
                             altura: currentComponent.height || 1500,
-                            material: currentComponent.material || 'PPR'
+                            material: currentComponent.material || 'CS'
                         });
                         if (equipo) { equiposMap.set(tag, equipo); _core.addEquipment(equipo); }
                     }
@@ -421,90 +449,95 @@ const SmartFlowCommands = (function() {
             }
             currentComponent = null;
         }
-
+        
         function finalizeLine() {
             if (currentLine && puntos.length >= 2) {
                 if (!currentLine.tag) currentLine.tag = `L-${(lineasMap.size + 1)}`;
                 currentLine._cachedPoints = puntos;
+                currentLine.waypoints = puntos.slice(1, -1);
                 currentLine.components = componentes;
-                _core.addLine(currentLine);
                 lineasMap.set(currentLine.tag, currentLine);
+                _core.addLine(currentLine);
             }
             currentLine = null; puntos = []; componentes = [];
         }
-
+        
+        for (let line of lines) {
+            if (line.trim().startsWith('PIPING-SPEC')) {
+                pipingSpec = extractAttribute(line, 'PIPING-SPEC') || pipingSpec;
+                break;
+            }
+        }
+        
         for (let line of lines) {
             line = line.trim();
             if (line.startsWith('!') || line.length === 0) continue;
             const parts = line.split(/\s+/);
             const firstWord = parts[0];
-
-            // 1. Detección de inicio de nuevos bloques (Equipos, Componentes, Tubería)
-            const newBlockWords = ['PIPE', 'VALVE', 'TEE', 'TANK', 'PUMP', 'INSTRUMENT', 'ELBOW', 'FLANGE', 'STRA'];
+            
+            const newBlockWords = ['PIPE', 'VALVE', 'TEE', 'TANK', 'PUMP', 'INSTRUMENT', 'ELBOW', 'FLANGE', 'STRA', 'REDUCER'];
             if (newBlockWords.includes(firstWord)) {
-                processAccumulatedComponent(); // Guardamos el componente anterior
+                processAccumulatedComponent();
                 if (firstWord === 'PIPE' || firstWord === 'STRA') {
                     finalizeLine();
-                    currentLine = { tag: '', diameter: 4, material: 'PPR', spec: 'PPR_PN12_5' };
+                    currentLine = { tag: '', diameter: 4, material: 'PPR', spec: pipingSpec, origin: null, destination: null };
                     puntos = []; componentes = [];
                 } else {
                     currentComponent = { type: firstWord };
                 }
                 continue;
             }
-
-            // 2. Extracción de Atributos
+            
             if (line.startsWith('END-POINT')) {
-                // Formato: END-POINT x1 y1 z1 x2 y2 z2 diametro (a veces el diámetro está al final)
                 if (parts.length >= 7) {
-                    const p1 = { x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) };
-                    const p2 = { x: parseFloat(parts[4]), y: parseFloat(parts[5]), z: parseFloat(parts[6]) };
-                    const diam = parts.length >= 8 ? parseFloat(parts[7]) : null;
-                    
+                    const p1 = parsePoint(parts[1], parts[2], parts[3]);
+                    const p2 = parsePoint(parts[4], parts[5], parts[6]);
+                    const diam = parts[7];
                     if (currentLine) {
                         if (puntos.length === 0) puntos.push(p1);
                         puntos.push(p2);
-                        if (diam && !currentLine.diameter) currentLine.diameter = diam / 25.4; // Convertir mm a pulgadas aprox
-                    }
-                    if (currentComponent) {
-                        currentComponent.pos = p1;
-                        if (diam) currentComponent.diameter = diam;
+                        if (diam && !diam.includes('INCH')) currentLine.diameter = parseDiameter(diam);
+                    } else if (currentComponent) {
+                        currentComponent.endPoint1 = p1;
+                        currentComponent.endPoint2 = p2;
+                        if (diam) currentComponent.diameter = parseDiameter(diam);
                     }
                 }
-            } 
-            else if (line.startsWith('PCF_ELEM_SKEY')) {
+            } else if (line.startsWith('PCF_ELEM_SKEY') || line.startsWith('SKEY')) {
                 const skey = parts[1]?.replace(/'/g, '') || '';
                 if (currentComponent) currentComponent.skey = skey;
                 else if (currentLine) currentLine.skey = skey;
-            }
-            else if (line.startsWith('ITEM-CODE')) {
-                const code = line.substring(line.indexOf('ITEM-CODE') + 9).trim().replace(/'/g, '');
+            } else if (line.startsWith('ITEM-CODE')) {
+                const code = extractAttribute(line, 'ITEM-CODE');
                 if (currentComponent) currentComponent.itemCode = code;
                 else if (currentLine) currentLine.tag = code;
-            }
-            else if (line.startsWith('DESCRIPTION')) {
-                const desc = line.substring(line.indexOf('DESCRIPTION') + 11).trim().replace(/'/g, '');
+            } else if (line.startsWith('DESCRIPTION')) {
+                const desc = extractAttribute(line, 'DESCRIPTION');
                 if (currentComponent) currentComponent.description = desc;
-            }
-            else if (line.startsWith('MATERIAL')) {
-                const mat = parts[1]?.replace(/'/g, '') || '';
+                else if (currentLine) currentLine.description = desc;
+            } else if (line.startsWith('MATERIAL')) {
+                const mat = extractAttribute(line, 'MATERIAL');
+                if (currentLine) {
+                    if (mat?.toUpperCase().includes('PPR')) currentLine.material = 'PPR';
+                    else if (mat?.toUpperCase().includes('ACERO')) currentLine.material = 'Acero_Carbono';
+                    else if (mat?.toUpperCase().includes('BRONCE')) currentLine.material = 'Bronce';
+                    else currentLine.material = mat || 'PPR';
+                }
                 if (currentComponent) currentComponent.material = mat;
-                else if (currentLine) currentLine.material = mat;
-            }
-            else if (line.startsWith('HEIGHT')) {
-                if (currentComponent) currentComponent.height = parseFloat(parts[1]);
-            }
-            else if (line.startsWith('DIAMETER')) {
-                if (currentComponent) currentComponent.diameter = parseFloat(parts[1]);
-            }
-            else if (line.startsWith('PIPING-SPEC')) {
-                const spec = parts.slice(1).join(' ').replace(/'/g, '');
-                if (currentLine) currentLine.spec = spec;
+            } else if (line.startsWith('HEIGHT')) {
+                const height = parseFloat(parts[1]);
+                if (currentComponent) currentComponent.height = height;
+            } else if (line.startsWith('DIAMETER')) {
+                const diam = parseFloat(parts[1]);
+                if (currentComponent) currentComponent.diameter = diam;
+            } else if (line.startsWith('ANGLE')) {
+                const angle = parseFloat(parts[1]);
+                if (currentComponent) currentComponent.angle = angle;
             }
         }
         
-        processAccumulatedComponent(); // Procesar el último componente
-        finalizeLine(); // Finalizar la última línea
+        processAccumulatedComponent();
+        finalizeLine();
         
         _core.syncPhysicalData();
         _core._saveState();
