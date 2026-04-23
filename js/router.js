@@ -1,9 +1,10 @@
 
 // ============================================================
-// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.3
+// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.1
 // Archivo: js/router.js
 // Mejoras: Inserción automática de accesorios (T, T reductora, reductor)
-//          con verificación de catálogo y prioridad según material de línea.
+//          al conectar a una línea existente (route) o al crear línea manual.
+//          Notificación visual y por voz.
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -13,7 +14,7 @@ const SmartFlowRouter = (function() {
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
 
-    // -------------------- FUNCIONES GEOMÉTRICAS --------------------
+    // -------------------- FUNCIONES GEOMÉTRICAS BÁSICAS --------------------
     function distance(p1, p2) {
         return Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
     }
@@ -40,19 +41,28 @@ const SmartFlowRouter = (function() {
         return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
     }
 
+    // -------------------- PROYECCIÓN DE PUNTO SOBRE SEGMENTO --------------------
     function projectPointOnSegment(p, a, b) {
         const ab = subtractPoints(b, a);
         const ap = subtractPoints(p, a);
         const len2 = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z;
         if (len2 === 0) return { point: a, t: 0, distance: distance(p, a) };
+        
         let t = dotProduct(ap, ab) / len2;
         t = Math.max(0, Math.min(1, t));
-        const proj = { x: a.x + ab.x * t, y: a.y + ab.y * t, z: a.z + ab.z * t };
+        
+        const proj = {
+            x: a.x + ab.x * t,
+            y: a.y + ab.y * t,
+            z: a.z + ab.z * t
+        };
         return { point: proj, t, distance: distance(p, proj) };
     }
 
+    // -------------------- OBTENER POSICIÓN DE UN PUERTO --------------------
     function getPortPosition(obj, portId) {
         if (!obj) return null;
+        
         if (obj.posX !== undefined) {
             const puerto = obj.puertos?.find(p => p.id === portId);
             if (!puerto) return null;
@@ -62,105 +72,90 @@ const SmartFlowRouter = (function() {
                 z: obj.posZ + (puerto.relZ || puerto.relPos?.z || 0)
             };
         }
+        
         const pts = obj._cachedPoints || obj.points3D;
         if (!pts || pts.length === 0) return null;
+        
         if (obj.puertos) {
             const puerto = obj.puertos.find(p => p.id === portId);
             if (puerto && puerto.pos) return puerto.pos;
         }
-        return pts[Math.floor(pts.length / 2)];
+        
+        const midIdx = Math.floor(pts.length / 2);
+        return pts[midIdx];
     }
 
+    // -------------------- OBTENER DIRECCIÓN DE UN PUERTO --------------------
     function getPortDirection(obj, portId) {
         if (!obj) return { dx: 1, dy: 0, dz: 0 };
+        
         if (obj.posX !== undefined) {
             const puerto = obj.puertos?.find(p => p.id === portId);
             if (puerto && puerto.orientacion) return puerto.orientacion;
+            if (obj.tipo === 'tanque_v') return { dx: 1, dy: 0, dz: 0 };
+            if (obj.tipo === 'bomba') return { dx: 1, dy: 0, dz: 0 };
             return { dx: 1, dy: 0, dz: 0 };
         }
+        
         const pts = obj._cachedPoints || obj.points3D;
         if (pts && pts.length >= 2) {
-            return { dx: pts[1].x - pts[0].x, dy: pts[1].y - pts[0].y, dz: pts[1].z - pts[0].z };
+            return {
+                dx: pts[1].x - pts[0].x,
+                dy: pts[1].y - pts[0].y,
+                dz: pts[1].z - pts[0].z
+            };
         }
         return { dx: 1, dy: 0, dz: 0 };
     }
 
+    // -------------------- NOTIFICACIÓN VISUAL Y POR VOZ --------------------
     function notifyUser(message, isError = false) {
         _notifyUI(message, isError);
+        
         const statusEl = document.getElementById('statusMsg');
         if (statusEl) {
             statusEl.innerText = message;
             statusEl.style.color = isError ? '#ef4444' : '#00f2ff';
+            setTimeout(() => { if (statusEl) statusEl.style.color = '#00f2ff'; }, 3000);
         }
+        
         if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
             SmartFlowAccessibility.speak(message);
         }
     }
 
-    // -------------------- BÚSQUEDA DE COMPONENTE EN CATÁLOGO CON PRIORIDAD DE MATERIAL --------------------
-    function findComponentInCatalog(desiredType, lineMaterial = 'PPR', fallbackTypes = []) {
-        if (!_catalog) return null;
-        
-        const allTypes = _catalog.listComponentTypes();
-        
-        // 1. Buscar variante específica según material de línea
-        const materialUpper = lineMaterial.toUpperCase();
-        let materialPrefix = '';
-        if (materialUpper.includes('PPR')) materialPrefix = 'PPR';
-        else if (materialUpper.includes('HDPE')) materialPrefix = 'HDPE';
-        else if (materialUpper.includes('PVC')) materialPrefix = 'PVC';
-        else if (materialUpper.includes('ACERO')) materialPrefix = 'CS';
-        else if (materialUpper.includes('INOX')) materialPrefix = 'SS';
-        
-        if (materialPrefix) {
-            const withMaterial = `${desiredType}_${materialPrefix}`;
-            if (allTypes.includes(withMaterial)) return withMaterial;
-            
-            // Buscar que contenga el material y el tipo
-            for (let type of allTypes) {
-                if (type.includes(materialPrefix) && type.includes(desiredType.split('_')[0])) {
-                    return type;
-                }
-            }
-        }
-        
-        // 2. Intentar con el tipo deseado exacto
-        if (allTypes.includes(desiredType)) return desiredType;
-        
-        // 3. Intentar con fallbacks explícitos
-        for (let fb of fallbackTypes) {
-            if (allTypes.includes(fb)) return fb;
-        }
-        
-        // 4. Búsqueda parcial por nombre
-        const baseName = desiredType.split('_')[0];
-        for (let type of allTypes) {
-            if (type.includes(baseName)) return type;
-        }
-        
-        return null;
-    }
-
     // -------------------- INSERCIÓN AUTOMÁTICA DE ACCESORIOS --------------------
     function insertarAccesorioEnLinea(lineTag, puntoConexion, diametroNuevaLinea) {
-        if (!_core) { notifyUser("Error: Core no inicializado", true); return null; }
-        if (!_catalog) { notifyUser("Error: Catálogo no inicializado", true); return null; }
+        if (!_core) {
+            notifyUser("Error: Core no inicializado", true);
+            return null;
+        }
         
         const db = _core.getDb();
         const linea = db.lines.find(l => l.tag === lineTag);
-        if (!linea) { notifyUser(`Línea ${lineTag} no encontrada`, true); return null; }
+        if (!linea) {
+            notifyUser(`Línea ${lineTag} no encontrada`, true);
+            return null;
+        }
 
         const pts = linea._cachedPoints || linea.points3D;
-        if (!pts || pts.length < 2) { notifyUser(`La línea ${lineTag} no tiene geometría válida`, true); return null; }
+        if (!pts || pts.length < 2) {
+            notifyUser(`La línea ${lineTag} no tiene geometría válida`, true);
+            return null;
+        }
 
-        let lengths = [], totalLen = 0;
+        let lengths = [];
+        let totalLen = 0;
         for (let i = 0; i < pts.length - 1; i++) {
             const d = distance(pts[i], pts[i+1]);
             lengths.push(d);
             totalLen += d;
         }
 
-        let minDist = Infinity, bestSegIdx = 0, bestT = 0;
+        let minDist = Infinity;
+        let bestSegIdx = 0;
+        let bestT = 0;
+
         for (let i = 0; i < lengths.length; i++) {
             const proj = projectPointOnSegment(puntoConexion, pts[i], pts[i+1]);
             if (proj.distance < minDist) {
@@ -175,32 +170,18 @@ const SmartFlowRouter = (function() {
         const param = (accumBefore + bestT * lengths[bestSegIdx]) / totalLen;
 
         const diamLinea = linea.diameter || 4;
-        const diffDiam = Math.abs(diametroNuevaLinea - diamLinea) > 0.1;
-        const esExtremo = (bestSegIdx === 0 && bestT < 0.1) || (bestSegIdx === lengths.length - 1 && bestT > 0.9);
-        const lineMaterial = linea.material || 'PPR';
-
         let tipoAccesorio = 'TEE_EQUAL';
-        let fallbacks = [];
-        let descripcion = 'Tee igual';
+        let accesorioDesc = 'Tee igual';
 
-        if (esExtremo && diffDiam) {
-            tipoAccesorio = 'CONCENTRIC_REDUCER';
-            fallbacks = ['REDUCER'];
-            descripcion = `Reductor concéntrico ${diamLinea}"x${diametroNuevaLinea}"`;
-        } else if (diffDiam) {
+        if (Math.abs(diametroNuevaLinea - diamLinea) > 0.1) {
             tipoAccesorio = 'TEE_REDUCING';
-            fallbacks = ['TEE_REDUCTORA'];
-            descripcion = `Tee reductora ${diamLinea}"x${diametroNuevaLinea}"`;
-        } else {
-            tipoAccesorio = 'TEE';
-            fallbacks = [];
-            descripcion = `Tee igual ${diamLinea}"`;
+            accesorioDesc = `Tee reductora ${diamLinea}"x${diametroNuevaLinea}"`;
         }
 
-        const compEnCatalogo = findComponentInCatalog(tipoAccesorio, lineMaterial, fallbacks);
-        if (!compEnCatalogo) {
-            notifyUser(`❌ No se encontró en catálogo: ${tipoAccesorio} para material ${lineMaterial}`, true);
-            return null;
+        const esExtremo = (bestSegIdx === 0 && bestT < 0.1) || (bestSegIdx === lengths.length - 1 && bestT > 0.9);
+        if (esExtremo && Math.abs(diametroNuevaLinea - diamLinea) > 0.1) {
+            tipoAccesorio = 'CONCENTRIC_REDUCER';
+            accesorioDesc = `Reductor concéntrico ${diamLinea}"x${diametroNuevaLinea}"`;
         }
 
         if (typeof SmartFlowCommands === 'undefined') {
@@ -208,15 +189,15 @@ const SmartFlowRouter = (function() {
             return null;
         }
 
-        const cmd = `edit line ${lineTag} add component ${compEnCatalogo} at ${param.toFixed(3)}`;
+        const cmd = `edit line ${lineTag} add component ${tipoAccesorio} at ${param.toFixed(3)}`;
         const success = SmartFlowCommands.executeCommand(cmd);
         
         if (!success) {
-            notifyUser(`❌ El comando falló: ${cmd}`, true);
+            notifyUser(`No se pudo insertar ${accesorioDesc} en ${lineTag}`, true);
             return null;
         }
 
-        notifyUser(`✅ ${descripcion} (${compEnCatalogo}) insertado automáticamente en ${lineTag}`, false);
+        notifyUser(`✅ ${accesorioDesc} insertado automáticamente en ${lineTag}`, false);
 
         const lineaActualizada = db.lines.find(l => l.tag === lineTag);
         if (!lineaActualizada || !lineaActualizada.puertos || lineaActualizada.puertos.length === 0) {
@@ -225,12 +206,14 @@ const SmartFlowRouter = (function() {
         }
 
         const nuevoPuerto = lineaActualizada.puertos[lineaActualizada.puertos.length - 1];
+        notifyUser(`Puerto ${nuevoPuerto.id} generado para conexión`, false);
         return nuevoPuerto.id;
     }
 
-    // -------------------- PROCESAR INTERSECCIONES --------------------
+    // -------------------- PROCESAR INTERSECCIONES DE UNA NUEVA LÍNEA --------------------
     function procesarInterseccionesDeLinea(nuevaLinea) {
         if (!_core) return;
+        
         const db = _core.getDb();
         const lineasExistentes = db.lines.filter(l => l.tag !== nuevaLinea.tag);
         if (lineasExistentes.length === 0) return;
@@ -238,33 +221,54 @@ const SmartFlowRouter = (function() {
         const ptsNueva = nuevaLinea._cachedPoints || nuevaLinea.points3D;
         if (!ptsNueva || ptsNueva.length < 2) return;
         
-        const tolerancia = 100;
+        const tolerancia = 100; // mm
         
         for (let lineaExistente of lineasExistentes) {
             const ptsExistente = lineaExistente._cachedPoints || lineaExistente.points3D;
             if (!ptsExistente || ptsExistente.length < 2) continue;
             
             for (let i = 0; i < ptsNueva.length - 1; i++) {
-                const a1 = ptsNueva[i], a2 = ptsNueva[i+1];
+                const a1 = ptsNueva[i];
+                const a2 = ptsNueva[i+1];
+                
                 for (let j = 0; j < ptsExistente.length - 1; j++) {
-                    const b1 = ptsExistente[j], b2 = ptsExistente[j+1];
-                    const midNuevo = { x: (a1.x+a2.x)/2, y: (a1.y+a2.y)/2, z: (a1.z+a2.z)/2 };
+                    const b1 = ptsExistente[j];
+                    const b2 = ptsExistente[j+1];
+                    
+                    const midNuevo = {
+                        x: (a1.x + a2.x) / 2,
+                        y: (a1.y + a2.y) / 2,
+                        z: (a1.z + a2.z) / 2
+                    };
                     const proj = projectPointOnSegment(midNuevo, b1, b2);
+                    
                     if (proj.distance < tolerancia) {
-                        const puertoId = insertarAccesorioEnLinea(lineaExistente.tag, proj.point, nuevaLinea.diameter || 4);
+                        const diamNuevo = nuevaLinea.diameter || 4;
+                        
+                        const puertoId = insertarAccesorioEnLinea(lineaExistente.tag, proj.point, diamNuevo);
+                        
                         if (puertoId) {
-                            nuevaLinea.destination = { objType: 'line', equipTag: lineaExistente.tag, portId: puertoId };
+                            const puntoConexion = proj.point;
+                            
+                            nuevaLinea.destination = {
+                                objType: 'line',
+                                equipTag: lineaExistente.tag,
+                                portId: puertoId
+                            };
+                            
                             if (ptsNueva.length >= 2) {
-                                ptsNueva[ptsNueva.length - 1] = proj.point;
+                                ptsNueva[ptsNueva.length - 1] = puntoConexion;
                                 nuevaLinea._cachedPoints = ptsNueva;
                                 nuevaLinea.waypoints = ptsNueva.slice(1, -1);
                             }
+                            
                             if (lineaExistente.puertos) {
                                 const puerto = lineaExistente.puertos.find(p => p.id === puertoId);
                                 if (puerto) puerto.connectedLine = nuevaLinea.tag;
                             }
+                            
                             _core.updateLine(nuevaLinea.tag, nuevaLinea);
-                            notifyUser(`✅ Conexión automática: ${nuevaLinea.tag} conectada a ${lineaExistente.tag}`, false);
+                            notifyUser(`✅ Conexión automática: ${nuevaLinea.tag} conectada a ${lineaExistente.tag} mediante accesorio`, false);
                         }
                         return;
                     }
@@ -275,58 +279,108 @@ const SmartFlowRouter = (function() {
 
     // -------------------- ENRUTAMIENTO ENTRE PUERTOS --------------------
     function routeBetweenPorts(fromEquipTag, fromPortId, toEquipTag, toPortId, diameter = 3, material = 'PPR', spec = 'PPR_PN12_5') {
-        if (!_core) { notifyUser("Error: Core no inicializado", true); return null; }
+        if (!_core) {
+            notifyUser("Error: Core no inicializado", true);
+            return null;
+        }
+
         const db = _core.getDb();
         const fromObj = db.equipos.find(e => e.tag === fromEquipTag) || db.lines.find(l => l.tag === fromEquipTag);
         let toObj = db.equipos.find(e => e.tag === toEquipTag) || db.lines.find(l => l.tag === toEquipTag);
 
-        if (!fromObj) { notifyUser(`Origen ${fromEquipTag} no encontrado`, true); return null; }
-        if (!toObj) { notifyUser(`Destino ${toEquipTag} no encontrado`, true); return null; }
+        if (!fromObj) {
+            notifyUser(`Objeto origen ${fromEquipTag} no encontrado`, true);
+            return null;
+        }
+        if (!toObj) {
+            notifyUser(`Objeto destino ${toEquipTag} no encontrado`, true);
+            return null;
+        }
 
         let startPos = getPortPosition(fromObj, fromPortId);
-        if (!startPos) { notifyUser(`Puerto origen ${fromPortId} no encontrado`, true); return null; }
+        let startDir = getPortDirection(fromObj, fromPortId);
+        
+        if (!startPos) {
+            notifyUser(`No se pudo obtener la posición del puerto ${fromPortId}`, true);
+            return null;
+        }
 
-        let endPos, nuevoPuertoId = toPortId;
+        let endPos, endDir;
         let destinoEsLinea = false;
+        let nuevoPuertoId = toPortId;
 
         if (toObj._cachedPoints || toObj.points3D) {
             destinoEsLinea = true;
             const pts = toObj._cachedPoints || toObj.points3D;
-            if (!pts || pts.length < 2) { notifyUser(`Línea destino sin geometría`, true); return null; }
-            
-            let minDist = Infinity, bestPoint = pts[0];
+            if (!pts || pts.length < 2) {
+                notifyUser(`La línea destino ${toEquipTag} no tiene geometría válida`, true);
+                return null;
+            }
+
+            let minDist = Infinity;
+            let bestPoint = pts[0];
             for (let i = 0; i < pts.length - 1; i++) {
                 const proj = projectPointOnSegment(startPos, pts[i], pts[i+1]);
-                if (proj.distance < minDist) { minDist = proj.distance; bestPoint = proj.point; }
+                if (proj.distance < minDist) {
+                    minDist = proj.distance;
+                    bestPoint = proj.point;
+                }
             }
+
             const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, bestPoint, diameter);
-            if (!puertoInsertado) return null;
+            if (!puertoInsertado) {
+                notifyUser(`No se pudo insertar accesorio en la línea ${toEquipTag}`, true);
+                return null;
+            }
             nuevoPuertoId = puertoInsertado;
+
             toObj = db.lines.find(l => l.tag === toEquipTag);
+            endPos = getPortPosition(toObj, nuevoPuertoId);
+            endDir = getPortDirection(toObj, nuevoPuertoId);
+        } else {
+            endPos = getPortPosition(toObj, toPortId);
+            endDir = getPortDirection(toObj, toPortId);
         }
 
-        endPos = getPortPosition(toObj, nuevoPuertoId);
-        if (!endPos) { notifyUser(`Puerto destino no encontrado`, true); return null; }
+        if (!endPos) {
+            notifyUser(`No se pudo obtener la posición del puerto destino`, true);
+            return null;
+        }
 
-        const startDir = normalizeVector(getPortDirection(fromObj, fromPortId));
-        const endDir = normalizeVector(getPortDirection(toObj, nuevoPuertoId));
-        const extStart = 500, extEnd = 500;
+        startDir = normalizeVector(startDir);
+        endDir = normalizeVector(endDir);
+
+        const waypoints = [];
+        const extStart = 500;
+        const extEnd = 500;
+        
         const p1 = addPoints(startPos, scalePoint(startDir, extStart));
         const p4 = addPoints(endPos, scalePoint(endDir, extEnd));
-        const mid = { x: (p1.x+p4.x)/2, y: (p1.y+p4.y)/2, z: (p1.z+p4.z)/2 };
+        
+        const mid = {
+            x: (p1.x + p4.x) / 2,
+            y: (p1.y + p4.y) / 2,
+            z: (p1.z + p4.z) / 2
+        };
 
-        const waypoints = [p1];
         if (Math.abs(startPos.y - endPos.y) > 1000) {
+            waypoints.push(p1);
             waypoints.push({ x: p1.x, y: p1.y, z: p1.z });
             waypoints.push({ x: p4.x, y: p1.y, z: p4.z });
+            waypoints.push({ x: p4.x, y: p4.y, z: p4.z });
         } else {
+            waypoints.push(p1);
             waypoints.push(mid);
+            waypoints.push(p4);
         }
-        waypoints.push(p4);
 
-        const tag = `L-${db.lines.length + 1}`;
+        const lines = db.lines || [];
+        const tag = `L-${lines.length + 1}`;
         const nuevaLinea = {
-            tag, diameter, material, spec,
+            tag,
+            diameter,
+            material,
+            spec,
             origin: { objType: fromObj.posX !== undefined ? 'equipment' : 'line', equipTag: fromEquipTag, portId: fromPortId },
             destination: { objType: toObj.posX !== undefined ? 'equipment' : 'line', equipTag: toEquipTag, portId: nuevoPuertoId },
             waypoints: waypoints.slice(1, -1),
@@ -334,6 +388,7 @@ const SmartFlowRouter = (function() {
         };
 
         _core.addLine(nuevaLinea);
+        
         if (fromObj.puertos) {
             const pFrom = fromObj.puertos.find(p => p.id === fromPortId);
             if (pFrom) pFrom.connectedLine = tag;
@@ -347,7 +402,9 @@ const SmartFlowRouter = (function() {
         _core._saveState();
         _renderUI();
 
-        notifyUser(`✅ Ruta creada: ${tag} (${fromEquipTag}.${fromPortId} → ${toEquipTag}.${nuevoPuertoId})`, false);
+        const destinoMsg = destinoEsLinea ? ` (accesorio automático insertado)` : '';
+        notifyUser(`✅ Ruta creada: ${tag} desde ${fromEquipTag}.${fromPortId} hasta ${toEquipTag}.${nuevoPuertoId}${destinoMsg}`, false);
+        
         return nuevaLinea;
     }
 
@@ -357,7 +414,8 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('🧭 SmartFlow Router v2.3 inicializado (prioridad PPR)');
+        
+        console.log('🧭 SmartFlow Router v2.1 inicializado (Auto-accesorios + Intersecciones)');
     }
 
     return {
