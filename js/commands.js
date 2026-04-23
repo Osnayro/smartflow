@@ -1,9 +1,8 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.7
+// MÓDULO 4: SMARTFLOW COMMANDS (Parser de Comandos) - v4.8
 // Archivo: js/commands.js
-// Propósito: Interpretar comandos de texto en español e inglés.
-//            Nuevo: comandos info y connect a línea con posición 0-1.
+// Corrección: Comando connect activo para línea con posición 0-1.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -43,7 +42,6 @@ const SmartFlowCommands = (function() {
         return cmd;
     }
 
-    // -------------------- FUNCIÓN DE NOTIFICACIÓN MEJORADA (VOZ + VISUAL) --------------------
     function notifyWithVoice(message, isError = false) {
         _notifyUI(message, isError);
         const statusEl = document.getElementById('statusMsg');
@@ -221,14 +219,21 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // -------------------- 2. PARSER DE CONEXIÓN (MEJORADO: SOPORTE PARA LÍNEAS CON POSICIÓN 0-1) --------------------
+    // -------------------- 2. PARSER DE CONEXIÓN (CORREGIDO: CONNECT A LÍNEA CON POSICIÓN 0-1) --------------------
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
-        const fromEquip = parts[1], fromNozzle = parts[2];
-        if (parts[3] !== 'to' && parts[3] !== 'a') return false;
+        
+        const fromEquip = parts[1];
+        const fromNozzle = parts[2];
+        
+        // Verificar que tengamos "to" o "a"
+        const toKeyword = parts[3];
+        if (toKeyword !== 'to' && toKeyword !== 'a') return false;
+        
         const toEquip = parts[4];
-        let toNozzle = parts[5];
+        const toNozzleRaw = parts[5]; // Puede ser un puerto o un número
+        
         let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
         for (let i = 6; i < parts.length; i++) {
             if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
@@ -236,39 +241,44 @@ const SmartFlowCommands = (function() {
             else if (parts[i] === 'spec') spec = parts[++i];
         }
 
+        // Obtener objetos
         const db = _core.getDb();
         const fromObj = db.equipos.find(e => e.tag === fromEquip) || db.lines.find(l => l.tag === fromEquip);
-        let toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
-        if (!fromObj || !toObj) { notifyWithVoice("Equipo o línea no encontrado", true); return true; }
+        const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
+        
+        if (!fromObj) { notifyWithVoice(`Equipo/línea origen "${fromEquip}" no encontrado`, true); return true; }
+        if (!toObj) { notifyWithVoice(`Equipo/línea destino "${toEquip}" no encontrado`, true); return true; }
 
-        const isLine = toObj._cachedPoints || toObj.points3D;
-        let posRelativa = null;
-        if (isLine && toNozzle !== undefined) {
-            const num = parseFloat(toNozzle);
-            if (!isNaN(num)) posRelativa = Math.min(1, Math.max(0, num));
-        }
-
+        // Puerto origen
         const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-        if (!nzFrom) { notifyWithVoice(`Puerto origen ${fromNozzle} no encontrado`, true); return true; }
+        if (!nzFrom) { notifyWithVoice(`Puerto origen "${fromNozzle}" no encontrado en ${fromEquip}`, true); return true; }
 
-        let newLineTag = `L-${(db.lines?.length || 0) + 1}`;
-        let nuevaLinea = {
-            tag: newLineTag,
-            diameter,
-            material,
-            spec,
-            origin: { objType: fromObj.tipo ? 'equipment' : 'line', equipTag: fromEquip, portId: fromNozzle },
-            destination: null,
-            waypoints: [],
-            _cachedPoints: null
-        };
+        // Detectar si el destino es una línea Y el parámetro es un número
+        const isLine = toObj._cachedPoints || toObj.points3D;
+        const numPos = parseFloat(toNozzleRaw);
+        const isNumeric = !isNaN(numPos) && isFinite(numPos);
+        const posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
 
-        if (posRelativa !== null) {
-            if (typeof SmartFlowRouter === 'undefined') {
+        // Generar tag para nueva línea
+        const newTag = `L-${(db.lines?.length || 0) + 1}`;
+        
+        if (isLine && posRelativa !== null) {
+            // ============ CONEXIÓN A LÍNEA CON POSICIÓN RELATIVA ============
+            notifyWithVoice(`Insertando accesorio en ${toEquip} al ${(posRelativa*100).toFixed(0)}%...`, false);
+            
+            // Llamar al Router
+            if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Módulo Router no disponible para inserción automática", true);
                 return true;
             }
+            
             const pts = toObj._cachedPoints || toObj.points3D;
+            if (!pts || pts.length < 2) {
+                notifyWithVoice(`La línea ${toEquip} no tiene geometría válida`, true);
+                return true;
+            }
+            
+            // Calcular punto exacto
             let totalLen = 0, lengths = [];
             for (let i = 0; i < pts.length - 1; i++) {
                 const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
@@ -285,37 +295,76 @@ const SmartFlowCommands = (function() {
                 }
                 accum += lengths[i];
             }
-            const p1 = pts[segIdx], p2 = pts[segIdx + 1];
+            const pA = pts[segIdx], pB = pts[segIdx + 1];
             const puntoConexion = {
-                x: p1.x + (p2.x - p1.x) * t,
-                y: p1.y + (p2.y - p1.y) * t,
-                z: p1.z + (p2.z - p1.z) * t
+                x: pA.x + (pB.x - pA.x) * t,
+                y: pA.y + (pB.y - pA.y) * t,
+                z: pA.z + (pB.z - pA.z) * t
             };
-
+            
+            // Forzar Tee (siempre perpendicular)
             const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, puntoConexion, diameter, true);
             if (!puertoId) {
                 notifyWithVoice("No se pudo insertar el accesorio en la línea", true);
                 return true;
             }
-            nuevaLinea.destination = { objType: 'line', equipTag: toEquip, portId: puertoId };
+            
+            // Crear la nueva línea conectada
+            const nuevaLinea = {
+                tag: newTag,
+                diameter,
+                material,
+                spec,
+                origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle },
+                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
+                waypoints: [],
+                _cachedPoints: null
+            };
+            
+            _core.addLine(nuevaLinea);
+            nzFrom.connectedLine = newTag;
+            
+            // Marcar el puerto destino como conectado
             const toObjActualizado = db.lines.find(l => l.tag === toEquip);
-            if (toObjActualizado && toObjActualizado.puertos) {
+            if (toObjActualizado?.puertos) {
                 const puerto = toObjActualizado.puertos.find(p => p.id === puertoId);
-                if (puerto) puerto.connectedLine = newLineTag;
+                if (puerto) puerto.connectedLine = newTag;
             }
+            
+            _core.syncPhysicalData();
+            _core._saveState();
+            _renderUI();
+            
+            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} (${newTag}) en posición ${posRelativa.toFixed(2)}`, false);
+            return true;
+            
         } else {
-            const nzTo = toObj.puertos?.find(n => n.id === toNozzle);
-            if (!nzTo) { notifyWithVoice(`Puerto destino ${toNozzle} no encontrado`, true); return true; }
-            nuevaLinea.destination = { objType: toObj.tipo ? 'equipment' : 'line', equipTag: toEquip, portId: toNozzle };
-            nzTo.connectedLine = newLineTag;
+            // ============ CONEXIÓN TRADICIONAL A PUERTO NOMBRADO ============
+            const nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
+            if (!nzTo) { notifyWithVoice(`Puerto destino "${toNozzleRaw}" no encontrado en ${toEquip}`, true); return true; }
+            
+            const nuevaLinea = {
+                tag: newTag,
+                diameter,
+                material,
+                spec,
+                origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle },
+                destination: { objType: toObj.tipo ? 'equipment' : 'line', equipTag: toEquip, portId: toNozzleRaw },
+                waypoints: [],
+                _cachedPoints: null
+            };
+            
+            _core.addLine(nuevaLinea);
+            nzFrom.connectedLine = newTag;
+            nzTo.connectedLine = newTag;
+            
+            _core.syncPhysicalData();
+            _core._saveState();
+            _renderUI();
+            
+            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${toNozzleRaw} (${newTag})`, false);
+            return true;
         }
-
-        _core.addLine(nuevaLinea);
-        nzFrom.connectedLine = newLineTag;
-        _core.syncPhysicalData();
-        notifyWithVoice(`Conectado ${fromEquip}.${fromNozzle} con ${toEquip} (${newLineTag})`, false, { line: nuevaLinea });
-        _renderUI();
-        return true;
     }
 
     // -------------------- 3. PARSER DE RUTA --------------------
@@ -503,19 +552,16 @@ const SmartFlowCommands = (function() {
     function parseHelp(cmd) {
         const lower = cmd.toLowerCase(); if (lower !== 'help' && lower !== 'ayuda') return false;
         let ayuda = "═══════════════════════════════════════════════════════════\n              SMARTFLOW PRO - COMANDOS DISPONIBLES\n═══════════════════════════════════════════════════════════\n\n";
-        ayuda += "CREACIÓN:\n  create/crear [tipo] [tag] at (x,y,z) [diam/diametro N] [height/altura N]\n  create line/crear línea [tag] route/ruta (x1,y1,z1) ... [autofit false]\n  create manifold [tag] at (x,y,z) entries/entradas N spacing/espaciado D\n\n";
-        ayuda += "CONEXIÓN:\n  connect/conectar [obj] [puerto] to/a [obj] [puerto] (o valor 0-1 para línea)\n  route/ruta from/desde [obj] [puerto] to/a [obj] [puerto-opcional]\n\n";
+        ayuda += "CREACIÓN:\n  create/crear [tipo] [tag] at (x,y,z) [diam/diametro N] [height/altura N]\n  create line [tag] route/ruta (x1,y1,z1) ... [autofit false]\n  create manifold [tag] at (x,y,z) entries/entradas N spacing/espaciado D\n\n";
+        ayuda += "CONEXIÓN:\n  connect/conectar [origen] [puerto] to/a [destino] [puerto o 0-1] [diametro N]\n  route/ruta desde [origen] [puerto] a/hasta [destino] [puerto opcional] [diametro N]\n\n";
         ayuda += "INFORMACIÓN:\n  info line/línea [TAG]\n  info equipment/equipo [TAG]\n  info component/componente [TAG]\n\n";
         ayuda += "ELIMINACIÓN:\n  delete/eliminar equipment/equipo [tag]\n  delete/eliminar line/línea [tag]\n\n";
-        ayuda += "EDICIÓN DE EQUIPOS:\n  edit/editar equipment/equipo [tag] move/mover to (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] pos/posicion (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] dir/direccion (dx,dy,dz)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] diam/diametro N\n\n";
-        ayuda += "EDICIÓN DE LÍNEAS:\n  edit/editar line/línea [tag] set/establecer material [M]\n  edit/editar line/línea [tag] set/establecer diameter/diametro [D]\n  edit/editar line/línea [tag] set/establecer spec [S]\n  edit/editar line/línea [tag] add/añadir waypoint/punto (x,y,z) [after/despues N]\n  edit/editar line/línea [tag] remove/quitar waypoint/punto N\n  edit/editar line/línea [tag] add/añadir component/componente [tipo] at/en [0-1]\n\n";
-        ayuda += "LISTADOS:\n  list/listar components/componentes\n  list/listar equipment/equipos\n  list/listar specs/especificaciones\n\n";
-        ayuda += "REPORTES:\n  bom | mto | generate/generar bom\n  audit/auditar | audit/auditar model/modelo\n\n";
-        ayuda += "OTROS:\n  undo/deshacer | redo/rehacer | help/ayuda\n═══════════════════════════════════════════════════════════\n";
+        ayuda += "EDICIÓN:\n  edit/editar line/línea [tag] add/añadir component/componente [tipo] at/en [0-1]\n  edit/editar equipment/equipo [tag] move/mover to (x,y,z)\n  (use help/ayuda para lista completa)\n\n";
+        ayuda += "OTROS:\n  undo/deshacer | redo/rehacer | bom | mto | audit/auditar | help/ayuda\n═══════════════════════════════════════════════════════════\n";
         notifyWithVoice(ayuda, false); return true;
     }
 
-    // -------------------- 10. IMPORTACIÓN PCF MEJORADA (sin cambios) --------------------
+    // -------------------- 10. IMPORTACIÓN PCF (sin cambios) --------------------
     const skeyToInternal = {
         'TANK': { type: 'equipment', internal: 'tanque_v' },
         'PUMP': { type: 'equipment', internal: 'bomba' },
@@ -745,3 +791,4 @@ const SmartFlowCommands = (function() {
 
     return { init, executeCommand, executeBatch, importPCF };
 })();
+```
