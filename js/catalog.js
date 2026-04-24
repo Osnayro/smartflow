@@ -2,13 +2,10 @@
 // ============================================================
 // MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.2
 // Archivo: js/catalog.js
-// Correcciones: Orden de extensión, unificación de dimensiones,
-//               IDs únicos en fittings, getPerpendicular mejorado.
 // ============================================================
 
 const SmartFlowCatalog = (function() {
     
-    // -------------------- 1. ESPECIFICACIONES DE MATERIALES --------------------
     const specs = {
         "PPR_PN12_5": { material: "PPR", norma: "IRAM 13471", presion: "PN 12.5", color: "#7c3aed", conexion: "TERMOFUSION" },
         "ACERO_SCH80": { material: "Acero al Carbono", norma: "ASTM A106 Gr. B", schedule: "SCH 80", color: "#94a3b8", conexion: "NPT" },
@@ -21,7 +18,6 @@ const SmartFlowCatalog = (function() {
         "PVC_SCH80": { material: "PVC", norma: "ASTM D1785", schedule: "SCH 80", color: "#eab308", conexion: "CEMENTADO" }
     };
 
-    // -------------------- 2. DEFINICIÓN DE EQUIPOS --------------------
     const equipment = {
         tanque_v: { 
             nombre: 'Tanque Vertical', categoria: 'almacenamiento', forma: 'cilindro',
@@ -166,9 +162,7 @@ const SmartFlowCatalog = (function() {
         }
     };
 
-    // -------------------- 3. COMPONENTES DE TUBERÍA --------------------
     const components = {
-        // Aseguramos que los componentes base que se extienden más abajo estén definidos primero
         TEE_EQUAL_CS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
         TEE_REDUCING_CS: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora', spec: 'ACERO_150_RF' },
         CROSS_CS: { tipo: 'CROSS', nombre: 'Cruz', spec: 'ACERO_150_RF' },
@@ -293,7 +287,6 @@ const SmartFlowCatalog = (function() {
         SAMPLE_VALVE: { tipo: 'SAMPLE_VALVE', nombre: 'Válvula de Muestreo', material: 'Acero Inoxidable' }
     };
 
-    // ==================== 4. GENERACIÓN DE PUERTOS PARA ACCESORIOS ====================
     function calculateLineDirection(line, param) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return { dx: 1, dy: 0, dz: 0 };
@@ -326,7 +319,6 @@ const SmartFlowCatalog = (function() {
         return perp;
     }
 
-    // Ahora extendemos de forma segura los componentes base que ya existen
     components.TEE_EQUAL = {
         ...components.TEE_EQUAL_CS,
         generarPuertos: (line, param, diametro) => {
@@ -372,7 +364,6 @@ const SmartFlowCatalog = (function() {
         }
     };
 
-    // -------------------- 5. DIMENSIONES ESTÁNDAR (UNIFICADAS) --------------------
     const dimensiones = {
         "codo_90": { 2: 152, 3: 229, 4: 305, 6: 457, 8: 610 },
         "codo_45": { 2: 80, 3: 110, 4: 150, 6: 230 },
@@ -387,7 +378,6 @@ const SmartFlowCatalog = (function() {
         stub_end_longitud: { 2: 50, 3: 60, 4: 75, 6: 90 }
     };
 
-    // ==================== 6. GENERADORES DE ACCESORIOS (FITTINGS) ====================
     const fittingGenerators = {
         "TEE_EQUAL": (diam, spec) => {
             const dist = dimensiones.tee[diam] || 100;
@@ -409,7 +399,6 @@ const SmartFlowCatalog = (function() {
 
     let _fittingCounter = 1;
 
-    // -------------------- API PÚBLICA --------------------
     return {
         getSpecs: function() { return specs; },
         getSpec: function(id) { return specs[id] || null; },
