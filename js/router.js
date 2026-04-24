@@ -1,10 +1,9 @@
 
 // ============================================================
-// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.6
+// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.7 FINAL
 // Archivo: js/router.js
-// Mejoras: Validación de compatibilidad de diámetros, integración
-//          con Panel de Propiedades (setSelected), manejo de Snap,
-//          comando executeCommand para pruebas rápidas.
+// Integración: SafeCheck de Materiales, Alineación N5/N6,
+//             Validación de Succión de Bombas, Voz Interna.
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -22,6 +21,18 @@ const SmartFlowRouter = (function() {
         return false;
     }
 
+    // ---------- MOTOR DE VOZ INDEPENDIENTE ----------
+    function speakText(text) {
+        if (!window.voiceEnabled) return;
+        if (typeof window.speechSynthesis !== 'undefined') {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'es-ES';
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
     // ---------- NOTIFICACIÓN MEJORADA ----------
     function notifyUser(message, isError = false) {
         if (typeof _notifyUI === 'function') _notifyUI(message, isError);
@@ -30,13 +41,57 @@ const SmartFlowRouter = (function() {
             statusEl.innerText = message;
             statusEl.style.color = isError ? '#ef4444' : '#00f2ff';
         }
-        if (isError) alert('❌ Router: ' + message);
-        if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
-            SmartFlowAccessibility.speak(message);
-        }
+        // Voz interna
+        speakText(message);
     }
 
-    // ---------- FUNCIONES GEOMÉTRICAS ----------
+    // ==================== NUEVAS RUTINAS DE VALIDACIÓN TÉCNICA ====================
+
+    // 1. Validación de Materiales
+    function validateMaterialCompatibility(lineMat, compType) {
+        const mat = lineMat.toUpperCase();
+        const rules = {
+            'PPR': ['PPR'],
+            'ACERO_CARBONO': ['CS', 'STEEL', 'ACERO'],
+            'PVC': ['PVC'],
+            'HDPE': ['HDPE']
+        };
+        // Buscar si el componente contiene el material de la línea
+        const compUpper = compType.toUpperCase();
+        for (let [key, values] of Object.entries(rules)) {
+            if (mat.includes(key) || key.includes(mat)) {
+                return values.some(v => compUpper.includes(v));
+            }
+        }
+        return true; // Si no hay regla específica, permitir
+    }
+
+    // 2. Alineación Vertical (Nozzles N5/N6)
+    function checkVerticalAlignment(p1, p2, portA, portB) {
+        const tol = 5; // Tolerancia en mm
+        const dx = Math.abs(p1.x - p2.x);
+        const dz = Math.abs(p1.z - p2.z);
+        
+        if (dx > tol || dz > tol) {
+            notifyUser(`⚠️ Aviso: Nozzles ${portA} y ${portB} desalineados verticalmente.`, false);
+            return false;
+        }
+        notifyUser("✅ Instrumentos alineados correctamente.", false);
+        return true;
+    }
+
+    // 3. Seguridad en Bombas (NPSH)
+    function validatePumpSuction(pumpObj, tankObj, pumpPort, tankPort) {
+        const pPos = getPortPosition(pumpObj, pumpPort);
+        const tPos = getPortPosition(tankObj, tankPort);
+        if (pPos && tPos && pPos.y > tPos.y) {
+            notifyUser(`❌ Peligro: Succión de bomba por encima de salida de tanque.`, true);
+            return false;
+        }
+        return true;
+    }
+
+    // ==================== FUNCIONES GEOMÉTRICAS ====================
     function distance(p1, p2) { return Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z); }
     function addPoints(p1, p2) { return { x: p1.x + p2.x, y: p1.y + p2.y, z: p1.z + p2.z }; }
     function subtractPoints(p1, p2) { return { x: p1.x - p2.x, y: p1.y - p2.y, z: p1.z - p2.z }; }
@@ -104,13 +159,11 @@ const SmartFlowRouter = (function() {
         
         const allTypes = catalog.listComponentTypes();
         
-        // Mapeo especial para reductores (solo existe de acero en el catálogo actual)
         if (desiredType === 'CONCENTRIC_REDUCER' || desiredType === 'ECCENTRIC_REDUCER') {
             if (allTypes.includes('CONCENTRIC_REDUCER_CS')) return 'CONCENTRIC_REDUCER_CS';
             if (allTypes.includes('ECCENTRIC_REDUCER_CS')) return 'ECCENTRIC_REDUCER_CS';
         }
         
-        // Buscar con prefijo de material
         const materialUpper = lineMaterial.toUpperCase();
         let materialPrefix = '';
         if (materialUpper.includes('PPR')) materialPrefix = 'PPR';
@@ -167,7 +220,6 @@ const SmartFlowRouter = (function() {
 
         const diamLinea = linea.diameter || 4;
         const diffDiam = Math.abs(diametroNuevaLinea - diamLinea) > 0.1;
-        // Solo considerar extremo si NO se fuerza Tee
         const esExtremo = !forzarTee && ((bestSegIdx === 0 && bestT < 0.1) || (bestSegIdx === lengths.length - 1 && bestT > 0.9));
         const lineMaterial = linea.material || 'PPR';
 
@@ -185,10 +237,16 @@ const SmartFlowRouter = (function() {
             descripcion = `Tee igual ${diamLinea}"`;
         }
 
+        // Validar compatibilidad de material antes de insertar
         const compEnCatalogo = findComponentInCatalog(tipoAccesorio, lineMaterial, []);
         if (!compEnCatalogo) {
             notifyUser(`Componente no encontrado en catálogo: ${tipoAccesorio}`, true);
             return null;
+        }
+        
+        // SafeCheck de Materiales
+        if (!validateMaterialCompatibility(lineMaterial, compEnCatalogo)) {
+            notifyUser(`Alerta: Material del accesorio no compatible con ${lineMaterial}`, true);
         }
 
         if (typeof SmartFlowCommands === 'undefined') {
@@ -273,7 +331,20 @@ const SmartFlowRouter = (function() {
         let startPos = getPortPosition(fromObj, fromPortId);
         if (!startPos) { notifyUser(`Puerto origen ${fromPortId} no encontrado`, true); return null; }
 
-        // --- NUEVA VALIDACIÓN DE COMPATIBILIDAD ---
+        // --- VALIDACIONES DE INGENIERÍA ---
+        // Alineación N5/N6
+        if (fromPortId.includes('N') && toPortId.includes('N')) {
+            const endPosAprox = getPortPosition(toObj, toPortId);
+            if (endPosAprox) checkVerticalAlignment(startPos, endPosAprox, fromPortId, toPortId);
+        }
+        
+        // Succión de Bomba
+        if ((fromEquipTag.includes('B-') || toEquipTag.includes('B-')) && 
+            (fromObj.tipo === 'bomba' || toObj.tipo === 'bomba')) {
+            validatePumpSuction(toObj, fromObj, toPortId, fromPortId);
+        }
+
+        // Compatibilidad de diámetros
         const pOrigen = fromObj.puertos?.find(p => p.id === fromPortId);
         const pDestino = toObj.puertos?.find(p => p.id === toPortId);
         if (pOrigen && pDestino && pOrigen.diametro !== pDestino.diametro) {
@@ -288,7 +359,6 @@ const SmartFlowRouter = (function() {
             const pts = toObj._cachedPoints || toObj.points3D;
             if (!pts || pts.length < 2) { notifyUser(`Línea destino sin geometría`, true); return null; }
             
-            // Si no se especificó puerto (null o vacío), forzamos Tee
             if (!toPortId || toPortId === '') {
                 let minDist = Infinity, bestPoint = pts[0];
                 for (let i = 0; i < pts.length - 1; i++) {
@@ -300,7 +370,6 @@ const SmartFlowRouter = (function() {
                 nuevoPuertoId = puertoInsertado;
                 toObj = db.lines.find(l => l.tag === toEquipTag);
             } else {
-                // Si especificó "0" o "1", usamos ese extremo (puede ser reductor)
                 let puntoConexion;
                 if (toPortId === '0') puntoConexion = pts[0];
                 else if (toPortId === '1') puntoConexion = pts[pts.length - 1];
@@ -356,19 +425,16 @@ const SmartFlowRouter = (function() {
         _core._saveState();
         if (typeof _renderUI === 'function') _renderUI();
 
-        // --- NUEVO: Seleccionar la línea creada para abrir el Panel de Propiedades ---
         _core.setSelected({ type: 'line', obj: nuevaLinea });
 
         notifyUser(`✅ Ruta creada: ${tag} (${fromEquipTag}.${fromPortId} → ${toEquipTag}.${nuevoPuertoId})`, false);
         return nuevaLinea;
     }
 
-    // ---------- NUEVO: MANEJO DEL SNAP ----------
+    // ---------- MANEJO DEL SNAP ----------
     function handleSnapClick(snapData) {
         if (!snapData) return;
         ensureInitialized();
-        // Al hacer clic en un puerto resaltado, lo seleccionamos en el Core
-        // Esto disparará automáticamente el Panel de Propiedades Lateral
         _core.setSelected({ 
             type: 'PUERTO', 
             obj: snapData.port, 
@@ -377,7 +443,7 @@ const SmartFlowRouter = (function() {
         notifyUser(`Puerto seleccionado: ${snapData.item.tag} - ${snapData.port.id}`);
     }
 
-    // ---------- NUEVO: COMANDO RÁPIDO (para pruebas o consola) ----------
+    // ---------- COMANDO RÁPIDO ----------
     function executeCommand(cmdLine) {
         ensureInitialized();
         const parts = cmdLine.trim().split(/\s+/);
@@ -421,7 +487,7 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('🧭 SmartFlow Router v2.6 inicializado (validación, snap y panel)');
+        console.log('🧭 SmartFlow Router v2.7 FINAL inicializado (SafeCheck + Voz Interna)');
     }
 
     return {
@@ -431,11 +497,9 @@ const SmartFlowRouter = (function() {
         procesarInterseccionesDeLinea,
         getPortPosition,
         getPortDirection,
-        // Nuevas funciones
         handleSnapClick,
         executeCommand
     };
 })();
 
 if (typeof window !== 'undefined') window.SmartFlowRouter = SmartFlowRouter;
- ```
