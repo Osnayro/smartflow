@@ -1,9 +1,11 @@
 
+
+
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.4.1 HIGH-END
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.6
 // Archivo: js/renderer.js
-// Mejoras: Z-Sorting, Clash Detection Visual, Cotas Profesionales.
-// Corrección: Restaurada la función drawSelection y su llamado en render.
+// Mejoras: Snap a puertos, feedback visual, Ctrl+Click para
+//          autocompletar comandos, cursor contextual.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -21,6 +23,16 @@ const SmartFlowRenderer = (function() {
     
     // Callback para notificaciones
     let _notifyUI = (msg, isErr) => console.log(msg);
+
+    // -------------------- ESTILOS DE INGENIERÍA --------------------
+    const STYLE_DIM = { color: '#ef4444', font: 'bold 10px Inter, Arial', lineDash: [2, 2] };
+    const STYLE_PORT = { open: '#10b981', closed: '#64748b', size: 4 };
+    const STYLE_FITTING = { color: '#f59e0b', width: 3 };
+
+    // -------------------- NUEVO: SNAP A PUERTOS --------------------
+    const SNAP_THRESHOLD = 15; // Distancia en píxeles para activar la atracción
+    let _activeSnap = null;    // Puerto que el mouse tiene "atrapado" actualmente
+    let _hoveredItem = null;   // Objeto (equipo/línea) sobre el que está el mouse
 
     // -------------------- 1. PROYECCIÓN ISOMÉTRICA --------------------
     const COS30 = 0.86602540378;
@@ -259,14 +271,12 @@ const SmartFlowRenderer = (function() {
         const midX = (prD1.x + prD2.x) / 2, midY = (prD1.y + prD2.y) / 2;
         _ctx.save(); _ctx.translate(midX, midY);
         let textAngle = angle;
-        // MEJORA 3: Normalizar ángulo para que el texto nunca esté de cabeza
         if (textAngle > Math.PI/2) textAngle -= Math.PI;
         if (textAngle < -Math.PI/2) textAngle += Math.PI;
         _ctx.rotate(textAngle);
         const textStr = `${realDistMeters.toFixed(3)} m`;
         _ctx.font = `bold ${Math.max(10, 12 * _cam.scale)}px monospace`;
         const textWidth = _ctx.measureText(textStr).width;
-        // Fondo semitransparente para legibilidad
         _ctx.fillStyle = 'rgba(10, 14, 23, 0.8)';
         _ctx.fillRect(-textWidth/2 - 4, -14, textWidth + 8, 16);
         _ctx.fillStyle = '#facc15';
@@ -317,7 +327,6 @@ const SmartFlowRenderer = (function() {
             }
         }
 
-        // MEJORA 2: CLASH DETECTION EN TIEMPO DE RENDER
         let hasClash = false;
         for (let p of pts) {
             if (isPointCollidingWithEquipment(p, 100)) {
@@ -360,11 +369,10 @@ const SmartFlowRenderer = (function() {
         const spec = line.spec && window.SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
         let mainColor;
         if (hasAuditError) mainColor = '#ef4444';
-        else if (hasClash) mainColor = '#ff00ff'; // Magenta para clash
+        else if (hasClash) mainColor = '#ff00ff';
         else mainColor = spec?.color || '#facc15';
         _ctx.strokeStyle = mainColor; _ctx.lineWidth = mainWidth; _ctx.stroke();
         
-        // Resplandor adicional para clash
         if (hasClash) {
             _ctx.save();
             _ctx.shadowColor = '#ff00ff';
@@ -386,7 +394,8 @@ const SmartFlowRenderer = (function() {
             _ctx.shadowColor = '#ef4444'; _ctx.shadowBlur = 10; _ctx.fillStyle = '#ef4444';
             _ctx.fillText('⚠', 0, 0); _ctx.shadowBlur = 0; _ctx.restore();
         }
-        if (line.showDimensions !== false) {
+        const isSelected = _core && _core.getSelected() && _core.getSelected().obj === line;
+        if (line.showDimensions !== false && !isSelected) {
             const puntosReales = pts.filter(p => !p.isControlPoint);
             for (let i = 0; i < puntosReales.length - 1; i++) {
                 const p1 = puntosReales[i], p2 = puntosReales[i+1];
@@ -509,20 +518,13 @@ const SmartFlowRenderer = (function() {
             if (eq.tipo === 'colector') {
                 const pIzq = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
                 const pDer = project({ x: eq.posX + eq.largo, y: eq.posY, z: eq.posZ });
-                _ctx.beginPath();
-                _ctx.moveTo(pIzq.x, pIzq.y);
-                _ctx.lineTo(pDer.x, pDer.y);
-                _ctx.stroke();
+                _ctx.beginPath(); _ctx.moveTo(pIzq.x, pIzq.y); _ctx.lineTo(pDer.x, pDer.y); _ctx.stroke();
             } else if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
                 const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
                 const w = (eq.diametro / 2) * _cam.scale;
                 const h = eq.altura * _cam.scale;
-                _ctx.beginPath();
-                _ctx.ellipse(p.x, p.y - h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI);
-                _ctx.stroke();
-                _ctx.beginPath();
-                _ctx.ellipse(p.x, p.y + h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI);
-                _ctx.stroke();
+                _ctx.beginPath(); _ctx.ellipse(p.x, p.y - h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI); _ctx.stroke();
+                _ctx.beginPath(); _ctx.ellipse(p.x, p.y + h/2, w + 5, (w + 5) * 0.5, 0, 0, 2*Math.PI); _ctx.stroke();
             } else {
                 const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
                 const w = ((eq.largo || eq.diametro || 1000) / 2) * _cam.scale + 5;
@@ -536,16 +538,80 @@ const SmartFlowRenderer = (function() {
                 _ctx.beginPath();
                 const proj = pts.map(p => project(p));
                 _ctx.moveTo(proj[0].x, proj[0].y);
-                for (let i = 1; i < proj.length; i++) {
-                    _ctx.lineTo(proj[i].x, proj[i].y);
-                }
+                for (let i = 1; i < proj.length; i++) _ctx.lineTo(proj[i].x, proj[i].y);
                 _ctx.stroke();
             }
         }
         _ctx.restore();
     }
 
-    // -------------------- 9. AUTO-CENTER AVANZADO (v18.2) --------------------
+    // -------------------- 9. DIBUJO DE ACCESORIOS (FITTINGS) --------------------
+    function drawFitting(fitting) {
+        if (!fitting || !fitting.puertos) return;
+        const center = project({ x: fitting.posX, y: fitting.posY, z: fitting.posZ });
+        _ctx.save(); _ctx.beginPath();
+        _ctx.strokeStyle = STYLE_FITTING.color;
+        _ctx.lineWidth = STYLE_FITTING.width * _cam.scale;
+        _ctx.lineCap = 'round';
+        fitting.puertos.forEach(p => {
+            const pProj = project({ x: fitting.posX + (p.relX || 0), y: fitting.posY + (p.relY || 0), z: fitting.posZ + (p.relZ || 0) });
+            _ctx.moveTo(center.x, center.y); _ctx.lineTo(pProj.x, pProj.y);
+            _ctx.strokeRect(pProj.x - 2, pProj.y - 2, 4, 4);
+        });
+        _ctx.stroke();
+        _ctx.fillStyle = STYLE_FITTING.color;
+        _ctx.font = `bold ${10 * _cam.scale}px Arial`;
+        _ctx.fillText(fitting.tipo || fitting.tag || '', center.x + 10, center.y - 10);
+        _ctx.restore();
+    }
+
+    // -------------------- 10. COTAS INTELIGENTES --------------------
+    function drawSmartDimension(p1, p2) {
+        const proj1 = project(p1), proj2 = project(p2);
+        const dist = Math.sqrt(Math.pow(p2.x-p1.x,2) + Math.pow(p2.y-p1.y,2) + Math.pow(p2.z-p1.z,2));
+        if (dist < 10) return;
+        _ctx.save(); _ctx.setLineDash(STYLE_DIM.lineDash); _ctx.strokeStyle = STYLE_DIM.color;
+        _ctx.beginPath(); _ctx.moveTo(proj1.x, proj1.y); _ctx.lineTo(proj2.x, proj2.y); _ctx.stroke();
+        _ctx.setLineDash([]); _ctx.fillStyle = STYLE_DIM.color;
+        _ctx.font = `${10 * _cam.scale}px monospace`;
+        _ctx.fillText(`${dist.toFixed(0)}mm`, (proj1.x + proj2.x) / 2, (proj1.y + proj2.y) / 2 - 10);
+        _ctx.restore();
+    }
+
+    // -------------------- 11. VISUALIZACIÓN DE PUERTOS DE CONEXIÓN --------------------
+    function drawPortMarkers(item) {
+        if (!item || !item.puertos) return;
+        const basePos = item.posX !== undefined ? { x: item.posX, y: item.posY, z: item.posZ } : (item._cachedPoints?.[0] || { x: 0, y: 0, z: 0 });
+        item.puertos.forEach(p => {
+            const pProj = project({ x: basePos.x + (p.relX || 0), y: basePos.y + (p.relY || 0), z: basePos.z + (p.relZ || 0) });
+            _ctx.beginPath();
+            _ctx.fillStyle = (p.status === 'open') ? STYLE_PORT.open : STYLE_PORT.closed;
+            _ctx.arc(pProj.x, pProj.y, STYLE_PORT.size * _cam.scale, 0, Math.PI * 2);
+            _ctx.fill();
+        });
+    }
+
+    // -------------------- 12. DETECCIÓN DE PUERTOS (SNAP) --------------------
+    function pickPort(mouseX, mouseY) {
+        const db = _core.getDb();
+        const allItems = [...(db.equipos || []), ...(db.lines || [])];
+        for (const item of allItems) {
+            if (!item.puertos) continue;
+            for (const port of item.puertos) {
+                const worldPos = {
+                    x: (item.posX || 0) + (port.relX || 0),
+                    y: (item.posY || 0) + (port.relY || 0),
+                    z: (item.posZ || 0) + (port.relZ || 0)
+                };
+                const screenPos = project(worldPos);
+                const dist = Math.hypot(screenPos.x - mouseX, screenPos.y - mouseY);
+                if (dist < SNAP_THRESHOLD) return { item, port, screenPos };
+            }
+        }
+        return null;
+    }
+
+    // -------------------- 13. AUTO-CENTER AVANZADO (v18.2) --------------------
     function autoCenter() {
         if (!_canvas || !_core) return;
         const db = _core.getDb(); const equipos = db?.equipos || []; const lines = db?.lines || [];
@@ -639,7 +705,7 @@ const SmartFlowRenderer = (function() {
     }
 
     // ============================================================
-    // FUNCIÓN PRINCIPAL DE RENDERIZADO CON Z-SORTING
+    // FUNCIÓN PRINCIPAL DE RENDERIZADO CON Z-SORTING Y FEEDBACK
     // ============================================================
     function render() {
         if (!_ctx || !_canvas) return;
@@ -652,14 +718,9 @@ const SmartFlowRenderer = (function() {
         const db = _core.getDb();
         if (!db) return;
 
-        // MEJORA 1: Z-SORTING (Orden de Pintor)
         let renderQueue = [];
         (db.equipos || []).forEach(eq => {
-            renderQueue.push({
-                type: 'EQUIPMENT',
-                depth: eq.posX + eq.posZ + (eq.posY * 0.1),
-                data: eq
-            });
+            renderQueue.push({ type: 'EQUIPMENT', depth: eq.posX + eq.posZ + (eq.posY * 0.1), data: eq });
         });
         (db.lines || []).forEach(line => {
             const pts = line._cachedPoints || line.points3D;
@@ -671,7 +732,9 @@ const SmartFlowRenderer = (function() {
         renderQueue.sort((a, b) => a.depth - b.depth);
 
         renderQueue.forEach(item => {
-            if (item.type === 'EQUIPMENT') {
+            if (item.data.isFitting) {
+                drawFitting(item.data);
+            } else if (item.type === 'EQUIPMENT') {
                 const eq = item.data;
                 switch (eq.tipo) {
                     case 'tanque_v': case 'torre': case 'reactor': drawTank(eq); break;
@@ -686,11 +749,36 @@ const SmartFlowRenderer = (function() {
             }
         });
 
-        // Dibujar selección encima de todo
         const selected = _core.getSelected();
-        if (selected) drawSelection(selected);
+        if (selected) {
+            drawSelection(selected);
+            drawPortMarkers(selected.obj);
+            if (selected.type === 'line' && selected.obj._cachedPoints) {
+                const pts = selected.obj._cachedPoints;
+                for (let i = 0; i < pts.length - 1; i++) drawSmartDimension(pts[i], pts[i+1]);
+            }
+        }
+
+        // --- FEEDBACK VISUAL DEL PUERTO ATRAPADO ---
+        if (_activeSnap) {
+            _ctx.save();
+            _ctx.beginPath();
+            _ctx.strokeStyle = '#10b981';
+            _ctx.lineWidth = 2;
+            _ctx.arc(_activeSnap.screenPos.x, _activeSnap.screenPos.y, 8, 0, Math.PI * 2);
+            _ctx.stroke();
+            _ctx.fillStyle = '#10b981';
+            _ctx.font = 'bold 12px Arial';
+            _ctx.fillText(
+                `${_activeSnap.item.tag}:${_activeSnap.port.id} (${_activeSnap.port.diametro}")`,
+                _activeSnap.screenPos.x + 12,
+                _activeSnap.screenPos.y - 12
+            );
+            _ctx.restore();
+        }
     }
 
+    // ==================== INICIALIZACIÓN ====================
     function init(canvasElement, coreInstance, notifyFn) {
         _canvas = canvasElement;
         _ctx = _canvas.getContext('2d');
@@ -699,6 +787,39 @@ const SmartFlowRenderer = (function() {
         _currentElevation = 0;
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+
+        // --- EVENTO MOUSEMOVE (Detección de puertos y elementos) ---
+        _canvas.addEventListener('mousemove', (e) => {
+            const rect = _canvas.getBoundingClientRect();
+            const mX = e.clientX - rect.left;
+            const mY = e.clientY - rect.top;
+
+            const snapped = pickPort(mX, mY);
+            if (snapped) {
+                _activeSnap = snapped;
+                _canvas.style.cursor = 'crosshair';
+            } else {
+                _activeSnap = null;
+                const item = pickElement({ x: mX, y: mY });
+                _hoveredItem = item;
+                _canvas.style.cursor = item ? 'pointer' : 'default';
+            }
+            render();
+        });
+
+        // --- EVENTO CLICK (Ctrl+Click para autocompletar comando) ---
+        _canvas.addEventListener('click', (e) => {
+            if (e.ctrlKey && _activeSnap) {
+                const input = document.getElementById('commandText'); // ID del textarea de comandos
+                if (input) {
+                    const currentVal = input.value.trim();
+                    input.value = `${currentVal} ${_activeSnap.item.tag} ${_activeSnap.port.id}`.trim();
+                    input.focus();
+                    _notifyUI(`Seleccionado: ${_activeSnap.item.tag} puerto ${_activeSnap.port.id}`);
+                }
+            }
+        });
+
         render();
     }
 
@@ -712,11 +833,9 @@ const SmartFlowRenderer = (function() {
         render();
     }
 
-    function setElevation(level) {
-        _currentElevation = level;
-        render();
-    }
+    function setElevation(level) { _currentElevation = level; render(); }
 
+    // --- API PÚBLICA ---
     window.SmartFlowRenderer = {
         init,
         render,
@@ -731,7 +850,9 @@ const SmartFlowRenderer = (function() {
         exportPCF,
         getCam: () => _cam,
         pickElement,
+        getActiveSnap: () => _activeSnap, // Permitir consultar el puerto atrapado
         calculateComponentPosition
     };
     return window.SmartFlowRenderer;
 })();
+ 
