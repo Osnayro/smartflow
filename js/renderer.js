@@ -1,27 +1,17 @@
 
-
-
 // ============================================================
 // MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.6
 // Archivo: js/renderer.js
-// Mejoras: Snap a puertos, feedback visual, Ctrl+Click para
-//          autocompletar comandos, cursor contextual.
 // ============================================================
 
 const SmartFlowRenderer = (function() {
     
-    // Dependencias inyectadas
     let _canvas = null;
     let _ctx = null;
     let _core = null;
     
-    // Cámara (Estado interno del renderer)
     let _cam = { scale: 0.5, panX: 0, panY: 0 };
-    
-    // Elevación actual para dibujo de rejilla
     let _currentElevation = 0;
-    
-    // Callback para notificaciones
     let _notifyUI = (msg, isErr) => console.log(msg);
 
     // -------------------- ESTILOS DE INGENIERÍA --------------------
@@ -29,10 +19,10 @@ const SmartFlowRenderer = (function() {
     const STYLE_PORT = { open: '#10b981', closed: '#64748b', size: 4 };
     const STYLE_FITTING = { color: '#f59e0b', width: 3 };
 
-    // -------------------- NUEVO: SNAP A PUERTOS --------------------
-    const SNAP_THRESHOLD = 15; // Distancia en píxeles para activar la atracción
-    let _activeSnap = null;    // Puerto que el mouse tiene "atrapado" actualmente
-    let _hoveredItem = null;   // Objeto (equipo/línea) sobre el que está el mouse
+    // -------------------- SNAP A PUERTOS --------------------
+    const SNAP_THRESHOLD = 15;
+    let _activeSnap = null;
+    let _hoveredItem = null;
 
     // -------------------- 1. PROYECCIÓN ISOMÉTRICA --------------------
     const COS30 = 0.86602540378;
@@ -41,10 +31,7 @@ const SmartFlowRenderer = (function() {
     function project(p) {
         const x = (p.x - p.z) * COS30;
         const y = (p.x + p.z) * SIN30 - p.y;
-        return { 
-            x: x * _cam.scale + _cam.panX, 
-            y: y * _cam.scale + _cam.panY 
-        };
+        return { x: x * _cam.scale + _cam.panX, y: y * _cam.scale + _cam.panY };
     }
 
     function inverseProject(screenX, screenY) {
@@ -53,11 +40,7 @@ const SmartFlowRenderer = (function() {
         const adjY = Y + (_currentElevation * 0.5);
         const A = X / COS30;
         const B = adjY / SIN30;
-        return { 
-            x: (A + B) / 2, 
-            y: _currentElevation, 
-            z: (B - A) / 2 
-        };
+        return { x: (A + B) / 2, y: _currentElevation, z: (B - A) / 2 };
     }
 
     // -------------------- 2. DIBUJO DE REJILLA Y ORIGEN --------------------
@@ -611,7 +594,7 @@ const SmartFlowRenderer = (function() {
         return null;
     }
 
-    // -------------------- 13. AUTO-CENTER AVANZADO (v18.2) --------------------
+    // -------------------- 13. AUTO-CENTER --------------------
     function autoCenter() {
         if (!_canvas || !_core) return;
         const db = _core.getDb(); const equipos = db?.equipos || []; const lines = db?.lines || [];
@@ -647,7 +630,7 @@ const SmartFlowRenderer = (function() {
     }
 
     // ============================================================
-    // EXPORTACIÓN PCF 100% COMPATIBLE CON AVEVA/SMARTPLANT
+    // EXPORTACIÓN PCF
     // ============================================================
     const skeyMap = {
         'GATE_VALVE': 'VAGF', 'GLOBE_VALVE': 'VGLF', 'BUTTERFLY_VALVE': 'VBAF', 'BALL_VALVE': 'VBAL',
@@ -705,7 +688,7 @@ const SmartFlowRenderer = (function() {
     }
 
     // ============================================================
-    // FUNCIÓN PRINCIPAL DE RENDERIZADO CON Z-SORTING Y FEEDBACK
+    // FUNCIÓN PRINCIPAL DE RENDERIZADO
     // ============================================================
     function render() {
         if (!_ctx || !_canvas) return;
@@ -759,7 +742,6 @@ const SmartFlowRenderer = (function() {
             }
         }
 
-        // --- FEEDBACK VISUAL DEL PUERTO ATRAPADO ---
         if (_activeSnap) {
             _ctx.save();
             _ctx.beginPath();
@@ -788,7 +770,6 @@ const SmartFlowRenderer = (function() {
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // --- EVENTO MOUSEMOVE (Detección de puertos y elementos) ---
         _canvas.addEventListener('mousemove', (e) => {
             const rect = _canvas.getBoundingClientRect();
             const mX = e.clientX - rect.left;
@@ -807,10 +788,9 @@ const SmartFlowRenderer = (function() {
             render();
         });
 
-        // --- EVENTO CLICK (Ctrl+Click para autocompletar comando) ---
         _canvas.addEventListener('click', (e) => {
             if (e.ctrlKey && _activeSnap) {
-                const input = document.getElementById('commandText'); // ID del textarea de comandos
+                const input = document.getElementById('commandText');
                 if (input) {
                     const currentVal = input.value.trim();
                     input.value = `${currentVal} ${_activeSnap.item.tag} ${_activeSnap.port.id}`.trim();
@@ -835,24 +815,15 @@ const SmartFlowRenderer = (function() {
 
     function setElevation(level) { _currentElevation = level; render(); }
 
-    // --- API PÚBLICA ---
     window.SmartFlowRenderer = {
-        init,
-        render,
-        autoCenter,
-        pan,
-        zoom,
-        project,
-        inverseProject,
-        setElevation,
-        resizeCanvas,
-        exportPDF,
-        exportPCF,
+        init, render, autoCenter, pan, zoom,
+        project, inverseProject,
+        setElevation, resizeCanvas,
+        exportPDF, exportPCF,
         getCam: () => _cam,
         pickElement,
-        getActiveSnap: () => _activeSnap, // Permitir consultar el puerto atrapado
+        getActiveSnap: () => _activeSnap,
         calculateComponentPosition
     };
     return window.SmartFlowRenderer;
 })();
- 
