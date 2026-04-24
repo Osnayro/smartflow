@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -245,7 +246,7 @@
         canvas { display: block; width: 100%; height: 100%; cursor: grab; }
         canvas:active { cursor: grabbing; }
 
-        /* -------------- NUEVO PANEL LATERAL -------------- */
+        /* -------------- PANEL LATERAL -------------- */
         .property-panel {
             position: absolute;
             top: 20px;
@@ -282,7 +283,7 @@
             color: var(--accent-cyan);
             font-size: 1.2rem;
             cursor: pointer;
-            padding: 0; /* heredado del estilo global, pero sin background */
+            padding: 0;
         }
 
         .prop-group { margin-bottom: 12px; }
@@ -461,7 +462,6 @@
         <button id="btnApplyNorm" aria-label="Aplicar normas">📐 Normas</button>
         <button id="btnSpeakSummary" class="btn-speak" aria-label="Leer resumen del proyecto">📢 Resumen</button>
         <button id="btnRecalc" aria-label="Recalcular">🔄 Recalcular</button>
-        <button id="btnToggleCatalog" class="btn-speak" aria-label="Mostrar catálogo">📦 Catálogo</button>
     </div>
 
     <div class="canvas-container" id="canvas-container">
@@ -470,7 +470,7 @@
             AcQuaBlue Corp. | MODO ISOMÉTRICO
         </div>
         
-        <!-- NUEVO PANEL LATERAL -->
+        <!-- PANEL LATERAL -->
         <div id="side-panel" class="property-panel hidden">
             <div class="panel-header">
                 <span>PROPIEDADES TÉCNICAS</span>
@@ -517,52 +517,16 @@
         <button id="btnSetElev" style="padding:2px 8px;" aria-label="Establecer elevación">Set</button>
     </div>
 
-    <!-- Catálogo y propiedad antiguos se mantienen por compatibilidad pero no se usarán para el lateral -->
-    <div id="catalogPanel" class="catalog-panel" style="display:none" role="dialog" aria-label="Catálogo de equipos">
-        <div class="catalog-header">📦 Catálogo <span style="float:right">▼</span></div>
-        <div class="catalog-content" id="catalogContent">
-            <div class="catalog-category">
-                <h4>🛢️ Tanques</h4>
-                <div class="catalog-buttons">
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create tanque_v TK-V at (0,1450,0) diam 2380 height 2900 material PE')">Tanque Vertical PE</button>
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create tanque_h TK-H at (0,1000,0) diam 2000 height 2000 largo 4000')">Tanque Horizontal</button>
-                </div>
-            </div>
-            <div class="catalog-category">
-                <h4>⚙️ Bombas</h4>
-                <div class="catalog-buttons">
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create bomba B-CEN at (0,800,0) diam 800 height 800 material SS')">Bomba Centrífuga</button>
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create bomba_dosificacion B-DOS at (0,600,0) diam 500 height 600')">Bomba Dosificadora</button>
-                </div>
-            </div>
-            <div class="catalog-category">
-                <h4>🔥 Proceso</h4>
-                <div class="catalog-buttons">
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create intercambiador E-01 at (0,1000,0) diam 1500 height 2000 largo 4000')">Intercambiador</button>
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create torre T-01 at (0,3000,0) diam 3000 height 6000')">Torre Destilación</button>
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create reactor R-01 at (0,2000,0) diam 2500 height 4000')">Reactor</button>
-                </div>
-            </div>
-            <div class="catalog-category">
-                <h4>🔀 Distribución</h4>
-                <div class="catalog-buttons">
-                    <button onclick="if(window.SmartFlowCommands) SmartFlowCommands.executeCommand('create manifold M-01 at (0,0,0) entries 4 spacing 3000 output center diameter 4 material PPR')">Colector 4"</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Carga de módulos de SmartFlow -->
+    <!-- MÓDULOS -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
-    <script src="js/accessibility.js"></script>
     <script src="js/router.js"></script>
-    <script src="js/autocomplete.js"></script>
-    <script src="js/main.js"></script>
 
     <script>
+        // Variable global de voz
+        window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartFlow";
 
         function setElevation(level) {
@@ -582,57 +546,83 @@
 
         function updatePropertyPanel(obj) {
             const content = document.getElementById('panel-content');
-            if (!obj) {
+            if (!obj) {  // CORREGIDO: antes decía !objeto
                 togglePanel(false);
                 return;
             }
-
             togglePanel(true);
-            
             content.innerHTML = `
-                <div class="prop-group">
-                    <span class="prop-label">TAG / IDENTIFICADOR</span>
-                    <span class="prop-value">${obj.tag}</span>
-                </div>
-                <div class="prop-group">
-                    <span class="prop-label">TIPO DE COMPONENTE</span>
-                    <span class="prop-value">${obj.tipo || 'Tubería'}</span>
-                </div>
-                <div class="prop-group">
-                    <span class="prop-label">SPEC / MATERIAL</span>
-                    <span class="prop-value">${obj.spec || 'A1A'}</span>
-                </div>
-                <div class="prop-group">
-                    <span class="prop-label">DIÁMETRO NOMINAL</span>
-                    <span class="prop-value">${obj.diametro || obj.diameter}"</span>
-                </div>
-                
+                <div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">${obj.tag}</span></div>
+                <div class="prop-group"><span class="prop-label">TIPO</span><span class="prop-value">${obj.tipo || 'Tubería'}</span></div>
+                <div class="prop-group"><span class="prop-label">MATERIAL</span><span class="prop-value">${obj.material || 'N/A'}</span></div>
+                <div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">${obj.diametro}"</span></div>
                 <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
-                
-                <div class="prop-group">
-                    <span class="prop-label">ESTADO DE BOQUILLAS / PUERTOS</span>
-                    <div id="ports-list">
-                        ${obj.puertos ? obj.puertos.map(p => `
-                            <div class="port-item">
-                                <span>${p.id}</span>
-                                <span class="${p.status === 'open' ? 'port-open' : 'port-connected'}">
-                                    ${p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO'}
-                                </span>
-                            </div>
-                        `).join('') : '<p>Sin puertos definidos</p>'}
-                    </div>
+                <div class="prop-group"><span class="prop-label">PUERTOS</span>
+                    ${obj.puertos ? obj.puertos.map(p => `
+                        <div class="port-item"><span>${p.id}</span><span class="${p.status === 'open' ? 'port-open' : 'port-connected'}">${p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO a ' + (p.connectedTo || '')}</span></div>
+                    `).join('') : '<p>Sin puertos</p>'}
                 </div>
             `;
         }
-        // ---------------------------------------------------------
 
+        // --------------- INICIALIZACIÓN ---------------
         window.addEventListener('load', () => {
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
             const modal = document.getElementById('project-name-modal');
             const inputProject = document.getElementById('project-name-input');
             const statusEl = document.getElementById('splash-status');
-            
+
+            // Inicializar módulos en orden
+            if (typeof SmartFlowCore !== 'undefined') {
+                SmartFlowCore.init(
+                    (msg, isErr) => {
+                        const el = document.getElementById('statusMsg');
+                        if (el) { el.innerText = msg; el.style.color = isErr ? '#ef4444' : '#00f2ff'; }
+                    },
+                    () => { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); },
+                    (obj) => updatePropertyPanel(obj)
+                );
+            }
+
+            if (typeof SmartFlowCommands !== 'undefined') {
+                SmartFlowCommands.init(
+                    SmartFlowCore,
+                    SmartFlowCatalog,
+                    SmartFlowRenderer,
+                    (msg, isErr) => {
+                        const el = document.getElementById('statusMsg');
+                        if (el) { el.innerText = msg; el.style.color = isErr ? '#ef4444' : '#00f2ff'; }
+                    },
+                    () => SmartFlowRenderer.render()
+                );
+            }
+
+            if (typeof SmartFlowRouter !== 'undefined') {
+                SmartFlowRouter.init(
+                    SmartFlowCore,
+                    SmartFlowCatalog,
+                    (msg, isErr) => {
+                        const el = document.getElementById('statusMsg');
+                        if (el) { el.innerText = msg; el.style.color = isErr ? '#ef4444' : '#00f2ff'; }
+                    },
+                    () => SmartFlowRenderer.render()
+                );
+            }
+
+            // Inicializar Renderer
+            if (typeof SmartFlowRenderer !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
+                SmartFlowRenderer.init(
+                    document.getElementById('isoCanvas'),
+                    SmartFlowCore,
+                    (msg, isErr) => {
+                        const el = document.getElementById('statusMsg');
+                        if (el) { el.innerText = msg; el.style.color = isErr ? '#ef4444' : '#00f2ff'; }
+                    }
+                );
+            }
+
+            // Splash y Welcome
             const messages = [
                 "Cargando librerías de AcQuaBlue...",
                 "Sincronizando modelos de objetos inteligentes...",
@@ -640,12 +630,10 @@
                 "Iniciando interfaz de Ing. Osnay Romero...",
                 "¡SmartProject Activo!"
             ];
-            
             let i = 0;
             const interval = setInterval(() => {
                 if(i < messages.length) { statusEl.innerText = messages[i]; i++; }
             }, 800);
-
             setTimeout(() => { splash.classList.add('splash-hidden'); clearInterval(interval); }, 4500);
             setTimeout(() => { welcome.classList.remove('welcome-hidden'); }, 4800);
 
@@ -668,67 +656,62 @@
                 document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
 
-            // Inicializar el Core con el callback del panel de propiedades
-            if (typeof SmartFlowCore !== 'undefined') {
-                SmartFlowCore.init(
-                    (msg, isErr) => {
-                        const statusEl = document.getElementById('statusMsg');
-                        if (statusEl) {
-                            statusEl.innerText = msg;
-                            statusEl.style.color = isErr ? '#ef4444' : '#00f2ff';
-                        }
-                        console.log(msg);
-                    },
-                    () => {
-                        if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render();
-                    },
-                    (obj) => updatePropertyPanel(obj)  // Conexión con el panel lateral
-                );
-            }
+            // Vincular botones de la UI
+            document.getElementById('btnReset')?.addEventListener('click', () => {
+                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.autoCenter();
+            });
+            document.getElementById('btnCommand')?.addEventListener('click', () => {
+                document.getElementById('commandPanel').style.display = 'block';
+            });
+            document.getElementById('closeCommand')?.addEventListener('click', () => {
+                document.getElementById('commandPanel').style.display = 'none';
+            });
+            document.getElementById('runCommands')?.addEventListener('click', () => {
+                const textarea = document.getElementById('commandText');
+                if (textarea && typeof SmartFlowCommands !== 'undefined') {
+                    SmartFlowCommands.executeBatch(textarea.value);
+                }
+            });
+            document.getElementById('clearCommand')?.addEventListener('click', () => {
+                document.getElementById('commandText').value = '';
+            });
+            document.getElementById('btnVoice')?.addEventListener('click', function() {
+                window.voiceEnabled = !window.voiceEnabled;
+                this.innerText = window.voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
+            });
+            document.getElementById('btnRecalc')?.addEventListener('click', () => {
+                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.recalculateAll();
+            });
+            document.getElementById('btnApplyNorm')?.addEventListener('click', () => {
+                if (typeof SmartFlowCommands !== 'undefined') SmartFlowCommands.executeCommand('audit');
+            });
+            document.getElementById('btnMTO')?.addEventListener('click', () => {
+                if (typeof SmartFlowCommands !== 'undefined') SmartFlowCommands.executeCommand('bom');
+            });
+            document.getElementById('btnPDF')?.addEventListener('click', () => {
+                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.exportPDF();
+            });
+            document.getElementById('btnExportPCF')?.addEventListener('click', () => {
+                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.exportPCF();
+            });
+            document.getElementById('btnUndo')?.addEventListener('click', () => {
+                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.undo();
+            });
+            document.getElementById('btnRedo')?.addEventListener('click', () => {
+                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.redo();
+            });
 
-            // Inicializar otros módulos que dependan del Core
-            if (typeof SmartFlowCommands !== 'undefined') {
-                SmartFlowCommands.init(
-                    SmartFlowCore,
-                    SmartFlowCatalog,
-                    SmartFlowRenderer,
-                    (msg, isErr) => {
-                        const statusEl = document.getElementById('statusMsg');
-                        if (statusEl) {
-                            statusEl.innerText = msg;
-                            statusEl.style.color = isErr ? '#ef4444' : '#00f2ff';
-                        }
-                    },
-                    () => SmartFlowRenderer.render()
-                );
-            }
-
-            if (typeof SmartFlowRouter !== 'undefined') {
-                SmartFlowRouter.init(
-                    SmartFlowCore,
-                    SmartFlowCatalog,
-                    (msg, isErr) => {
-                        const statusEl = document.getElementById('statusMsg');
-                        if (statusEl) {
-                            statusEl.innerText = msg;
-                            statusEl.style.color = isErr ? '#ef4444' : '#00f2ff';
-                        }
-                    },
-                    () => SmartFlowRenderer.render()
-                );
-            }
+            const logs = [
+                "SmartProject | IA: Escaneando colisiones...",
+                "SmartProject | Optimizando MTO...",
+                "SmartProject | Verificando normas...",
+                "SmartProject | Listo para comandos"
+            ];
+            setInterval(() => {
+                const statusDiv = document.getElementById('statusMsg');
+                if (statusDiv && !statusDiv.dataset.locked) statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
+            }, 6000);
         });
-
-        const logs = [
-            "SmartProject | IA: Escaneando colisiones...",
-            "SmartProject | Optimizando MTO...",
-            "SmartProject | Verificando normas...",
-            "SmartProject | Listo para comandos"
-        ];
-        setInterval(() => {
-            const statusDiv = document.getElementById('statusMsg');
-            if (statusDiv && !statusDiv.dataset.locked) statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
-        }, 6000);
     </script>
 </body>
 </html>
