@@ -2,8 +2,6 @@
 // ============================================================
 // MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v4.5
 // Archivo: js/core.js
-// Mejoras: Integración con Panel de Propiedades Lateral,
-//          Live Update, getPropertyInfo, callback en setSelected.
 // ============================================================
 
 const SmartFlowCore = (function() {
@@ -27,7 +25,7 @@ const SmartFlowCore = (function() {
 
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
-    let _onSelectionChanged = (obj) => {}; // Callback para el panel de propiedades
+    let _onSelectionChanged = (obj) => {};
 
     const _exists = (tag, type) => _db[type].some(item => item.tag === tag);
     const _deepClone = (obj) => {
@@ -121,7 +119,7 @@ const SmartFlowCore = (function() {
         const segMax = { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y), z: Math.max(p1.z, p2.z) };
         return !(segMax.x < box.xMin || segMin.x > box.xMax || segMax.y < box.yMin || segMin.y > box.yMax || segMax.z < box.zMin || segMin.z > box.zMax);
     }
-    function auditCollisions() { /* (mantiene la misma lógica que en v4.4) */
+    function auditCollisions() {
         const collisions = [];
         _db.lines.forEach(line => {
             const pts = line._cachedPoints || line.points3D; if (!pts || pts.length < 2) return;
@@ -283,7 +281,7 @@ const SmartFlowCore = (function() {
             _db.equipos = _deepClone(next.equipos); _db.lines = _deepClone(next.lines);
             _selectedElement = null; syncPhysicalData(); _renderUI(); _notifyUI("Acción rehecha.", false);
         },
-        auditModel: function() { /* (sin cambios) */
+        auditModel: function() {
             let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n"; let errors = 0, warnings = 0;
             _db.lines.forEach(line => {
                 const diamLinea = line.diameter;
@@ -319,11 +317,48 @@ const SmartFlowCore = (function() {
             }
             this._saveState(); syncPhysicalData(); _renderUI(); return result;
         },
-        splitLine: function(lineTag, point, config) { /* (sin cambios) */ },
+        splitLine: function(lineTag, point, config) {
+            const line = _db.lines.find(l => l.tag === lineTag);
+            if (!line) { _notifyUI("Línea no encontrada.", true); return null; }
+            const segmentIndex = _findSegmentAtPoint(line, point);
+            if (segmentIndex === -1) { _notifyUI("El punto no está sobre la línea o está demasiado lejos.", true); return null; }
+            const pts = line._cachedPoints || line.points3D;
+            const a = pts[segmentIndex], b = pts[segmentIndex + 1];
+            const dir = { dx: b.x - a.x, dy: b.y - a.y, dz: b.z - a.z };
+            const len = Math.hypot(dir.dx, dir.dy, dir.dz) || 1;
+            const dirUnit = { dx: dir.dx/len, dy: dir.dy/len, dz: dir.dz/len };
+            let perp = _getPerpendicular(dirUnit);
 
-        // ==================== NUEVO: PANEL DE PROPIEDADES ====================
+            const accessoryTag = `TEE-${Date.now().toString().slice(-6)}`;
+            const nuevoAccesorio = {
+                tag: accessoryTag,
+                tipo: config?.type || 'TEE_EQUAL',
+                posX: point.x, posY: point.y, posZ: point.z,
+                diametro: line.diameter,
+                material: line.material,
+                spec: line.spec,
+                puertos: [
+                    { id: 'P1', relX: -dirUnit.dx*100, relY: -dirUnit.dy*100, relZ: -dirUnit.dz*100, orientacion: { dx: -dirUnit.dx, dy: -dirUnit.dy, dz: -dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S1' }, diametro: line.diameter, flow: 'in', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
+                    { id: 'P2', relX: dirUnit.dx*100, relY: dirUnit.dy*100, relZ: dirUnit.dz*100, orientacion: { dx: dirUnit.dx, dy: dirUnit.dy, dz: dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S2' }, diametro: line.diameter, flow: 'out', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
+                    { id: 'P3', relX: perp.dx*100, relY: perp.dy*100, relZ: perp.dz*100, orientacion: { dx: perp.dx, dy: perp.dy, dz: perp.dz }, status: 'open', diametro: line.diameter, flow: 'bi', constraints: { spec: line.spec||'STD', diametro: line.diameter } }
+                ]
+            };
+
+            pts.splice(segmentIndex+1, 0, point);
+            line._cachedPoints = pts;
+
+            if (!line.puertos) line.puertos = [];
+            line.puertos.push({ id: 'S1', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P1' }, diametro: line.diameter });
+            line.puertos.push({ id: 'S2', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P2' }, diametro: line.diameter });
+
+            _db.equipos.push(nuevoAccesorio);
+            this._saveState(); syncPhysicalData(); _renderUI();
+            _notifyUI(`Línea ${lineTag} dividida. Accesorio ${accessoryTag} insertado.`, false);
+            return { componente: nuevoAccesorio, linea: line };
+        },
+
+        // ==================== PANEL DE PROPIEDADES ====================
         setSelected: function(element) {
-            // Validar que el elemento todavía existe
             if (element && element.obj && !findObjectByTag(element.obj.tag)) {
                 _selectedElement = null;
                 this._onSelectionChanged(null);
@@ -332,8 +367,6 @@ const SmartFlowCore = (function() {
             }
             _selectedElement = element;
             _renderUI();
-            
-            // Disparar actualización del panel lateral
             if (_selectedElement && _selectedElement.obj) {
                 const info = this.getPropertyInfo(_selectedElement.obj.tag);
                 this._onSelectionChanged(info);
@@ -374,13 +407,11 @@ const SmartFlowCore = (function() {
             const obj = findObjectByTag(tag);
             if (!obj) { _notifyUI("Objeto no encontrado.", true); return false; }
 
-            // Validación de duplicado de Tag
             if (field === 'tag') {
                 if (_exists(newValue, 'equipos') || _exists(newValue, 'lines')) {
                     _notifyUI("Error: El Tag ya existe.", true);
                     return false;
                 }
-                // Actualizar referencias en líneas
                 _db.lines.forEach(line => {
                     if (line.origin && line.origin.objTag === tag) line.origin.objTag = newValue;
                     if (line.destination && line.destination.objTag === tag) line.destination.objTag = newValue;
@@ -390,7 +421,6 @@ const SmartFlowCore = (function() {
                 obj[field] = newValue;
             }
 
-            // Si el cambio afecta geometría, sincronizar
             if (['posX', 'posY', 'posZ', 'diametro', 'altura', 'largo', 'diameter'].includes(field)) {
                 syncPhysicalData();
             }
