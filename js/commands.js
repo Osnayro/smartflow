@@ -1,7 +1,9 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.3
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.4
 // Archivo: js/commands.js
+// Mejora: Voz integrada vía speechSynthesis, sin dependencia
+//         de SmartFlowAccessibility.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -65,6 +67,18 @@ const SmartFlowCommands = (function() {
         return null;
     }
 
+    // -------------------- VOZ INTERNA (sin dependencia externa) --------------------
+    function speakText(text) {
+        if (!window.voiceEnabled) return;
+        if (typeof window.speechSynthesis !== 'undefined') {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'es-ES';
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
     // -------------------- NOTIFICACIÓN MEJORADA (VOZ + VISUAL) --------------------
     function notifyWithVoice(message, isError = false) {
         if (typeof _notifyUI === 'function') _notifyUI(message, isError);
@@ -73,9 +87,8 @@ const SmartFlowCommands = (function() {
             statusEl.innerText = message;
             statusEl.style.color = isError ? '#ef4444' : '#00f2ff';
         }
-        if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
-            SmartFlowAccessibility.speak(message);
-        }
+        // Voz interna
+        speakText(message);
     }
 
     // ==================== COMANDOS INFO ====================
@@ -592,8 +605,122 @@ const SmartFlowCommands = (function() {
     }
 
     // --- IMPORTACIÓN PCF (SIN CAMBIOS) ---
-    const skeyToInternal = { /* ... igual que en v4.9 ... */ };
-    function importPCF(fileContent) { /* ... igual que en v4.9 ... */ return true; }
+    const skeyToInternal = {
+        'TANK': { type: 'equipment', internal: 'tanque_v' },
+        'PUMP': { type: 'equipment', internal: 'bomba' },
+        'VESS': { type: 'equipment', internal: 'tanque_v' },
+        'EXCH': { type: 'equipment', internal: 'intercambiador' },
+        'STRA': { type: 'pipe', internal: 'PIPE' },
+        'PIPE': { type: 'pipe', internal: 'PIPE' },
+        'VALV': { type: 'component', internal: 'GATE_VALVE' },
+        'VAGF': { type: 'component', internal: 'GATE_VALVE' },
+        'VGLF': { type: 'component', internal: 'GLOBE_VALVE' },
+        'VBAL': { type: 'component', internal: 'BALL_VALVE' },
+        'VBAF': { type: 'component', internal: 'BUTTERFLY_VALVE' },
+        'VCFF': { type: 'component', internal: 'CHECK_VALVE' },
+        'VDIA': { type: 'component', internal: 'DIAPHRAGM_VALVE' },
+        'VCON': { type: 'component', internal: 'CONTROL_VALVE' },
+        'ELBW': { type: 'component', internal: 'ELBOW_90_LR' },
+        'ELBS': { type: 'component', internal: 'ELBOW_90_SR' },
+        'ELL4': { type: 'component', internal: 'ELBOW_45' },
+        'TEES': { type: 'component', internal: 'TEE_EQUAL' },
+        'TEER': { type: 'component', internal: 'TEE_REDUCING' },
+        'CROS': { type: 'component', internal: 'CROSS' },
+        'FLWN': { type: 'component', internal: 'WELD_NECK_FLANGE' },
+        'FLSO': { type: 'component', internal: 'SLIP_ON_FLANGE' },
+        'FLBL': { type: 'component', internal: 'BLIND_FLANGE' },
+        'FLLJ': { type: 'component', internal: 'LAP_JOINT_FLANGE' },
+        'RECN': { type: 'component', internal: 'CONCENTRIC_REDUCER' },
+        'REEC': { type: 'component', internal: 'ECCENTRIC_REDUCER' },
+        'INSI': { type: 'component', internal: 'PRESSURE_GAUGE' },
+        'INPG': { type: 'component', internal: 'PRESSURE_GAUGE' },
+        'INTG': { type: 'component', internal: 'TEMPERATURE_GAUGE' },
+        'INFM': { type: 'component', internal: 'FLOW_METER' },
+        'INLV': { type: 'component', internal: 'LEVEL_SWITCH_RANA' },
+        'STRY': { type: 'component', internal: 'Y_STRAINER' },
+        'CAPF': { type: 'component', internal: 'CAP' }
+    };
+    function importPCF(fileContent) {
+        if (!_core) { notifyWithVoice("Error: Core no inicializado.", true); return; }
+        if (!_catalog) { notifyWithVoice("Error: Catálogo no inicializado.", true); return; }
+        const lines = fileContent.split('\n');
+        let currentLine = null, puntos = [], componentes = [];
+        const equiposMap = new Map(), lineasMap = new Map();
+        let currentComponent = null;
+        let pipingSpec = 'PPR_PN12_5';
+        function extractAttribute(line, attrName) {
+            const regex = new RegExp(`${attrName}\\s+(.+)`, 'i');
+            const match = line.match(regex);
+            return match ? match[1].trim().replace(/'/g, '') : null;
+        }
+        function parseDiameter(diamStr) { if (!diamStr) return 4; const num = parseFloat(diamStr); return isNaN(num) ? 4 : num; }
+        function parsePoint(xStr, yStr, zStr) { return { x: parseFloat(xStr) || 0, y: parseFloat(yStr) || 0, z: parseFloat(zStr) || 0 }; }
+        function processAccumulatedComponent() {
+            if (!currentComponent || !currentComponent.skey) return;
+            const mapping = skeyToInternal[currentComponent.skey];
+            if (mapping) {
+                if (mapping.type === 'equipment') {
+                    const pos = currentComponent.endPoint1 || {x:0, y:0, z:0};
+                    const tag = currentComponent.itemCode || `${mapping.internal}_${equiposMap.size + 1}`;
+                    if (!equiposMap.has(tag)) {
+                        const equipo = _catalog.createEquipment(mapping.internal, tag, pos.x, pos.y, pos.z, {
+                            diametro: currentComponent.diameter || 1000,
+                            altura: currentComponent.height || 1500,
+                            material: currentComponent.material || 'CS'
+                        });
+                        if (equipo) { equiposMap.set(tag, equipo); _core.addEquipment(equipo); }
+                    }
+                } else if (mapping.type === 'component' && currentLine) {
+                    componentes.push({ type: mapping.internal, tag: currentComponent.itemCode || `${mapping.internal}_${componentes.length + 1}`, param: 0.5, description: currentComponent.description, material: currentComponent.material });
+                }
+            }
+            currentComponent = null;
+        }
+        function finalizeLine() {
+            if (currentLine && puntos.length >= 2) {
+                if (!currentLine.tag) currentLine.tag = `L-${(lineasMap.size + 1)}`;
+                currentLine._cachedPoints = puntos; currentLine.waypoints = puntos.slice(1, -1); currentLine.components = componentes;
+                lineasMap.set(currentLine.tag, currentLine); _core.addLine(currentLine);
+            }
+            currentLine = null; puntos = []; componentes = [];
+        }
+        for (let line of lines) { if (line.trim().startsWith('PIPING-SPEC')) { pipingSpec = extractAttribute(line, 'PIPING-SPEC') || pipingSpec; break; } }
+        for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith('!') || line.length === 0) continue;
+            const parts = line.split(/\s+/); const firstWord = parts[0];
+            const newBlockWords = ['PIPE', 'VALVE', 'TEE', 'TANK', 'PUMP', 'INSTRUMENT', 'ELBOW', 'FLANGE', 'STRA', 'REDUCER'];
+            if (newBlockWords.includes(firstWord)) {
+                processAccumulatedComponent();
+                if (firstWord === 'PIPE' || firstWord === 'STRA') { finalizeLine(); currentLine = { tag: '', diameter: 4, material: 'PPR', spec: pipingSpec, origin: null, destination: null }; puntos = []; componentes = []; }
+                else { currentComponent = { type: firstWord }; }
+                continue;
+            }
+            if (line.startsWith('END-POINT')) {
+                if (parts.length >= 7) {
+                    const p1 = parsePoint(parts[1], parts[2], parts[3]), p2 = parsePoint(parts[4], parts[5], parts[6]), diam = parts[7];
+                    if (currentLine) { if (puntos.length === 0) puntos.push(p1); puntos.push(p2); if (diam && !diam.includes('INCH')) currentLine.diameter = parseDiameter(diam); }
+                    else if (currentComponent) { currentComponent.endPoint1 = p1; currentComponent.endPoint2 = p2; if (diam) currentComponent.diameter = parseDiameter(diam); }
+                }
+            } else if (line.startsWith('PCF_ELEM_SKEY') || line.startsWith('SKEY')) {
+                const skey = parts[1]?.replace(/'/g, '') || ''; if (currentComponent) currentComponent.skey = skey; else if (currentLine) currentLine.skey = skey;
+            } else if (line.startsWith('ITEM-CODE')) {
+                const code = extractAttribute(line, 'ITEM-CODE'); if (currentComponent) currentComponent.itemCode = code; else if (currentLine) currentLine.tag = code;
+            } else if (line.startsWith('DESCRIPTION')) {
+                const desc = extractAttribute(line, 'DESCRIPTION'); if (currentComponent) currentComponent.description = desc; else if (currentLine) currentLine.description = desc;
+            } else if (line.startsWith('MATERIAL')) {
+                const mat = extractAttribute(line, 'MATERIAL');
+                if (currentLine) { if (mat?.toUpperCase().includes('PPR')) currentLine.material = 'PPR'; else if (mat?.toUpperCase().includes('ACERO')) currentLine.material = 'Acero_Carbono'; else if (mat?.toUpperCase().includes('BRONCE')) currentLine.material = 'Bronce'; else currentLine.material = mat || 'PPR'; }
+                if (currentComponent) currentComponent.material = mat;
+            } else if (line.startsWith('HEIGHT')) { const height = parseFloat(parts[1]); if (currentComponent) currentComponent.height = height; }
+            else if (line.startsWith('DIAMETER')) { const diam = parseFloat(parts[1]); if (currentComponent) currentComponent.diameter = diam; }
+            else if (line.startsWith('ANGLE')) { const angle = parseFloat(parts[1]); if (currentComponent) currentComponent.angle = angle; }
+        }
+        processAccumulatedComponent(); finalizeLine();
+        _core.syncPhysicalData(); _core._saveState(); _renderUI();
+        notifyWithVoice(`✅ PCF importado: ${equiposMap.size} equipos, ${lineasMap.size} líneas.`, false);
+        return true;
+    }
 
     // ==================== EJECUCIÓN DE COMANDOS ====================
     function executeCommand(cmd) {
