@@ -2,8 +2,7 @@
 // ============================================================
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.4
 // Archivo: js/commands.js
-// Mejora: Voz integrada vía speechSynthesis, sin dependencia
-//         de SmartFlowAccessibility.
+// Voz interna integrada, sin dependencia externa.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -67,7 +66,7 @@ const SmartFlowCommands = (function() {
         return null;
     }
 
-    // -------------------- VOZ INTERNA (sin dependencia externa) --------------------
+    // -------------------- VOZ INTERNA --------------------
     function speakText(text) {
         if (!window.voiceEnabled) return;
         if (typeof window.speechSynthesis !== 'undefined') {
@@ -79,7 +78,7 @@ const SmartFlowCommands = (function() {
         }
     }
 
-    // -------------------- NOTIFICACIÓN MEJORADA (VOZ + VISUAL) --------------------
+    // -------------------- NOTIFICACIÓN MEJORADA --------------------
     function notifyWithVoice(message, isError = false) {
         if (typeof _notifyUI === 'function') _notifyUI(message, isError);
         const statusEl = document.getElementById('statusMsg');
@@ -87,7 +86,6 @@ const SmartFlowCommands = (function() {
             statusEl.innerText = message;
             statusEl.style.color = isError ? '#ef4444' : '#00f2ff';
         }
-        // Voz interna
         speakText(message);
     }
 
@@ -604,7 +602,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- IMPORTACIÓN PCF (SIN CAMBIOS) ---
+    // --- IMPORTACIÓN PCF (COMPLETA) ---
     const skeyToInternal = {
         'TANK': { type: 'equipment', internal: 'tanque_v' },
         'PUMP': { type: 'equipment', internal: 'bomba' },
