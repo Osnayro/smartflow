@@ -1,9 +1,10 @@
 
 // ============================================================
-// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.5
+// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.6
 // Archivo: js/router.js
-// Corrección: Conexión a línea siempre usa Tee (perpendicular),
-//             nunca reductor automático sin especificación explícita.
+// Mejoras: Validación de compatibilidad de diámetros, integración
+//          con Panel de Propiedades (setSelected), manejo de Snap,
+//          comando executeCommand para pruebas rápidas.
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -272,6 +273,13 @@ const SmartFlowRouter = (function() {
         let startPos = getPortPosition(fromObj, fromPortId);
         if (!startPos) { notifyUser(`Puerto origen ${fromPortId} no encontrado`, true); return null; }
 
+        // --- NUEVA VALIDACIÓN DE COMPATIBILIDAD ---
+        const pOrigen = fromObj.puertos?.find(p => p.id === fromPortId);
+        const pDestino = toObj.puertos?.find(p => p.id === toPortId);
+        if (pOrigen && pDestino && pOrigen.diametro !== pDestino.diametro) {
+            notifyUser(`⚠️ Advertencia: Diámetros incompatibles (${pOrigen.diametro}" vs ${pDestino.diametro}"). Se recomienda un accesorio de reducción.`, false);
+        }
+
         let endPos, nuevoPuertoId = toPortId;
         let destinoEsLinea = false;
 
@@ -348,16 +356,72 @@ const SmartFlowRouter = (function() {
         _core._saveState();
         if (typeof _renderUI === 'function') _renderUI();
 
+        // --- NUEVO: Seleccionar la línea creada para abrir el Panel de Propiedades ---
+        _core.setSelected({ type: 'line', obj: nuevaLinea });
+
         notifyUser(`✅ Ruta creada: ${tag} (${fromEquipTag}.${fromPortId} → ${toEquipTag}.${nuevoPuertoId})`, false);
         return nuevaLinea;
     }
 
+    // ---------- NUEVO: MANEJO DEL SNAP ----------
+    function handleSnapClick(snapData) {
+        if (!snapData) return;
+        ensureInitialized();
+        // Al hacer clic en un puerto resaltado, lo seleccionamos en el Core
+        // Esto disparará automáticamente el Panel de Propiedades Lateral
+        _core.setSelected({ 
+            type: 'PUERTO', 
+            obj: snapData.port, 
+            parent: snapData.item 
+        });
+        notifyUser(`Puerto seleccionado: ${snapData.item.tag} - ${snapData.port.id}`);
+    }
+
+    // ---------- NUEVO: COMANDO RÁPIDO (para pruebas o consola) ----------
+    function executeCommand(cmdLine) {
+        ensureInitialized();
+        const parts = cmdLine.trim().split(/\s+/);
+        const action = parts[0]?.toLowerCase();
+        const args = parts.slice(1);
+
+        switch(action) {
+            case 'conectar':
+                if (args.length >= 4) {
+                    this.routeBetweenPorts(args[0], args[1], args[2], args[3]);
+                } else {
+                    notifyUser('Formato: conectar [Origen] [Puerto] [Destino] [Puerto]', true);
+                }
+                break;
+            case 'split':
+                if (args.length >= 2) {
+                    const lineTag = args[0];
+                    const param = parseFloat(args[1]);
+                    if (!isNaN(param)) {
+                        _core.injectAccessory(lineTag, param, {
+                            tag: 'TEE',
+                            generarPuertos: (line, p, d) => _catalog.getComponent('TEE_EQUAL').generarPuertos({diameter: d})
+                        });
+                    }
+                } else {
+                    notifyUser('Formato: split [Línea] [Posición 0-1]', true);
+                }
+                break;
+            case 'limpiar':
+                _core.nuevoProyecto();
+                notifyUser('Proyecto limpiado.', false);
+                break;
+            default:
+                notifyUser(`Comando router no reconocido: ${action}`, true);
+        }
+    }
+
     // ---------- INICIALIZACIÓN ----------
     function init(coreInstance, catalogInstance, notifyFn, renderFn) {
-        _core = coreInstance; _catalog = catalogInstance;
+        _core = coreInstance;
+        _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('🧭 SmartFlow Router v2.5 inicializado');
+        console.log('🧭 SmartFlow Router v2.6 inicializado (validación, snap y panel)');
     }
 
     return {
@@ -366,8 +430,12 @@ const SmartFlowRouter = (function() {
         insertarAccesorioEnLinea,
         procesarInterseccionesDeLinea,
         getPortPosition,
-        getPortDirection
+        getPortDirection,
+        // Nuevas funciones
+        handleSnapClick,
+        executeCommand
     };
 })();
 
 if (typeof window !== 'undefined') window.SmartFlowRouter = SmartFlowRouter;
+ ```
