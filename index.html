@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -245,6 +246,7 @@
         canvas { display: block; width: 100%; height: 100%; cursor: grab; }
         canvas:active { cursor: grabbing; }
 
+        /* -------------- PANEL LATERAL -------------- */
         .property-panel {
             position: absolute;
             top: 20px;
@@ -301,6 +303,8 @@
         .port-connected { color: #3b82f6; }
 
         .empty-msg { color: #aaa; text-align: center; padding: 20px 0; }
+
+        /* ------------------------------------------------ */
 
         .command-panel {
             position: fixed; left: 10px; bottom: 10px;
@@ -466,6 +470,7 @@
             AcQuaBlue Corp. | MODO ISOMÉTRICO
         </div>
         
+        <!-- PANEL LATERAL -->
         <div id="side-panel" class="property-panel hidden">
             <div class="panel-header">
                 <span>PROPIEDADES TÉCNICAS</span>
@@ -512,6 +517,7 @@
         <button id="btnSetElev" style="padding:2px 8px;" aria-label="Establecer elevación">Set</button>
     </div>
 
+    <!-- MÓDULOS -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/renderer.js"></script>
@@ -519,6 +525,7 @@
     <script src="js/router.js"></script>
 
     <script>
+        // Variable global de voz
         window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartFlow";
 
@@ -530,6 +537,7 @@
             }
         }
 
+        // --------------- FUNCIONES DEL PANEL LATERAL ---------------
         function togglePanel(show) {
             const panel = document.getElementById('side-panel');
             if (show) panel.classList.remove('hidden');
@@ -538,7 +546,7 @@
 
         function updatePropertyPanel(obj) {
             const content = document.getElementById('panel-content');
-            if (!obj) {
+            if (!obj) {  // CORREGIDO: antes decía !objeto
                 togglePanel(false);
                 return;
             }
@@ -557,6 +565,7 @@
             `;
         }
 
+        // --------------- INICIALIZACIÓN ---------------
         window.addEventListener('load', () => {
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
@@ -564,6 +573,7 @@
             const inputProject = document.getElementById('project-name-input');
             const statusEl = document.getElementById('splash-status');
 
+            // Inicializar módulos en orden
             if (typeof SmartFlowCore !== 'undefined') {
                 SmartFlowCore.init(
                     (msg, isErr) => {
@@ -600,6 +610,7 @@
                 );
             }
 
+            // Inicializar Renderer
             if (typeof SmartFlowRenderer !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
                 SmartFlowRenderer.init(
                     document.getElementById('isoCanvas'),
@@ -611,6 +622,7 @@
                 );
             }
 
+            // Splash y Welcome
             const messages = [
                 "Cargando librerías de AcQuaBlue...",
                 "Sincronizando modelos de objetos inteligentes...",
@@ -644,6 +656,7 @@
                 document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
 
+            // Vincular botones de la UI
             document.getElementById('btnReset')?.addEventListener('click', () => {
                 if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.autoCenter();
             });
@@ -698,22 +711,6 @@
                 const statusDiv = document.getElementById('statusMsg');
                 if (statusDiv && !statusDiv.dataset.locked) statusDiv.innerText = logs[Math.floor(Math.random() * logs.length)];
             }, 6000);
-
-            // DIAGNÓSTICO DE CARGA DE MÓDULOS
-            setTimeout(function() {
-                var modulos = ['SmartFlowCore', 'SmartFlowCatalog', 'SmartFlowCommands', 'SmartFlowRouter', 'SmartFlowRenderer'];
-                var faltantes = [];
-                for (var i = 0; i < modulos.length; i++) {
-                    if (typeof window[modulos[i]] === 'undefined') {
-                        faltantes.push(modulos[i]);
-                    }
-                }
-                if (faltantes.length > 0) {
-                    alert('❌ Módulos NO cargados:\n' + faltantes.join('\n'));
-                } else {
-                    alert('✅ Todos los módulos cargados correctamente');
-                }
-            }, 1500);
         });
     </script>
 </body>
