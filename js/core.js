@@ -33,7 +33,6 @@ const SmartFlowCore = (function() {
         catch (e) { return JSON.parse(JSON.stringify(obj)); }
     };
 
-    // ==================== SINCRONIZACIÓN ROBUSTA ====================
     function syncPhysicalData() {
         _db.lines.forEach(line => {
             if (line.origin && line.origin.objTag) {
@@ -83,7 +82,6 @@ const SmartFlowCore = (function() {
         return { x: 0, y: 0, z: 0 };
     }
 
-    // ==================== VALIDADOR DE COMPATIBILIDAD ====================
     function checkCompatibility(portA, portB) {
         const alerts = [];
         if (portA.diametro !== portB.diametro) alerts.push(`Diferencia de diámetro: ${portA.diametro}" vs ${portB.diametro}"`);
@@ -92,7 +90,6 @@ const SmartFlowCore = (function() {
         return { isCompatible: alerts.length === 0, alerts };
     }
 
-    // ==================== LOCALIZACIÓN DE SEGMENTO (para splitting) ====================
     function _findSegmentAtPoint(line, clickPoint, tolerance = 500) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return -1;
@@ -111,7 +108,6 @@ const SmartFlowCore = (function() {
         return bestIndex;
     }
 
-    // ==================== DETECCIÓN DE COLISIONES ====================
     function pointInBox(p, box) { return p.x >= box.xMin && p.x <= box.xMax && p.y >= box.yMin && p.y <= box.yMax && p.z >= box.zMin && p.z <= box.zMax; }
     function segmentIntersectsBox(p1, p2, box) {
         if (pointInBox(p1, box) || pointInBox(p2, box)) return true;
@@ -171,7 +167,6 @@ const SmartFlowCore = (function() {
         return { tag: line.tag, longitudTotal: totalLen, longitudTotalM: (totalLen/1000).toFixed(2)+' m', codos, componentes: comps, juntasEstimadas: juntas };
     }
 
-    // ==================== SPLITTING DE LÍNEAS ====================
     function _splitLineSegment(lineTag, param) {
         const line = _db.lines.find(l => l.tag === lineTag);
         if (!line) return null;
@@ -193,7 +188,6 @@ const SmartFlowCore = (function() {
         return perp;
     }
 
-    // ==================== API PÚBLICA ====================
     return {
         init: function(notifyFn, renderFn, propertyPanelFn) {
             _notifyUI = notifyFn || _notifyUI;
@@ -357,7 +351,6 @@ const SmartFlowCore = (function() {
             return { componente: nuevoAccesorio, linea: line };
         },
 
-        // ==================== PANEL DE PROPIEDADES ====================
         setSelected: function(element) {
             if (element && element.obj && !findObjectByTag(element.obj.tag)) {
                 _selectedElement = null;
@@ -431,7 +424,6 @@ const SmartFlowCore = (function() {
             return true;
         },
 
-        // Resto de funciones sin cambios
         auditCollisions, getSpoolReport,
         getDb: function() { return _db; },
         getEquipos: function() { return _db.equipos; },
