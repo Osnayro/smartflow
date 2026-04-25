@@ -1,80 +1,24 @@
 
 // ============================================================
-// MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.0
+// MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.2
 // Archivo: js/catalog.js
-// Propósito: Definir la biblioteca de equipos, accesorios y componentes.
-//            v2.0: Añade generación de puertos lógicos en accesorios de derivación.
+// Correcciones: Orden de extensión, unificación de dimensiones,
+//               IDs únicos en fittings, getPerpendicular mejorado.
 // ============================================================
 
 const SmartFlowCatalog = (function() {
     
-    // -------------------- 1. ESPECIFICACIONES DE MATERIALES (PIPING SPECS) --------------------
+    // -------------------- 1. ESPECIFICACIONES DE MATERIALES --------------------
     const specs = {
-        "PPR_PN12_5": { 
-            material: "PPR", 
-            norma: "IRAM 13471", 
-            presion: "PN 12.5", 
-            color: "#7c3aed",
-            conexion: "TERMOFUSION"
-        },
-        "ACERO_SCH80": { 
-            material: "Acero al Carbono", 
-            norma: "ASTM A106 Gr. B", 
-            schedule: "SCH 80", 
-            color: "#94a3b8",
-            conexion: "NPT"
-        },
-        "ACERO_150_RF": { 
-            material: "Acero al Carbono", 
-            norma: "ASTM A105", 
-            clase: "150", 
-            cara: "RF", 
-            color: "#64748b",
-            conexion: "BRIDADA"
-        },
-        "CS_300_RF": { 
-            material: "Acero al Carbono", 
-            norma: "ASTM A105", 
-            clase: "300", 
-            cara: "RF", 
-            color: "#475569",
-            conexion: "BRIDADA"
-        },
-        "SS_150_RF": { 
-            material: "Acero Inoxidable 316L", 
-            norma: "ASTM A182 F316L", 
-            clase: "150", 
-            cara: "RF", 
-            color: "#94a3b8",
-            conexion: "BRIDADA"
-        },
-        "SS_SANITARY": { 
-            material: "Acero Inoxidable 316L", 
-            norma: "3A / ASME BPE", 
-            acabado: "Ra < 0.8 µm", 
-            color: "#e2e8f0",
-            conexion: "TRI-CLAMP"
-        },
-        "PTFE_LINED": { 
-            material: "Acero al Carbono Revestido PTFE", 
-            norma: "ASTM A395", 
-            color: "#a78bfa",
-            conexion: "BRIDADA"
-        },
-        "HDPE_PE100": {
-            material: "HDPE",
-            norma: "PE100",
-            presion: "PN 10",
-            color: "#22c55e",
-            conexion: "ELECTROFUSION"
-        },
-        "PVC_SCH80": {
-            material: "PVC",
-            norma: "ASTM D1785",
-            schedule: "SCH 80",
-            color: "#eab308",
-            conexion: "CEMENTADO"
-        }
+        "PPR_PN12_5": { material: "PPR", norma: "IRAM 13471", presion: "PN 12.5", color: "#7c3aed", conexion: "TERMOFUSION" },
+        "ACERO_SCH80": { material: "Acero al Carbono", norma: "ASTM A106 Gr. B", schedule: "SCH 80", color: "#94a3b8", conexion: "NPT" },
+        "ACERO_150_RF": { material: "Acero al Carbono", norma: "ASTM A105", clase: "150", cara: "RF", color: "#64748b", conexion: "BRIDADA" },
+        "CS_300_RF": { material: "Acero al Carbono", norma: "ASTM A105", clase: "300", cara: "RF", color: "#475569", conexion: "BRIDADA" },
+        "SS_150_RF": { material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "150", cara: "RF", color: "#94a3b8", conexion: "BRIDADA" },
+        "SS_SANITARY": { material: "Acero Inoxidable 316L", norma: "3A / ASME BPE", acabado: "Ra < 0.8 µm", color: "#e2e8f0", conexion: "TRI-CLAMP" },
+        "PTFE_LINED": { material: "Acero al Carbono Revestido PTFE", norma: "ASTM A395", color: "#a78bfa", conexion: "BRIDADA" },
+        "HDPE_PE100": { material: "HDPE", norma: "PE100", presion: "PN 10", color: "#22c55e", conexion: "ELECTROFUSION" },
+        "PVC_SCH80": { material: "PVC", norma: "ASTM D1785", schedule: "SCH 80", color: "#eab308", conexion: "CEMENTADO" }
     };
 
     // -------------------- 2. DEFINICIÓN DE EQUIPOS --------------------
@@ -82,33 +26,25 @@ const SmartFlowCatalog = (function() {
         tanque_v: { 
             nombre: 'Tanque Vertical', categoria: 'almacenamiento', forma: 'cilindro',
             generarPuertos: (eq) => {
-                const alturaRelativaSalida = eq.altura_salida_desde_base !== undefined 
-                    ? eq.altura_salida_desde_base - eq.altura/2 
-                    : -eq.altura/2;
+                const alturaRelativaSalida = eq.altura_salida_desde_base !== undefined ? eq.altura_salida_desde_base - eq.altura/2 : -eq.altura/2;
                 return [
-                    { id: 'N1', label: 'Salida de Fondo / Succión', relX: 0, relY: alturaRelativaSalida, relZ: 0, 
-                      diametro: eq.diametro_salida || 3, tipoConexion: 'NPT_HEMBRA', orientacion: { dx: 0, dy: 0, dz: 1 } },
-                    { id: 'N2', label: 'Entrada Superior', relX: 0, relY: eq.altura/2, relZ: 0, 
-                      diametro: eq.diametro_entrada || 3, tipoConexion: 'NPT_HEMBRA', orientacion: { dx: 0, dy: 1, dz: 0 } }
+                    { id: 'N1', label: 'Salida de Fondo / Succión', relX: 0, relY: alturaRelativaSalida, relZ: 0, diametro: eq.diametro_salida || 3, tipoConexion: 'NPT_HEMBRA', orientacion: { dx: 0, dy: 0, dz: 1 } },
+                    { id: 'N2', label: 'Entrada Superior', relX: 0, relY: eq.altura/2, relZ: 0, diametro: eq.diametro_entrada || 3, tipoConexion: 'NPT_HEMBRA', orientacion: { dx: 0, dy: 1, dz: 0 } }
                 ];
             }
         },
         tanque_h: { 
             nombre: 'Tanque Horizontal', categoria: 'almacenamiento', forma: 'cilindro_horizontal',
             generarPuertos: (eq) => [
-                { id: 'N1', label: 'Salida', relX: eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_salida || 4, 
-                  tipoConexion: 'BRIDADA', orientacion: { dx: 1, dy: 0, dz: 0 } },
-                { id: 'N2', label: 'Entrada', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_entrada || 4, 
-                  tipoConexion: 'BRIDADA', orientacion: { dx: -1, dy: 0, dz: 0 } }
+                { id: 'N1', label: 'Salida', relX: eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_salida || 4, tipoConexion: 'BRIDADA', orientacion: { dx: 1, dy: 0, dz: 0 } },
+                { id: 'N2', label: 'Entrada', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_entrada || 4, tipoConexion: 'BRIDADA', orientacion: { dx: -1, dy: 0, dz: 0 } }
             ]
         },
         bomba: { 
             nombre: 'Bomba Centrífuga', categoria: 'rotativo', forma: 'rectangular',
             generarPuertos: (eq) => [
-                { id: 'SUC', label: 'Succión', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_succion || 3, 
-                  tipoConexion: 'NPT_HEMBRA', orientacion: { dx: -1, dy: 0, dz: 0 } },
-                { id: 'DESC', label: 'Descarga', relX: eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_descarga || 3, 
-                  tipoConexion: 'NPT_HEMBRA', orientacion: { dx: 1, dy: 0, dz: 0 } }
+                { id: 'SUC', label: 'Succión', relX: -eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_succion || 3, tipoConexion: 'NPT_HEMBRA', orientacion: { dx: -1, dy: 0, dz: 0 } },
+                { id: 'DESC', label: 'Descarga', relX: eq.largo/2, relY: 0, relZ: 0, diametro: eq.diametro_descarga || 3, tipoConexion: 'NPT_HEMBRA', orientacion: { dx: 1, dy: 0, dz: 0 } }
             ]
         },
         bomba_dosificacion: { 
@@ -230,16 +166,19 @@ const SmartFlowCatalog = (function() {
         }
     };
 
-    // -------------------- 3. DEFINICIÓN DE COMPONENTES DE TUBERÍA --------------------
+    // -------------------- 3. COMPONENTES DE TUBERÍA --------------------
     const components = {
-        // TUBERÍAS
+        // Aseguramos que los componentes base que se extienden más abajo estén definidos primero
+        TEE_EQUAL_CS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
+        TEE_REDUCING_CS: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora', spec: 'ACERO_150_RF' },
+        CROSS_CS: { tipo: 'CROSS', nombre: 'Cruz', spec: 'ACERO_150_RF' },
+
         PIPE_PPR_PN12_5: { tipo: 'PIPE', nombre: 'Tubo PPR', spec: 'PPR_PN12_5' },
         PIPE_CS_SCH80: { tipo: 'PIPE', nombre: 'Tubo Acero Carbono SCH80', spec: 'ACERO_SCH80' },
         PIPE_SS_SANITARY: { tipo: 'PIPE', nombre: 'Tubo Acero Inox Sanitario', spec: 'SS_SANITARY' },
         PIPE_HDPE_PE100: { tipo: 'PIPE', nombre: 'Tubo HDPE PE100', spec: 'HDPE_PE100' },
         PIPE_PVC_SCH80: { tipo: 'PIPE', nombre: 'Tubo PVC SCH80', spec: 'PVC_SCH80' },
         
-        // VÁLVULAS INDUSTRIALES
         GATE_VALVE_CS_150: { tipo: 'GATE_VALVE', nombre: 'Válvula Compuerta', spec: 'ACERO_150_RF', clase: '150', norma: 'API 600', longitud_cara_cara: { 3: 203, 4: 229, 6: 267 } },
         GLOBE_VALVE_SS_300: { tipo: 'GLOBE_VALVE', nombre: 'Válvula Globo', spec: 'SS_150_RF', clase: '300', norma: 'BS 1873', longitud_cara_cara: { 3: 318, 4: 356 } },
         BUTTERFLY_VALVE_WAFER: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Wafer', spec: 'SS_150_RF', clase: '150', conexion: 'WAFER', longitud_cara_cara: { 3: 46, 4: 48, 6: 54 } },
@@ -254,15 +193,12 @@ const SmartFlowCatalog = (function() {
         PRESSURE_RELIEF_VALVE: { tipo: 'PRESSURE_RELIEF', nombre: 'Válvula de Alivio', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
         SAFETY_VALVE: { tipo: 'SAFETY_VALVE', nombre: 'Válvula de Seguridad', spec: 'SS_150_RF', clase: '150', material: 'Acero Inoxidable' },
         
-        // VÁLVULAS SANITARIAS
         BUTTERFLY_VALVE_TRI_CLAMP: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Sanitaria', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP' },
         BALL_VALVE_3A: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola Sanitaria 3A', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP' },
         
-        // REDUCTORES
         CONCENTRIC_REDUCER_CS: { tipo: 'CONCENTRIC_REDUCER', nombre: 'Reductor Concéntrico', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
         ECCENTRIC_REDUCER_CS: { tipo: 'ECCENTRIC_REDUCER', nombre: 'Reductor Excéntrico', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
         
-        // CODOS
         ELBOW_90_LR_CS: { tipo: 'ELBOW_90_LR', nombre: 'Codo 90° Radio Largo', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB', radio: '1.5D' },
         ELBOW_90_SR_CS: { tipo: 'ELBOW_90_SR', nombre: 'Codo 90° Radio Corto', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB', radio: '1.0D' },
         ELBOW_45_CS: { tipo: 'ELBOW_45', nombre: 'Codo 45°', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
@@ -273,7 +209,6 @@ const SmartFlowCatalog = (function() {
         ELBOW_90_SANITARY: { tipo: 'ELBOW_90_SR', nombre: 'Codo 90° Sanitario', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP' },
         CODO_90_ACERO_3IN: { tipo: 'ELBOW_90_ACERO', nombre: 'Codo 90° Acero 3 pulgadas', spec: 'ACERO_SCH80', conexion: 'NPT_HEMBRA', material: 'Acero al Carbono', angulo: 90, longitud_centro_cara: 75 },
         
-        // BRIDAS
         WELD_NECK_FLANGE_150: { tipo: 'WELD_NECK_FLANGE', nombre: 'Brida Cuello Soldable', spec: 'ACERO_150_RF', clase: '150', norma: 'ASME B16.5' },
         SLIP_ON_FLANGE_150: { tipo: 'SLIP_ON_FLANGE', nombre: 'Brida Slip-On', spec: 'ACERO_150_RF', clase: '150', norma: 'ASME B16.5' },
         BLIND_FLANGE_150: { tipo: 'BLIND_FLANGE', nombre: 'Brida Ciega', spec: 'ACERO_150_RF', clase: '150', norma: 'ASME B16.5' },
@@ -281,53 +216,41 @@ const SmartFlowCatalog = (function() {
         STUB_END_PPR: { tipo: 'STUB_END', nombre: 'Portabrida PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR', longitud: { 2: 50, 3: 60, 4: 75, 6: 90 } },
         STUB_END_HDPE: { tipo: 'STUB_END', nombre: 'Portabrida HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', material: 'HDPE' },
         
-        // ACCESORIOS DE DERIVACIÓN
-        TEE_EQUAL_CS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
-        TEE_REDUCING_CS: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora', spec: 'ACERO_150_RF' },
         TEE_PPR: { tipo: 'TEE_EQUAL', nombre: 'Tee PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION' },
         TEE_HDPE: { tipo: 'TEE_EQUAL', nombre: 'Tee HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION' },
         TEE_PVC: { tipo: 'TEE_EQUAL', nombre: 'Tee PVC', spec: 'PVC_SCH80', conexion: 'CEMENTADO' },
-        CROSS_CS: { tipo: 'CROSS', nombre: 'Cruz', spec: 'ACERO_150_RF' },
         CAP_CS: { tipo: 'CAP', nombre: 'Tapón', spec: 'ACERO_150_RF' },
         CAP_PPR: { tipo: 'CAP', nombre: 'Tapón PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION' },
         
-        // ADAPTADORES Y TRANSICIONES
         TRANSITION_PPR_NPT: { tipo: 'TRANSITION', nombre: 'Adaptador Macho PPR x NPT', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', conexion_origen: 'TERMOFUSION', conexion_destino: 'NPT_MACHO' },
         ADAPTADOR_MACHO_PPR_3IN: { tipo: 'TRANSITION', nombre: 'Adaptador Macho PPR 90mm x 3 NPT', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', conexion_origen: 'TERMOFUSION', conexion_destino: 'NPT_MACHO', longitud_insercion: 60 },
         ADAPTADOR_HEMBRA_PPR_3IN: { tipo: 'TRANSITION', nombre: 'Adaptador Hembra PPR 90mm x 3 NPT', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', conexion_origen: 'TERMOFUSION', conexion_destino: 'NPT_HEMBRA', longitud_insercion: 60 },
         TRANSITION_HDPE_STEEL: { tipo: 'TRANSITION', nombre: 'Transición HDPE x Acero', spec_origen: 'HDPE_PE100', spec_destino: 'ACERO_150_RF', conexion_origen: 'ELECTROFUSION', conexion_destino: 'BRIDADA' },
         
-        // UNIONES
         UNION_PPR: { tipo: 'UNION', nombre: 'Unión Universal PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION' },
         UNION_CS_3000: { tipo: 'UNION', nombre: 'Unión Universal Acero 3000', spec: 'ACERO_SCH80', conexion: 'NPT_HEMBRA' },
         UNION_UNIVERSAL_ACERO_3IN: { tipo: 'UNION_ACERO', nombre: 'Unión Universal Acero 3 pulgadas', spec: 'ACERO_SCH80', conexion: 'NPT_HEMBRA', material: 'Acero Galvanizado', longitud_total: 90 },
         UNION_HDPE: { tipo: 'UNION', nombre: 'Unión Universal HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION' },
         
-        // PASAMUROS
         BULKHEAD_PE_3IN: { tipo: 'BULKHEAD', nombre: 'Pasamuros Heavy Duty 3 pulgadas', material: 'PP_EPDM', conexion: 'NPT_HEMBRA', diametro: 3 },
         BULKHEAD_PE_4IN: { tipo: 'BULKHEAD', nombre: 'Pasamuros Heavy Duty 4 pulgadas', material: 'PP_EPDM', conexion: 'NPT_HEMBRA', diametro: 4 },
         BULKHEAD: { tipo: 'BULKHEAD', nombre: 'Pasamuros Heavy Duty', material: 'PP_EPDM', conexion: 'NPT_HEMBRA' },
         
-        // NIPLES
         NIPLE_ACERO_3IN_150MM: { tipo: 'NIPPLE', nombre: 'Niple Acero 3 x 150 mm', spec: 'ACERO_SCH80', conexion: 'NPT_MACHO', material: 'Acero al Carbono', longitud_total: 150 },
         NIPLE_ACERO_3IN_100MM: { tipo: 'NIPPLE', nombre: 'Niple Acero 3 x 100 mm', spec: 'ACERO_SCH80', conexion: 'NPT_MACHO', material: 'Acero al Carbono', longitud_total: 100 },
         
-        // JUNTAS DE EXPANSIÓN
         EXPANSION_JOINT_PPR: { tipo: 'EXPANSION_JOINT', nombre: 'Junta de Expansión PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR_EPDM' },
         EXPANSION_JOINT_CS: { tipo: 'EXPANSION_JOINT', nombre: 'Junta de Expansión Acero', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
 
-        // FILTROS
         Y_STRAINER_CS: { tipo: 'Y_STRAINER', nombre: 'Filtro Tipo Y', spec: 'ACERO_150_RF', clase: '150', malla: '40 Mesh' },
         Y_STRAINER_PPR: { tipo: 'Y_STRAINER', nombre: 'Filtro Tipo Y PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', malla: '40 Mesh' },
         T_STRAINER: { tipo: 'T_STRAINER', nombre: 'Filtro Tipo T', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
         BASKET_STRAINER: { tipo: 'BASKET_STRAINER', nombre: 'Filtro Canasta', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
 
-        // TRAMPAS DE VAPOR
         STEAM_TRAP_THERMODYNAMIC: { tipo: 'STEAM_TRAP', subtipo: 'THERMODYNAMIC', nombre: 'Trampa de Vapor Termodinámica', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
         STEAM_TRAP_FLOAT: { tipo: 'STEAM_TRAP', subtipo: 'FLOAT', nombre: 'Trampa de Vapor de Flotador', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
         STEAM_TRAP_BUCKET: { tipo: 'STEAM_TRAP', subtipo: 'BUCKET', nombre: 'Trampa de Vapor de Cubeta', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
 
-        // INSTRUMENTACIÓN
         PRESSURE_GAUGE: { tipo: 'PRESSURE_GAUGE', nombre: 'Manómetro', rango: '0-100 psi', conexion: '1/2 NPT' },
         TEMPERATURE_GAUGE: { tipo: 'TEMPERATURE_GAUGE', nombre: 'Termómetro', rango: '0-150 °C' },
         FLOW_METER_MAG: { tipo: 'FLOW_METER', subtipo: 'MAGNETICO', nombre: 'Caudalímetro Magnético', conexion: 'BRIDADA' },
@@ -340,7 +263,6 @@ const SmartFlowCatalog = (function() {
         SIGHT_GLASS: { tipo: 'INSTRUMENT', nombre: 'Visor de Flujo', conexion: 'ROSCADO' },
         LEVEL_SWITCH_RANA: { tipo: 'LEVEL_SWITCH_RANA', nombre: 'Switch de Nivel Tipo Rana', conexion: '1/2 NPT' },
 
-        // SOPORTES
         PIPE_SHOE: { tipo: 'PIPE_SHOE', nombre: 'Zapata', material: 'Acero al Carbono' },
         U_BOLT: { tipo: 'U_BOLT', nombre: 'Abrazadera U-Bolt', material: 'Acero Galvanizado' },
         GUIDE: { tipo: 'GUIDE', nombre: 'Guía', material: 'Acero al Carbono' },
@@ -349,37 +271,29 @@ const SmartFlowCatalog = (function() {
         SPRING_HANGER: { tipo: 'SPRING_HANGER', nombre: 'Colgador de Resorte', material: 'Acero al Carbono' },
         PIPE_CLAMP: { tipo: 'PIPE_CLAMP', nombre: 'Abrazadera', material: 'Acero al Carbono' },
 
-        // ACCESORIOS DE CONEXIÓN RÁPIDA
         CAMLOCK_MALE: { tipo: 'CAMLOCK', subtipo: 'MALE', nombre: 'Acople Camlock Macho', material: 'Acero Inoxidable' },
         CAMLOCK_FEMALE: { tipo: 'CAMLOCK', subtipo: 'FEMALE', nombre: 'Acople Camlock Hembra', material: 'Acero Inoxidable' },
         QUICK_CONNECT: { tipo: 'QUICK_CONNECT', nombre: 'Conexión Rápida', material: 'Acero Inoxidable' },
 
-        // MANGUERAS
         FLEXIBLE_HOSE: { tipo: 'HOSE', nombre: 'Manguera Flexible', material: 'EPDM' },
         METALLIC_HOSE: { tipo: 'HOSE', subtipo: 'METALLIC', nombre: 'Manguera Metálica', material: 'Acero Inoxidable' },
         PTFE_HOSE: { tipo: 'HOSE', subtipo: 'PTFE', nombre: 'Manguera PTFE', material: 'PTFE' },
 
-        // SILENCIADORES
         SILENCER: { tipo: 'SILENCER', nombre: 'Silenciador', material: 'Acero al Carbono' },
         VENT_SILENCER: { tipo: 'SILENCER', subtipo: 'VENT', nombre: 'Silenciador de Venteo', material: 'Acero Inoxidable' },
 
-        // ARRESTADORES DE LLAMA
         FLAME_ARRESTER: { tipo: 'FLAME_ARRESTER', nombre: 'Arrestador de Llama', material: 'Acero Inoxidable' },
 
-        // ROMPEDORES DE VACÍO
         VACUUM_BREAKER: { tipo: 'VACUUM_BREAKER', nombre: 'Rompedor de Vacío', material: 'Acero Inoxidable' },
 
-        // PURGADORES
         DRAIN_VALVE: { tipo: 'DRAIN_VALVE', nombre: 'Válvula de Purga', spec: 'ACERO_SCH80', conexion: 'NPT' },
         AIR_RELEASE_VALVE: { tipo: 'AIR_RELEASE', nombre: 'Válvula de Liberación de Aire', material: 'Acero Inoxidable' },
 
-        // MUESTREADORES
         SAMPLE_COOLER: { tipo: 'SAMPLE_COOLER', nombre: 'Enfriador de Muestra', material: 'Acero Inoxidable' },
         SAMPLE_VALVE: { tipo: 'SAMPLE_VALVE', nombre: 'Válvula de Muestreo', material: 'Acero Inoxidable' }
     };
 
-    // ==================== 4. GENERACIÓN DE PUERTOS PARA ACCESORIOS DE DERIVACIÓN ====================
-    // Funciones auxiliares para calcular vectores directores
+    // ==================== 4. GENERACIÓN DE PUERTOS PARA ACCESORIOS ====================
     function calculateLineDirection(line, param) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return { dx: 1, dy: 0, dz: 0 };
@@ -392,9 +306,7 @@ const SmartFlowCatalog = (function() {
         const targetLen = totalLen * param;
         let currentAccum = 0, segIndex = 0;
         for (let i = 0; i < lengths.length; i++) {
-            if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) {
-                segIndex = i; break;
-            }
+            if (currentAccum + lengths[i] >= targetLen || i === lengths.length - 1) { segIndex = i; break; }
             currentAccum += lengths[i];
         }
         const p1 = pts[segIndex], p2 = pts[segIndex + 1];
@@ -404,15 +316,17 @@ const SmartFlowCatalog = (function() {
     }
 
     function getPerpendicularVector(dir) {
-        let perp = { dx: -dir.dy, dy: dir.dx, dz: 0 };
-        if (Math.abs(dir.dx) < 0.1 && Math.abs(dir.dy) < 0.1) {
-            perp = { dx: 1, dy: 0, dz: 0 };
+        if (Math.abs(dir.dy) > 0.9) {
+            return { dx: 1, dy: 0, dz: 0 };
         }
+        let perp = { dx: -dir.dy, dy: dir.dx, dz: 0 };
         const len = Math.hypot(perp.dx, perp.dy, perp.dz);
-        return { dx: perp.dx/len, dy: perp.dy/len, dz: perp.dz/len };
+        if (len < 0.1) perp = { dx: 1, dy: 0, dz: 0 };
+        else { perp.dx /= len; perp.dy /= len; perp.dz /= len; }
+        return perp;
     }
 
-    // Asignar funciones generadoras a componentes de derivación
+    // Ahora extendemos de forma segura los componentes base que ya existen
     components.TEE_EQUAL = {
         ...components.TEE_EQUAL_CS,
         generarPuertos: (line, param, diametro) => {
@@ -458,21 +372,42 @@ const SmartFlowCatalog = (function() {
         }
     };
 
-    // -------------------- 5. DIMENSIONES ESTÁNDAR POR DIÁMETRO --------------------
+    // -------------------- 5. DIMENSIONES ESTÁNDAR (UNIFICADAS) --------------------
     const dimensiones = {
+        "codo_90": { 2: 152, 3: 229, 4: 305, 6: 457, 8: 610 },
+        "codo_45": { 2: 80, 3: 110, 4: 150, 6: 230 },
+        "tee": { 2: 127, 3: 152, 4: 178, 6: 229, 8: 279 },
+        "valvula_compuerta": { 2: 178, 3: 203, 4: 229, 6: 267 },
+        "reduccion": { "4x3": 102, "6x4": 152, "3x2": 89 },
         insercion_ppr: { 2: 45, 3: 60, 4: 75, 6: 90 },
         insercion_hdpe: { 2: 50, 3: 65, 4: 80, 6: 100 },
-        valvula_cara_cara: { 2: 180, 3: 220, 4: 280, 6: 350 },
-        valvula_mariposa_cara_cara: { 2: 40, 3: 46, 4: 48, 6: 54 },
-        codo_centro_cara_90: { 2: 50, 3: 75, 4: 100, 6: 150 },
-        codo_centro_cara_45: { 2: 25, 3: 35, 4: 45, 6: 65 },
         union_universal: { 2: 70, 3: 90, 4: 110, 6: 140 },
         adaptador_macho: { 2: 45, 3: 60, 4: 75, 6: 90 },
-        tee_centro_cara: { 2: 50, 3: 75, 4: 100, 6: 150 },
-        reductor_largo: { 3: 150, 4: 200, 6: 250 },
         brida_espesor_150: { 2: 12, 3: 15, 4: 18, 6: 22 },
         stub_end_longitud: { 2: 50, 3: 60, 4: 75, 6: 90 }
     };
+
+    // ==================== 6. GENERADORES DE ACCESORIOS (FITTINGS) ====================
+    const fittingGenerators = {
+        "TEE_EQUAL": (diam, spec) => {
+            const dist = dimensiones.tee[diam] || 100;
+            return [
+                { id: 'P1', relX: -dist, relY: 0, relZ: 0, orientacion: {dx:-1, dy:0, dz:0}, diametro: diam, spec, status: 'open' },
+                { id: 'P2', relX: dist, relY: 0, relZ: 0, orientacion: {dx:1, dy:0, dz:0}, diametro: diam, spec, status: 'open' },
+                { id: 'P3', relX: 0, relY: dist, relZ: 0, orientacion: {dx:0, dy:1, dz:0}, diametro: diam, spec, status: 'open' }
+            ];
+        },
+        "REDUCCION_CONCENTRICA": (d_mayor, d_menor, spec) => {
+            const key = `${d_mayor}x${d_menor}`;
+            const largo = dimensiones.reduccion[key] || 100;
+            return [
+                { id: 'P1', relX: -largo/2, relY: 0, relZ: 0, orientacion: {dx:-1, dy:0, dz:0}, diametro: d_mayor, spec, status: 'open' },
+                { id: 'P2', relX: largo/2, relY: 0, relZ: 0, orientacion: {dx:1, dy:0, dz:0}, diametro: d_menor, spec, status: 'open' }
+            ];
+        }
+    };
+
+    let _fittingCounter = 1;
 
     // -------------------- API PÚBLICA --------------------
     return {
@@ -492,13 +427,12 @@ const SmartFlowCatalog = (function() {
                 tag, tipo, posX: x, posY: y, posZ: z,
                 diametro: opciones.diametro || 1000,
                 altura: opciones.altura || 1500,
-                largo: opciones.largo || 1000,
                 material: opciones.material || 'CS',
-                diametro_salida: opciones.diametro_salida || 3,
-                diametro_entrada: opciones.diametro_entrada || 3,
-                altura_salida_desde_base: opciones.altura_salida_desde_base
+                spec: opciones.spec || 'ACERO_150_RF'
             };
-            base.puertos = def.generarPuertos(base);
+            base.puertos = def.generarPuertos(base).map(p => ({
+                ...p, spec: base.spec, status: 'open', diametro: p.diametro || 3
+            }));
             return base;
         },
         
@@ -506,6 +440,23 @@ const SmartFlowCatalog = (function() {
             const def = components[compId];
             if (!def) return null;
             return { ...def, ...opciones, id: compId };
+        },
+
+        createFitting: function(tipo, diam, spec, pos) {
+            const generator = fittingGenerators[tipo];
+            if (!generator) return null;
+            return {
+                tag: `FIT-${_fittingCounter++}`,
+                tipo: tipo,
+                posX: pos.x, posY: pos.y, posZ: pos.z,
+                isFitting: true,
+                puertos: generator(diam, spec)
+            };
+        },
+
+        getFittingForConnection: function(d_origen, d_destino, spec) {
+            if (d_origen === d_destino) return { tipo: 'TEE_EQUAL', diam: d_origen };
+            return { tipo: 'REDUCCION_CONCENTRICA', d_mayor: Math.max(d_origen, d_destino), d_menor: Math.min(d_origen, d_destino) };
         }
     };
 })();
