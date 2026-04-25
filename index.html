@@ -510,10 +510,11 @@
         window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartFlow";
 
-        // Stub de accesibilidad requerido por commands.js
+        // Stub de accesibilidad requerido por commands.js y main.js
         window.SmartFlowAccessibility = { 
             isVoiceEnabled: function() { return window.voiceEnabled; }, 
-            speak: function(m) { console.log("IA Voice:", m); }
+            speak: function(m) { console.log("IA Voice:", m); },
+            processAccessibilityCommand: function(cmd) { return false; }  // ← Añadido para evitar error al ejecutar comandos
         };
 
         function setElevation(level) {
