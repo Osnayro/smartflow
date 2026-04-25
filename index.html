@@ -364,22 +364,6 @@
         }
         .elevation-panel input:focus { border-color: var(--accent-cyan); }
 
-        .catalog-panel {
-            position: fixed; right: 20px; top: 100px;
-            width: 300px; background: var(--panel-bg); border-radius: 12px;
-            border: 1px solid var(--accent-cyan); z-index: 900;
-            display: none; flex-direction: column; max-height: 80vh; overflow-y: auto;
-            backdrop-filter: blur(8px);
-        }
-        .catalog-header {
-            background: var(--accent-blue); padding: 12px; font-weight: bold;
-            text-align: center; cursor: pointer; border-radius: 12px 12px 0 0;
-        }
-        .catalog-content { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-        .catalog-category h4 { color: var(--accent-cyan); margin-bottom: 6px; font-size: 13px; border-left: 3px solid var(--accent-cyan); padding-left: 6px; }
-        .catalog-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-        .catalog-buttons button { padding: 4px 8px; font-size: 11px; }
-
         @media (max-width: 768px) {
             .toolbar button { font-size: 10px; padding: 6px 8px; }
             .property-panel { width: 260px; right: 10px; }
@@ -524,10 +508,21 @@
         window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartFlow";
 
-        // --- CORRECCIÓN 1: Stub de Accesibilidad ---
+        // --- Stub de accesibilidad con voz real ---
         window.SmartFlowAccessibility = { 
             isVoiceEnabled: function() { return window.voiceEnabled; }, 
-            speak: function(m) { console.log("IA Voice:", m); } 
+            speak: function(message) {
+                if (!window.voiceEnabled) return;
+                if (typeof window.speechSynthesis !== 'undefined') {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(message);
+                    utterance.lang = 'es-ES';
+                    utterance.rate = 1.0;
+                    window.speechSynthesis.speak(utterance);
+                } else {
+                    console.log("IA Voice:", message);
+                }
+            }
         };
 
         function setElevation(level) {
@@ -552,7 +547,6 @@
             else panel.classList.add('hidden');
         }
 
-        // --- CORRECCIÓN 2: Fix de variable 'obj' ---
         function updatePropertyPanel(obj) {
             const content = document.getElementById('panel-content');
             if (!obj) {
@@ -574,47 +568,71 @@
             `;
         }
 
-        // --- CORRECCIÓN 3: Orden de inicialización ---
-        window.addEventListener('load', () => {
-            // 1. Inicializar Core
-            if (typeof SmartFlowCore !== 'undefined') {
-                SmartFlowCore.init(
-                    updateStatus, 
-                    () => { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }, 
-                    updatePropertyPanel
-                );
-            }
+        // --- Inicialización reforzada ---
+        function initApp() {
+            try {
+                // 1. Core
+                if (typeof SmartFlowCore !== 'undefined') {
+                    SmartFlowCore.init(
+                        updateStatus, 
+                        function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }, 
+                        updatePropertyPanel
+                    );
+                }
 
-            // 2. Inicializar Renderer ANTES que Router
-            if (typeof SmartFlowRenderer !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
-                SmartFlowRenderer.init(
-                    document.getElementById('isoCanvas'),
-                    SmartFlowCore,
-                    updateStatus
-                );
-            }
+                // 2. Renderer
+                if (typeof SmartFlowRenderer !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
+                    var canvas = document.getElementById('isoCanvas');
+                    if (canvas) {
+                        // Asegurar que el contenedor tenga dimensiones
+                        var container = canvas.parentElement;
+                        if (container && (container.clientWidth === 0 || container.clientHeight === 0)) {
+                            container.style.height = '100%';
+                            container.style.width = '100%';
+                        }
+                        SmartFlowRenderer.init(canvas, SmartFlowCore, updateStatus);
+                    }
+                }
 
-            // 3. Inicializar Router y Comandos
-            if (typeof SmartFlowRouter !== 'undefined') {
-                SmartFlowRouter.init(
-                    SmartFlowCore,
-                    SmartFlowCatalog,
-                    updateStatus,
-                    () => { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }
-                );
-            }
+                // 3. Router
+                if (typeof SmartFlowRouter !== 'undefined') {
+                    SmartFlowRouter.init(
+                        SmartFlowCore,
+                        SmartFlowCatalog,
+                        updateStatus,
+                        function() { 
+                            if (typeof SmartFlowRenderer !== 'undefined') {
+                                SmartFlowRenderer.render(); 
+                            }
+                        }
+                    );
+                }
 
-            if (typeof SmartFlowCommands !== 'undefined') {
-                SmartFlowCommands.init(
-                    SmartFlowCore,
-                    SmartFlowCatalog,
-                    SmartFlowRenderer,
-                    updateStatus,
-                    () => { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }
-                );
+                // 4. Commands
+                if (typeof SmartFlowCommands !== 'undefined') {
+                    SmartFlowCommands.init(
+                        SmartFlowCore,
+                        SmartFlowCatalog,
+                        SmartFlowRenderer,
+                        updateStatus,
+                        function() { 
+                            if (typeof SmartFlowRenderer !== 'undefined') {
+                                SmartFlowRenderer.render(); 
+                            }
+                        }
+                    );
+                }
+                
+                console.log('✅ Todos los módulos inicializados correctamente');
+            } catch (e) {
+                console.error('❌ Error durante la inicialización:', e.message);
             }
+        }
 
-            // Splash y Welcome
+        window.addEventListener('load', function() {
+            // Dar tiempo a que los scripts se carguen desde el repositorio
+            setTimeout(initApp, 100);
+
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
             const modal = document.getElementById('project-name-modal');
@@ -700,7 +718,15 @@
             document.getElementById('btnRedo')?.addEventListener('click', () => {
                 if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.redo();
             });
+
+            // Asegurar que el canvas se redimensione correctamente
+            window.addEventListener('resize', function() {
+                if (typeof SmartFlowRenderer !== 'undefined') {
+                    SmartFlowRenderer.resizeCanvas();
+                }
+            });
         });
     </script>
 </body>
 </html>
+ 
