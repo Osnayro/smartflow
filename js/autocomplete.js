@@ -280,11 +280,4 @@ Añada la inicialización del módulo dentro de initModules():
 if (typeof SmartFlowAutocomplete !== 'undefined') {
     SmartFlowAutocomplete.init(commandText, SmartFlowCore, SmartFlowCatalog, SmartFlowCommands);
 }
-```
 
-Modificaciones en index.html
-
-Añada la carga del script antes de main.js:
-
-```html
-<script src="js/autocomplete.js"></script>
