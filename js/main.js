@@ -1,3 +1,4 @@
+
 // ============================================================
 // MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
@@ -83,7 +84,10 @@
     }
     
     function autoCenter() {
-        if (SmartFlowRenderer) SmartFlowRenderer.autoCenter();
+        if (SmartFlowRenderer) {
+            SmartFlowRenderer.autoCenter();
+            notify("Vista centrada correctamente.", false);  // ← Notificación de voz y visual añadida
+        }
     }
     
     // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
@@ -94,16 +98,6 @@
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         }
         
-        // Inicializar Accesibilidad
-        if (typeof SmartFlowAccessibility !== 'undefined') {
-            SmartFlowAccessibility.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify);
-            window.notify = function(msg, isErr, context) {
-                SmartFlowAccessibility.notifyWithDescription(msg, isErr, context);
-            };
-            SmartFlowCore.init(window.notify, render);
-            if (SmartFlowRenderer) SmartFlowRenderer.init(canvas, SmartFlowCore, window.notify);
-        }
-        
         // Inicializar Router
         if (typeof SmartFlowRouter !== 'undefined') {
             SmartFlowRouter.init(SmartFlowCore, window.notify || notify);
@@ -111,11 +105,6 @@
         
         // Inicializar Commands
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
-        
-        // Inicializar Autocomplete
-        if (typeof SmartFlowAutocomplete !== 'undefined' && commandText) {
-            SmartFlowAutocomplete.init(commandText, SmartFlowCore, SmartFlowCatalog, SmartFlowCommands);
-        }
         
         notify("SmartProject - Sistema listo", false);
     }
@@ -426,4 +415,3 @@
     
     init();
 })();
-
