@@ -1,3 +1,4 @@
+
 // ============================================================
 // MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v4.5
 // Archivo: js/core.js
@@ -32,11 +33,10 @@ const SmartFlowCore = (function() {
         catch (e) { return JSON.parse(JSON.stringify(obj)); }
     };
 
-    // ==================== SINCRONIZACIÓN ROBUSTA ====================
     function syncPhysicalData() {
         _db.lines.forEach(line => {
-            if (line.origin && line.origin.equipTag) {
-                const sourceObj = findObjectByTag(line.origin.equipTag);
+            if (line.origin && line.origin.objTag) {
+                const sourceObj = findObjectByTag(line.origin.objTag);
                 if (sourceObj) {
                     const puerto = sourceObj.puertos?.find(p => p.id === line.origin.portId);
                     if (puerto) {
@@ -51,8 +51,8 @@ const SmartFlowCore = (function() {
                     }
                 }
             }
-            if (line.destination && line.destination.equipTag) {
-                const targetObj = findObjectByTag(line.destination.equipTag);
+            if (line.destination && line.destination.objTag) {
+                const targetObj = findObjectByTag(line.destination.objTag);
                 if (targetObj) {
                     const puerto = targetObj.puertos?.find(p => p.id === line.destination.portId);
                     if (puerto) {
@@ -82,7 +82,6 @@ const SmartFlowCore = (function() {
         return { x: 0, y: 0, z: 0 };
     }
 
-    // ==================== VALIDADOR DE COMPATIBILIDAD ====================
     function checkCompatibility(portA, portB) {
         const alerts = [];
         if (portA.diametro !== portB.diametro) alerts.push(`Diferencia de diámetro: ${portA.diametro}" vs ${portB.diametro}"`);
@@ -91,7 +90,6 @@ const SmartFlowCore = (function() {
         return { isCompatible: alerts.length === 0, alerts };
     }
 
-    // ==================== LOCALIZACIÓN DE SEGMENTO (para splitting) ====================
     function _findSegmentAtPoint(line, clickPoint, tolerance = 500) {
         const pts = line._cachedPoints || line.points3D;
         if (!pts || pts.length < 2) return -1;
@@ -110,7 +108,6 @@ const SmartFlowCore = (function() {
         return bestIndex;
     }
 
-    // ==================== DETECCIÓN DE COLISIONES ====================
     function pointInBox(p, box) { return p.x >= box.xMin && p.x <= box.xMax && p.y >= box.yMin && p.y <= box.yMax && p.z >= box.zMin && p.z <= box.zMax; }
     function segmentIntersectsBox(p1, p2, box) {
         if (pointInBox(p1, box) || pointInBox(p2, box)) return true;
@@ -123,7 +120,7 @@ const SmartFlowCore = (function() {
         _db.lines.forEach(line => {
             const pts = line._cachedPoints || line.points3D; if (!pts || pts.length < 2) return;
             _db.equipos.forEach(eq => {
-                if ((line.origin && line.origin.equipTag === eq.tag) || (line.destination && line.destination.equipTag === eq.tag)) return;
+                if ((line.origin && line.origin.objTag === eq.tag) || (line.destination && line.destination.objTag === eq.tag)) return;
                 let box;
                 if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
                     const r = eq.diametro/2, hh = eq.altura/2;
@@ -142,10 +139,7 @@ const SmartFlowCore = (function() {
             const lineA = _db.lines[i], ptsA = lineA._cachedPoints || lineA.points3D; if (!ptsA || ptsA.length < 2) continue;
             for (let j = i+1; j < _db.lines.length; j++) {
                 const lineB = _db.lines[j], ptsB = lineB._cachedPoints || lineB.points3D; if (!ptsB || ptsB.length < 2) continue;
-                const share = (lineA.origin && lineB.origin && lineA.origin.equipTag === lineB.origin.equipTag) ||
-                           (lineA.origin && lineB.destination && lineA.origin.equipTag === lineB.destination.equipTag) ||
-                           (lineA.destination && lineB.origin && lineA.destination.equipTag === lineB.origin.equipTag) ||
-                           (lineA.destination && lineB.destination && lineA.destination.equipTag === lineB.destination.equipTag);
+                const share = (lineA.origin && lineB.origin && lineA.origin.objTag === lineB.origin.objTag) || (lineA.origin && lineB.destination && lineA.origin.objTag === lineB.destination.objTag) || (lineA.destination && lineB.origin && lineA.destination.objTag === lineB.origin.objTag) || (lineA.destination && lineB.destination && lineA.destination.objTag === lineB.destination.objTag);
                 if (share) continue;
                 let col = false;
                 for (let a = 0; a < ptsA.length-1 && !col; a++) {
@@ -173,7 +167,6 @@ const SmartFlowCore = (function() {
         return { tag: line.tag, longitudTotal: totalLen, longitudTotalM: (totalLen/1000).toFixed(2)+' m', codos, componentes: comps, juntasEstimadas: juntas };
     }
 
-    // ==================== SPLITTING DE LÍNEAS ====================
     function _splitLineSegment(lineTag, param) {
         const line = _db.lines.find(l => l.tag === lineTag);
         if (!line) return null;
@@ -195,7 +188,6 @@ const SmartFlowCore = (function() {
         return perp;
     }
 
-    // ==================== API PÚBLICA ====================
     return {
         init: function(notifyFn, renderFn, propertyPanelFn) {
             _notifyUI = notifyFn || _notifyUI;
@@ -287,8 +279,8 @@ const SmartFlowCore = (function() {
             let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n"; let errors = 0, warnings = 0;
             _db.lines.forEach(line => {
                 const diamLinea = line.diameter;
-                if (line.origin && line.origin.equipTag) { const obj = findObjectByTag(line.origin.equipTag); const nz = obj?.puertos?.find(p => p.id === line.origin.portId); if (nz && nz.diametro !== diamLinea) { errors++; report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`; } }
-                if (line.destination && line.destination.equipTag) { const obj = findObjectByTag(line.destination.equipTag); const nz = obj?.puertos?.find(p => p.id === line.destination.portId); if (nz && nz.diametro !== diamLinea) { errors++; report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`; } }
+                if (line.origin && line.origin.objTag) { const obj = findObjectByTag(line.origin.objTag); const nz = obj?.puertos?.find(p => p.id === line.origin.portId); if (nz && nz.diametro !== diamLinea) { errors++; report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`; } }
+                if (line.destination && line.destination.objTag) { const obj = findObjectByTag(line.destination.objTag); const nz = obj?.puertos?.find(p => p.id === line.destination.portId); if (nz && nz.diametro !== diamLinea) { errors++; report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`; } }
                 if (!(line._cachedPoints || line.points3D) || (line._cachedPoints||line.points3D).length < 2) { errors++; report += `⚠️ ERROR [${line.tag}]: Línea sin geometría definida.\n`; }
             });
             const collisions = auditCollisions();
@@ -388,7 +380,7 @@ const SmartFlowCore = (function() {
                 tipo: obj.tipo || (isLine ? 'Tubería' : (isEquipment ? 'Equipo' : 'Desconocido')),
                 spec: obj.spec || 'N/A',
                 material: obj.material || 'N/A',
-                diametro: obj.diameter || obj.diametro || 'N/A',
+                diametro: obj.diameter || obj.diametro || (obj.diameter || 'N/A'),
                 dimensiones: obj.posX !== undefined ? {
                     posX: obj.posX, posY: obj.posY, posZ: obj.posZ,
                     diametro: obj.diametro, altura: obj.altura, largo: obj.largo
@@ -414,8 +406,8 @@ const SmartFlowCore = (function() {
                     return false;
                 }
                 _db.lines.forEach(line => {
-                    if (line.origin && line.origin.equipTag === tag) line.origin.equipTag = newValue;
-                    if (line.destination && line.destination.equipTag === tag) line.destination.equipTag = newValue;
+                    if (line.origin && line.origin.objTag === tag) line.origin.objTag = newValue;
+                    if (line.destination && line.destination.objTag === tag) line.destination.objTag = newValue;
                 });
                 obj.tag = newValue;
             } else {
