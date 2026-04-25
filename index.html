@@ -503,12 +503,14 @@
     <script src="js/router.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
+    <script src="js/main.js"></script>
 
     <script>
+        // Variables globales y funciones auxiliares utilizadas por el HTML
         window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartFlow";
 
-        // Stub de accesibilidad
+        // Stub de accesibilidad requerido por commands.js
         window.SmartFlowAccessibility = { 
             isVoiceEnabled: function() { return window.voiceEnabled; }, 
             speak: function(m) { console.log("IA Voice:", m); }
@@ -519,14 +521,6 @@
                 SmartFlowCore.setElevation(level);
                 SmartFlowRenderer.setElevation(level);
                 document.getElementById('customElev').value = level;
-            }
-        }
-
-        function updateStatus(msg, isErr) {
-            const el = document.getElementById('statusMsg');
-            if (el) {
-                el.innerText = msg;
-                el.style.color = isErr ? '#ef4444' : '#00f2ff';
             }
         }
 
@@ -554,63 +548,8 @@
             `;
         }
 
-        // --- INICIALIZACIÓN ROBUSTA (adaptada a nuestras APIs) ---
-        function initApp() {
-            try {
-                console.log("Iniciando SmartProject v4.5...");
-
-                if (typeof SmartFlowCore === 'undefined' || typeof SmartFlowRenderer === 'undefined') {
-                    throw new Error("Módulos críticos (Core/Renderer) no cargados.");
-                }
-
-                // 1. Core
-                SmartFlowCore.init(
-                    updateStatus,
-                    function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); },
-                    updatePropertyPanel
-                );
-
-                // 2. Renderer (con los parámetros correctos)
-                const canvas = document.getElementById('isoCanvas');
-                if (canvas) {
-                    SmartFlowRenderer.init(canvas, SmartFlowCore, updateStatus);
-                    SmartFlowRenderer.resizeCanvas();
-                }
-
-                // 3. Router
-                if (typeof SmartFlowRouter !== 'undefined') {
-                    SmartFlowRouter.init(
-                        SmartFlowCore,
-                        SmartFlowCatalog,
-                        updateStatus,
-                        function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }
-                    );
-                }
-
-                // 4. Commands
-                if (typeof SmartFlowCommands !== 'undefined') {
-                    SmartFlowCommands.init(
-                        SmartFlowCore,
-                        SmartFlowCatalog,
-                        SmartFlowRenderer,
-                        updateStatus,
-                        function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }
-                    );
-                }
-
-                updateStatus("Sistema AcQuaBlue listo.", false);
-                console.log("✅ Todos los módulos inicializados correctamente");
-            } catch (e) {
-                console.error("❌ Falla Crítica de Inicialización:", e);
-                updateStatus("ERROR DE CARGA: " + e.message, true);
-                document.getElementById('splash-status').innerText = "Error: " + e.message;
-            }
-        }
-
+        // Gestión del splash, welcome y modal (no toca inicialización de módulos)
         window.addEventListener('load', function() {
-            // Inicializar la aplicación después de un breve retraso para asegurar carga completa
-            setTimeout(initApp, 50);
-
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
             const modal = document.getElementById('project-name-modal');
@@ -651,57 +590,6 @@
                 welcome.classList.add('welcome-hidden');
                 document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
             };
-
-            // Vincular botones de la UI
-            document.getElementById('btnReset')?.addEventListener('click', () => {
-                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.autoCenter();
-            });
-            document.getElementById('btnCommand')?.addEventListener('click', () => {
-                document.getElementById('commandPanel').style.display = 'block';
-            });
-            document.getElementById('closeCommand')?.addEventListener('click', () => {
-                document.getElementById('commandPanel').style.display = 'none';
-            });
-            document.getElementById('runCommands')?.addEventListener('click', () => {
-                const textarea = document.getElementById('commandText');
-                if (textarea && typeof SmartFlowCommands !== 'undefined') {
-                    SmartFlowCommands.executeBatch(textarea.value);
-                }
-            });
-            document.getElementById('clearCommand')?.addEventListener('click', () => {
-                document.getElementById('commandText').value = '';
-            });
-            document.getElementById('btnVoice')?.addEventListener('click', function() {
-                window.voiceEnabled = !window.voiceEnabled;
-                this.innerText = window.voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
-            });
-            document.getElementById('btnRecalc')?.addEventListener('click', () => {
-                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.recalculateAll();
-            });
-            document.getElementById('btnApplyNorm')?.addEventListener('click', () => {
-                if (typeof SmartFlowCommands !== 'undefined') SmartFlowCommands.executeCommand('audit');
-            });
-            document.getElementById('btnMTO')?.addEventListener('click', () => {
-                if (typeof SmartFlowCommands !== 'undefined') SmartFlowCommands.executeCommand('bom');
-            });
-            document.getElementById('btnPDF')?.addEventListener('click', () => {
-                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.exportPDF();
-            });
-            document.getElementById('btnExportPCF')?.addEventListener('click', () => {
-                if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.exportPCF();
-            });
-            document.getElementById('btnUndo')?.addEventListener('click', () => {
-                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.undo();
-            });
-            document.getElementById('btnRedo')?.addEventListener('click', () => {
-                if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.redo();
-            });
-
-            window.addEventListener('resize', function() {
-                if (typeof SmartFlowRenderer !== 'undefined') {
-                    SmartFlowRenderer.resizeCanvas();
-                }
-            });
         });
     </script>
 </body>
