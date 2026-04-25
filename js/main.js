@@ -98,9 +98,9 @@
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         }
         
-        // Inicializar Router
+        // Inicializar Router (con los 4 parámetros: Core, Catalog, notify, render)
         if (typeof SmartFlowRouter !== 'undefined') {
-            SmartFlowRouter.init(SmartFlowCore, window.notify || notify);
+            SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, window.notify || notify, render);
         }
         
         // Inicializar Commands
