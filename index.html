@@ -497,32 +497,21 @@
         <button id="btnSetElev" style="padding:2px 8px;" aria-label="Establecer elevación">Set</button>
     </div>
 
-    <!-- MÓDULOS -->
-    <script src="js/core.js"></script>
+    <!-- MÓDULOS (Orden según dependencias) -->
     <script src="js/catalog.js"></script>
+    <script src="js/core.js"></script>
+    <script src="js/router.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
-    <script src="js/router.js"></script>
 
     <script>
         window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartFlow";
 
-        // --- Stub de accesibilidad con voz real ---
+        // Stub de accesibilidad
         window.SmartFlowAccessibility = { 
             isVoiceEnabled: function() { return window.voiceEnabled; }, 
-            speak: function(message) {
-                if (!window.voiceEnabled) return;
-                if (typeof window.speechSynthesis !== 'undefined') {
-                    window.speechSynthesis.cancel();
-                    const utterance = new SpeechSynthesisUtterance(message);
-                    utterance.lang = 'es-ES';
-                    utterance.rate = 1.0;
-                    window.speechSynthesis.speak(utterance);
-                } else {
-                    console.log("IA Voice:", message);
-                }
-            }
+            speak: function(m) { console.log("IA Voice:", m); }
         };
 
         function setElevation(level) {
@@ -549,10 +538,7 @@
 
         function updatePropertyPanel(obj) {
             const content = document.getElementById('panel-content');
-            if (!obj) {
-                togglePanel(false);
-                return;
-            }
+            if (!obj) { togglePanel(false); return; }
             togglePanel(true);
             content.innerHTML = `
                 <div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">${obj.tag}</span></div>
@@ -568,30 +554,27 @@
             `;
         }
 
-        // --- Inicialización reforzada ---
+        // --- INICIALIZACIÓN ROBUSTA (adaptada a nuestras APIs) ---
         function initApp() {
             try {
-                // 1. Core
-                if (typeof SmartFlowCore !== 'undefined') {
-                    SmartFlowCore.init(
-                        updateStatus, 
-                        function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }, 
-                        updatePropertyPanel
-                    );
+                console.log("Iniciando SmartProject v4.5...");
+
+                if (typeof SmartFlowCore === 'undefined' || typeof SmartFlowRenderer === 'undefined') {
+                    throw new Error("Módulos críticos (Core/Renderer) no cargados.");
                 }
 
-                // 2. Renderer
-                if (typeof SmartFlowRenderer !== 'undefined' && typeof SmartFlowCore !== 'undefined') {
-                    var canvas = document.getElementById('isoCanvas');
-                    if (canvas) {
-                        // Asegurar que el contenedor tenga dimensiones
-                        var container = canvas.parentElement;
-                        if (container && (container.clientWidth === 0 || container.clientHeight === 0)) {
-                            container.style.height = '100%';
-                            container.style.width = '100%';
-                        }
-                        SmartFlowRenderer.init(canvas, SmartFlowCore, updateStatus);
-                    }
+                // 1. Core
+                SmartFlowCore.init(
+                    updateStatus,
+                    function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); },
+                    updatePropertyPanel
+                );
+
+                // 2. Renderer (con los parámetros correctos)
+                const canvas = document.getElementById('isoCanvas');
+                if (canvas) {
+                    SmartFlowRenderer.init(canvas, SmartFlowCore, updateStatus);
+                    SmartFlowRenderer.resizeCanvas();
                 }
 
                 // 3. Router
@@ -600,11 +583,7 @@
                         SmartFlowCore,
                         SmartFlowCatalog,
                         updateStatus,
-                        function() { 
-                            if (typeof SmartFlowRenderer !== 'undefined') {
-                                SmartFlowRenderer.render(); 
-                            }
-                        }
+                        function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }
                     );
                 }
 
@@ -615,23 +594,22 @@
                         SmartFlowCatalog,
                         SmartFlowRenderer,
                         updateStatus,
-                        function() { 
-                            if (typeof SmartFlowRenderer !== 'undefined') {
-                                SmartFlowRenderer.render(); 
-                            }
-                        }
+                        function() { if (typeof SmartFlowRenderer !== 'undefined') SmartFlowRenderer.render(); }
                     );
                 }
-                
-                console.log('✅ Todos los módulos inicializados correctamente');
+
+                updateStatus("Sistema AcQuaBlue listo.", false);
+                console.log("✅ Todos los módulos inicializados correctamente");
             } catch (e) {
-                console.error('❌ Error durante la inicialización:', e.message);
+                console.error("❌ Falla Crítica de Inicialización:", e);
+                updateStatus("ERROR DE CARGA: " + e.message, true);
+                document.getElementById('splash-status').innerText = "Error: " + e.message;
             }
         }
 
         window.addEventListener('load', function() {
-            // Dar tiempo a que los scripts se carguen desde el repositorio
-            setTimeout(initApp, 100);
+            // Inicializar la aplicación después de un breve retraso para asegurar carga completa
+            setTimeout(initApp, 50);
 
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
@@ -719,7 +697,6 @@
                 if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.redo();
             });
 
-            // Asegurar que el canvas se redimensione correctamente
             window.addEventListener('resize', function() {
                 if (typeof SmartFlowRenderer !== 'undefined') {
                     SmartFlowRenderer.resizeCanvas();
@@ -729,4 +706,3 @@
     </script>
 </body>
 </html>
- 
