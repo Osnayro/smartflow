@@ -1,4 +1,3 @@
-
 // ============================================================
 // MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.2
 // Archivo: js/catalog.js
@@ -217,6 +216,30 @@ const SmartFlowCatalog = (function() {
         STUB_END_HDPE: { tipo: 'STUB_END', nombre: 'Portabrida HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', material: 'HDPE' },
         
         TEE_PPR: { tipo: 'TEE_EQUAL', nombre: 'Tee PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION' },
+        TEE_REDUCING_PPR: { 
+            tipo: 'TEE_REDUCING', 
+            nombre: 'Tee Reductora PPR', 
+            spec: 'PPR_PN12_5', 
+            conexion: 'TERMOFUSION',
+            material: 'PPR',
+            generarPuertos: (line, param, diametro) => {
+                // Reutiliza la misma lógica de generación de puertos que TEE_REDUCING genérico
+                const dir = calculateLineDirection(line, param);
+                const perp = getPerpendicularVector(dir);
+                return [
+                    { id: 'RUN1', label: 'Entrada', relPos: { x: -dir.dx*50, y: -dir.dy*50, z: -dir.dz*50 }, orientacion: dir, diametro },
+                    { id: 'RUN2', label: 'Salida', relPos: { x: dir.dx*50, y: dir.dy*50, z: dir.dz*50 }, orientacion: dir, diametro },
+                    { id: 'BRANCH', label: 'Derivación', relPos: { x: perp.dx*50, y: perp.dy*50, z: perp.dz*50 }, orientacion: perp, diametro: diametro * 0.75 }
+                ];
+            }
+        },
+        CONCENTRIC_REDUCER_PPR: {
+            tipo: 'CONCENTRIC_REDUCER',
+            nombre: 'Reductor Concéntrico PPR',
+            spec: 'PPR_PN12_5',
+            conexion: 'TERMOFUSION',
+            material: 'PPR'
+        },
         TEE_HDPE: { tipo: 'TEE_EQUAL', nombre: 'Tee HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION' },
         TEE_PVC: { tipo: 'TEE_EQUAL', nombre: 'Tee PVC', spec: 'PVC_SCH80', conexion: 'CEMENTADO' },
         CAP_CS: { tipo: 'CAP', nombre: 'Tapón', spec: 'ACERO_150_RF' },
@@ -316,6 +339,7 @@ const SmartFlowCatalog = (function() {
     }
 
     function getPerpendicularVector(dir) {
+        // Si la dirección es muy vertical, elegimos una perpendicular horizontal
         if (Math.abs(dir.dy) > 0.9) {
             return { dx: 1, dy: 0, dz: 0 };
         }
@@ -326,7 +350,7 @@ const SmartFlowCatalog = (function() {
         return perp;
     }
 
-    // Ahora extendemos de forma segura los componentes base que ya existen
+    // Ahora extendemos los componentes base que ya existen
     components.TEE_EQUAL = {
         ...components.TEE_EQUAL_CS,
         generarPuertos: (line, param, diametro) => {
