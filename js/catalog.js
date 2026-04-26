@@ -3,7 +3,9 @@
 // MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.2
 // Archivo: js/catalog.js
 // Correcciones: Orden de extensión, unificación de dimensiones,
-//               IDs únicos en fittings, getPerpendicular mejorado.
+//               IDs únicos en fittings, getPerpendicular mejorado,
+//               herencia de puertos para variantes de material,
+//               transiciones automáticas de materiales.
 // ============================================================
 
 const SmartFlowCatalog = (function() {
@@ -222,17 +224,7 @@ const SmartFlowCatalog = (function() {
             nombre: 'Tee Reductora PPR', 
             spec: 'PPR_PN12_5', 
             conexion: 'TERMOFUSION',
-            material: 'PPR',
-            generarPuertos: (line, param, diametro) => {
-                // Reutiliza la misma lógica de generación de puertos que TEE_REDUCING genérico
-                const dir = calculateLineDirection(line, param);
-                const perp = getPerpendicularVector(dir);
-                return [
-                    { id: 'RUN1', label: 'Entrada', relPos: { x: -dir.dx*50, y: -dir.dy*50, z: -dir.dz*50 }, orientacion: dir, diametro },
-                    { id: 'RUN2', label: 'Salida', relPos: { x: dir.dx*50, y: dir.dy*50, z: dir.dz*50 }, orientacion: dir, diametro },
-                    { id: 'BRANCH', label: 'Derivación', relPos: { x: perp.dx*50, y: perp.dy*50, z: perp.dz*50 }, orientacion: perp, diametro: diametro * 0.75 }
-                ];
-            }
+            material: 'PPR'
         },
         CONCENTRIC_REDUCER_PPR: {
             tipo: 'CONCENTRIC_REDUCER',
@@ -397,7 +389,26 @@ const SmartFlowCatalog = (function() {
         }
     };
 
-    // -------------------- 5. DIMENSIONES ESTÁNDAR (UNIFICADAS) --------------------
+    // -------------------- 5. HERENCIA DE PUERTOS PARA VARIANTES DE MATERIAL --------------------
+    const teeBase = components.TEE_EQUAL;
+    const teeRedBase = components.TEE_REDUCING;
+
+    if (teeBase && teeBase.generarPuertos) {
+        ['TEE_PPR', 'TEE_HDPE', 'TEE_PVC', 'TEE_EQUAL_CS'].forEach(key => {
+            if (components[key] && !components[key].generarPuertos) {
+                components[key].generarPuertos = teeBase.generarPuertos;
+            }
+        });
+    }
+    if (teeRedBase && teeRedBase.generarPuertos) {
+        ['TEE_REDUCING_PPR'].forEach(key => {
+            if (components[key] && !components[key].generarPuertos) {
+                components[key].generarPuertos = teeRedBase.generarPuertos;
+            }
+        });
+    }
+
+    // -------------------- 6. DIMENSIONES ESTÁNDAR (UNIFICADAS) --------------------
     const dimensiones = {
         "codo_90": { 2: 152, 3: 229, 4: 305, 6: 457, 8: 610 },
         "codo_45": { 2: 80, 3: 110, 4: 150, 6: 230 },
@@ -412,7 +423,7 @@ const SmartFlowCatalog = (function() {
         stub_end_longitud: { 2: 50, 3: 60, 4: 75, 6: 90 }
     };
 
-    // ==================== 6. GENERADORES DE ACCESORIOS (FITTINGS) ====================
+    // ==================== 7. GENERADORES DE ACCESORIOS (FITTINGS) ====================
     const fittingGenerators = {
         "TEE_EQUAL": (diam, spec) => {
             const dist = dimensiones.tee[diam] || 100;
@@ -484,16 +495,14 @@ const SmartFlowCatalog = (function() {
             return { tipo: 'REDUCCION_CONCENTRICA', d_mayor: Math.max(d_origen, d_destino), d_menor: Math.min(d_origen, d_destino) };
         },
 
-        // NUEVA FUNCIÓN: Mapea transiciones de material a accesorios del catálogo
         getTransitionAccessories: function(lineMaterial, componentMaterial, diameter) {
             const from = lineMaterial.toUpperCase();
             const to = componentMaterial.toUpperCase();
             
-            // Mapeo de combinaciones conocidas: clave "MATERIAL_ORIGEN->MATERIAL_DESTINO"
             const transitionMap = {
                 'PPR->ACERO AL CARBONO': {
-                    left: 'ADAPTADOR_MACHO_PPR_3IN',   // PPR (termofusión) a NPT macho
-                    right: 'UNION_CS_3000'             // NPT hembra a acero
+                    left: 'ADAPTADOR_MACHO_PPR_3IN',
+                    right: 'UNION_CS_3000'
                 },
                 'ACERO AL CARBONO->PPR': {
                     left: 'UNION_CS_3000',
@@ -508,7 +517,7 @@ const SmartFlowCatalog = (function() {
                     right: 'TRANSITION_HDPE_STEEL'
                 },
                 'PVC->ACERO AL CARBONO': {
-                    left: 'UNION_CS_3000',  // Asumimos un adaptador cementado a NPT
+                    left: 'UNION_CS_3000',
                     right: null
                 },
                 'ACERO AL CARBONO->PVC': {
@@ -530,7 +539,6 @@ const SmartFlowCatalog = (function() {
                 return transitionMap[key];
             }
             
-            // Si no hay regla estricta, intentamos una transición genérica con unión universal
             if (from !== to) {
                 return { left: 'UNION_UNIVERSAL_ACERO_3IN', right: 'UNION_UNIVERSAL_ACERO_3IN' };
             }
