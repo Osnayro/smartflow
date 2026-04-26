@@ -1,3 +1,4 @@
+
 // ============================================================
 // MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.2
 // Archivo: js/catalog.js
@@ -481,6 +482,60 @@ const SmartFlowCatalog = (function() {
         getFittingForConnection: function(d_origen, d_destino, spec) {
             if (d_origen === d_destino) return { tipo: 'TEE_EQUAL', diam: d_origen };
             return { tipo: 'REDUCCION_CONCENTRICA', d_mayor: Math.max(d_origen, d_destino), d_menor: Math.min(d_origen, d_destino) };
+        },
+
+        // NUEVA FUNCIÓN: Mapea transiciones de material a accesorios del catálogo
+        getTransitionAccessories: function(lineMaterial, componentMaterial, diameter) {
+            const from = lineMaterial.toUpperCase();
+            const to = componentMaterial.toUpperCase();
+            
+            // Mapeo de combinaciones conocidas: clave "MATERIAL_ORIGEN->MATERIAL_DESTINO"
+            const transitionMap = {
+                'PPR->ACERO AL CARBONO': {
+                    left: 'ADAPTADOR_MACHO_PPR_3IN',   // PPR (termofusión) a NPT macho
+                    right: 'UNION_CS_3000'             // NPT hembra a acero
+                },
+                'ACERO AL CARBONO->PPR': {
+                    left: 'UNION_CS_3000',
+                    right: 'ADAPTADOR_HEMBRA_PPR_3IN'
+                },
+                'HDPE->ACERO AL CARBONO': {
+                    left: 'TRANSITION_HDPE_STEEL',
+                    right: null
+                },
+                'ACERO AL CARBONO->HDPE': {
+                    left: null,
+                    right: 'TRANSITION_HDPE_STEEL'
+                },
+                'PVC->ACERO AL CARBONO': {
+                    left: 'UNION_CS_3000',  // Asumimos un adaptador cementado a NPT
+                    right: null
+                },
+                'ACERO AL CARBONO->PVC': {
+                    left: null,
+                    right: 'UNION_CS_3000'
+                },
+                'PPR->ACERO INOXIDABLE 316L': {
+                    left: 'ADAPTADOR_MACHO_PPR_3IN',
+                    right: 'UNION_CS_3000'
+                },
+                'ACERO INOXIDABLE 316L->PPR': {
+                    left: 'UNION_CS_3000',
+                    right: 'ADAPTADOR_HEMBRA_PPR_3IN'
+                }
+            };
+            
+            const key = `${from}->${to}`;
+            if (transitionMap[key]) {
+                return transitionMap[key];
+            }
+            
+            // Si no hay regla estricta, intentamos una transición genérica con unión universal
+            if (from !== to) {
+                return { left: 'UNION_UNIVERSAL_ACERO_3IN', right: 'UNION_UNIVERSAL_ACERO_3IN' };
+            }
+            
+            return null;
         }
     };
 })();
