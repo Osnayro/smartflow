@@ -2,8 +2,8 @@
 // ============================================================
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.3 FULL
 // Archivo: js/commands.js
-// Incluye: importPCF funcional, corrección de _cachedPoints en todas las conexiones.
-//           Transición automática de materiales al añadir componentes.
+// Incluye: importPCF funcional, corrección de _cachedPoints en todas las conexiones,
+//           transición automática de materiales, notificaciones con nombre legible.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -416,7 +416,7 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // --- EDIT (COMPLETO con transición automática de materiales) ---
+    // --- EDIT (COMPLETO con transición automática de materiales y notificaciones legibles) ---
     function parseEditCommand(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'edit' && parts[0] !== 'editar') return false;
@@ -491,7 +491,7 @@ const SmartFlowCommands = (function() {
                     const compDef = _catalog.getComponent(compType);
                     if (!compDef) { notifyWithVoice(`Componente desconocido: ${compType}`, true); return true; }
 
-                    // --- TRANSICIÓN AUTOMÁTICA DE MATERIALES ---
+                    // ---- TRANSICIÓN AUTOMÁTICA DE MATERIALES ----
                     const lineMaterial = (line.material || 'PPR').toUpperCase();
                     const compMaterial = (compDef.material || '').toUpperCase();
                     if (compMaterial && lineMaterial !== compMaterial) {
@@ -502,7 +502,7 @@ const SmartFlowCommands = (function() {
                                 if (leftCompDef) {
                                     const leftPos = Math.max(0, position - 0.05);
                                     const leftTag = `${transition.left}-${Date.now().toString().slice(-8)}`;
-                                    const leftComp = { type: transition.left, tag: leftTag, param: leftPos };
+                                    const leftComp = { type: leftCompDef.tipo, tag: leftTag, param: leftPos };
                                     if (!line.components) line.components = [];
                                     line.components.push(leftComp);
                                     if (leftCompDef.generarPuertos) {
@@ -510,7 +510,7 @@ const SmartFlowCommands = (function() {
                                         if (!line.puertos) line.puertos = [];
                                         nuevosPuertos.forEach((p, idx) => { p.id = `${leftTag}_${idx}`; line.puertos.push(p); });
                                     }
-                                    notifyWithVoice(`Adaptador izquierdo ${transition.left} insertado`, false);
+                                    notifyWithVoice(`Adaptador ${leftCompDef.nombre} insertado`, false);
                                 }
                             }
                             if (transition.right) {
@@ -518,7 +518,7 @@ const SmartFlowCommands = (function() {
                                 if (rightCompDef) {
                                     const rightPos = Math.min(1, position + 0.05);
                                     const rightTag = `${transition.right}-${Date.now().toString().slice(-8)}`;
-                                    const rightComp = { type: transition.right, tag: rightTag, param: rightPos };
+                                    const rightComp = { type: rightCompDef.tipo, tag: rightTag, param: rightPos };
                                     if (!line.components) line.components = [];
                                     line.components.push(rightComp);
                                     if (rightCompDef.generarPuertos) {
@@ -526,7 +526,7 @@ const SmartFlowCommands = (function() {
                                         if (!line.puertos) line.puertos = [];
                                         nuevosPuertos.forEach((p, idx) => { p.id = `${rightTag}_${idx}`; line.puertos.push(p); });
                                     }
-                                    notifyWithVoice(`Adaptador derecho ${transition.right} insertado`, false);
+                                    notifyWithVoice(`Adaptador ${rightCompDef.nombre} insertado`, false);
                                 }
                             }
                         } else {
@@ -534,8 +534,8 @@ const SmartFlowCommands = (function() {
                         }
                     }
 
-                    // Insertar el componente principal
-                    const comp = { type: compType, tag: `${compType}-${Date.now().toString().slice(-6)}`, param: position };
+                    // --- INSERTAR COMPONENTE PRINCIPAL ---
+                    const comp = { type: compDef.tipo, tag: `${compType}-${Date.now().toString().slice(-6)}`, param: position };
                     if (!line.components) line.components = [];
                     line.components.push(comp);
                     if (compDef.generarPuertos) {
@@ -543,10 +543,10 @@ const SmartFlowCommands = (function() {
                         if (!line.puertos) line.puertos = [];
                         nuevosPuertos.forEach((p, idx) => { p.id = `${comp.tag}_${idx}`; line.puertos.push(p); });
                         _core.updateLine(tag, { components: line.components, puertos: line.puertos });
-                        notifyWithVoice(`Componente ${compType} añadido a ${tag} con puertos lógicos`, false);
+                        notifyWithVoice(`${compDef.nombre} añadido a ${tag} con puertos lógicos`, false);
                     } else {
                         _core.updateLine(tag, { components: line.components });
-                        notifyWithVoice(`Componente ${compType} añadido a ${tag}`, false);
+                        notifyWithVoice(`${compDef.nombre} añadido a ${tag}`, false);
                     }
                     _renderUI(); return true;
                 }
