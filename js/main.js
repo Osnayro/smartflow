@@ -86,7 +86,7 @@
     function autoCenter() {
         if (SmartFlowRenderer) {
             SmartFlowRenderer.autoCenter();
-            notify("Vista centrada correctamente.", false);  // ← Notificación de voz y visual añadida
+            notify("Vista centrada correctamente.", false);
         }
     }
     
@@ -316,6 +316,57 @@
         });
     }
     
+    // -------------------- ATJOS DE TECLADO --------------------
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', function(e) {
+            // No actuar si el foco está en un campo de texto que no sea el panel de comandos
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id !== 'commandText') return;
+            
+            if (e.ctrlKey && e.shiftKey) {
+                switch(e.key.toUpperCase()) {
+                    case 'C':
+                        e.preventDefault();
+                        if (commandPanel) commandPanel.style.display = 'block';
+                        if (commandText) commandText.focus();
+                        break;
+                    case 'R':
+                        e.preventDefault();
+                        resumenProyecto();
+                        break;
+                    case 'V':
+                        e.preventDefault();
+                        autoCenter();
+                        break;
+                    case 'U':
+                        e.preventDefault();
+                        SmartFlowCore.undo();
+                        render();
+                        break;
+                    case 'Y':
+                        e.preventDefault();
+                        SmartFlowCore.redo();
+                        render();
+                        break;
+                    case 'M':
+                        e.preventDefault();
+                        exportarMTO();
+                        break;
+                    case 'P':
+                        e.preventDefault();
+                        if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF();
+                        break;
+                    case 'E':
+                        e.preventDefault();
+                        if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF();
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
+    }
+    
     // -------------------- 9. CABLEADO DE BOTONES --------------------
     function bindEvents() {
         const vincular = (id, accion) => {
@@ -408,6 +459,7 @@
         await initModules();
         bindEvents();
         initCanvasEvents();
+        setupKeyboardShortcuts();  // Activar atajos de teclado
         setTool('select');
         setElevation(0);
         autoCenter();
