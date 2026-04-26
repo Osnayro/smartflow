@@ -4,6 +4,7 @@
 // Archivo: js/router.js
 // Integración: SafeCheck de Materiales, Alineación N5/N6,
 //             Validación de Succión de Bombas, Voz Interna.
+// CORREGIDO: Asigna _cachedPoints para que las rutas se dibujen.
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -56,22 +57,20 @@ const SmartFlowRouter = (function() {
             'PVC': ['PVC'],
             'HDPE': ['HDPE']
         };
-        // Buscar si el componente contiene el material de la línea
         const compUpper = compType.toUpperCase();
         for (let [key, values] of Object.entries(rules)) {
             if (mat.includes(key) || key.includes(mat)) {
                 return values.some(v => compUpper.includes(v));
             }
         }
-        return true; // Si no hay regla específica, permitir
+        return true;
     }
 
     // 2. Alineación Vertical (Nozzles N5/N6)
     function checkVerticalAlignment(p1, p2, portA, portB) {
-        const tol = 5; // Tolerancia en mm
+        const tol = 5;
         const dx = Math.abs(p1.x - p2.x);
         const dz = Math.abs(p1.z - p2.z);
-        
         if (dx > tol || dz > tol) {
             notifyUser(`⚠️ Aviso: Nozzles ${portA} y ${portB} desalineados verticalmente.`, false);
             return false;
@@ -156,32 +155,25 @@ const SmartFlowRouter = (function() {
         ensureInitialized();
         const catalog = _catalog || window.SmartFlowCatalog;
         if (!catalog) { notifyUser('Catálogo no disponible', true); return null; }
-        
         const allTypes = catalog.listComponentTypes();
-        
         if (desiredType === 'CONCENTRIC_REDUCER' || desiredType === 'ECCENTRIC_REDUCER') {
             if (allTypes.includes('CONCENTRIC_REDUCER_CS')) return 'CONCENTRIC_REDUCER_CS';
             if (allTypes.includes('ECCENTRIC_REDUCER_CS')) return 'ECCENTRIC_REDUCER_CS';
         }
-        
         const materialUpper = lineMaterial.toUpperCase();
         let materialPrefix = '';
         if (materialUpper.includes('PPR')) materialPrefix = 'PPR';
         else if (materialUpper.includes('HDPE')) materialPrefix = 'HDPE';
         else if (materialUpper.includes('PVC')) materialPrefix = 'PVC';
         else if (materialUpper.includes('ACERO')) materialPrefix = 'CS';
-        
         if (materialPrefix) {
             const withMaterial = `${desiredType}_${materialPrefix}`;
             if (allTypes.includes(withMaterial)) return withMaterial;
         }
-        
         if (allTypes.includes(desiredType)) return desiredType;
         for (let fb of fallbackTypes) if (allTypes.includes(fb)) return fb;
-        
         const baseName = desiredType.split('_')[0];
         for (let type of allTypes) if (type.includes(baseName)) return type;
-        
         return null;
     }
 
@@ -189,7 +181,6 @@ const SmartFlowRouter = (function() {
     function insertarAccesorioEnLinea(lineTag, puntoConexion, diametroNuevaLinea, forzarTee = false) {
         ensureInitialized();
         if (!_core) { notifyUser('Core no inicializado', true); return null; }
-        
         const db = _core.getDb();
         const linea = db.lines.find(l => l.tag === lineTag);
         if (!linea) { notifyUser(`Línea ${lineTag} no encontrada`, true); return null; }
@@ -237,14 +228,12 @@ const SmartFlowRouter = (function() {
             descripcion = `Tee igual ${diamLinea}"`;
         }
 
-        // Validar compatibilidad de material antes de insertar
         const compEnCatalogo = findComponentInCatalog(tipoAccesorio, lineMaterial, []);
         if (!compEnCatalogo) {
             notifyUser(`Componente no encontrado en catálogo: ${tipoAccesorio}`, true);
             return null;
         }
-        
-        // SafeCheck de Materiales
+
         if (!validateMaterialCompatibility(lineMaterial, compEnCatalogo)) {
             notifyUser(`Alerta: Material del accesorio no compatible con ${lineMaterial}`, true);
         }
@@ -272,22 +261,19 @@ const SmartFlowRouter = (function() {
         return nuevoPuerto.id;
     }
 
-    // ---------- PROCESAR INTERSECCIONES (para create line) ----------
+    // ---------- PROCESAR INTERSECCIONES (sin cambios) ----------
     function procesarInterseccionesDeLinea(nuevaLinea) {
         ensureInitialized();
         if (!_core) return;
         const db = _core.getDb();
         const lineasExistentes = db.lines.filter(l => l.tag !== nuevaLinea.tag);
         if (lineasExistentes.length === 0) return;
-        
         const ptsNueva = nuevaLinea._cachedPoints || nuevaLinea.points3D;
         if (!ptsNueva || ptsNueva.length < 2) return;
-        
         const tolerancia = 100;
         for (let lineaExistente of lineasExistentes) {
             const ptsExistente = lineaExistente._cachedPoints || lineaExistente.points3D;
             if (!ptsExistente || ptsExistente.length < 2) continue;
-            
             for (let i = 0; i < ptsNueva.length - 1; i++) {
                 const a1 = ptsNueva[i], a2 = ptsNueva[i+1];
                 for (let j = 0; j < ptsExistente.length - 1; j++) {
@@ -317,7 +303,7 @@ const SmartFlowRouter = (function() {
         }
     }
 
-    // ---------- ENRUTAMIENTO ENTRE PUERTOS ----------
+    // ---------- ENRUTAMIENTO ENTRE PUERTOS (CORREGIDO) ----------
     function routeBetweenPorts(fromEquipTag, fromPortId, toEquipTag, toPortId, diameter = 3, material = 'PPR', spec = 'PPR_PN12_5') {
         ensureInitialized();
         if (!_core) { notifyUser('Core no inicializado', true); return null; }
@@ -332,19 +318,14 @@ const SmartFlowRouter = (function() {
         if (!startPos) { notifyUser(`Puerto origen ${fromPortId} no encontrado`, true); return null; }
 
         // --- VALIDACIONES DE INGENIERÍA ---
-        // Alineación N5/N6
         if (fromPortId.includes('N') && toPortId.includes('N')) {
             const endPosAprox = getPortPosition(toObj, toPortId);
             if (endPosAprox) checkVerticalAlignment(startPos, endPosAprox, fromPortId, toPortId);
         }
-        
-        // Succión de Bomba
         if ((fromEquipTag.includes('B-') || toEquipTag.includes('B-')) && 
             (fromObj.tipo === 'bomba' || toObj.tipo === 'bomba')) {
             validatePumpSuction(toObj, fromObj, toPortId, fromPortId);
         }
-
-        // Compatibilidad de diámetros
         const pOrigen = fromObj.puertos?.find(p => p.id === fromPortId);
         const pDestino = toObj.puertos?.find(p => p.id === toPortId);
         if (pOrigen && pDestino && pOrigen.diametro !== pDestino.diametro) {
@@ -408,7 +389,7 @@ const SmartFlowRouter = (function() {
             origin: { objType: fromObj.posX !== undefined ? 'equipment' : 'line', equipTag: fromEquipTag, portId: fromPortId },
             destination: { objType: toObj.posX !== undefined ? 'equipment' : 'line', equipTag: toEquipTag, portId: nuevoPuertoId },
             waypoints: waypoints.slice(1, -1),
-            _cachedPoints: null
+            _cachedPoints: [startPos, ...waypoints, endPos]   // GEOMETRÍA ASIGNADA
         };
 
         _core.addLine(nuevaLinea);
@@ -487,7 +468,7 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('🧭 SmartFlow Router v2.7 FINAL inicializado (SafeCheck + Voz Interna)');
+        console.log('🧭 SmartFlow Router v2.7 FINAL inicializado (SafeCheck + Voz Interna + Geometría)');
     }
 
     return {
