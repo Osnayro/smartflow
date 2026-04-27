@@ -339,18 +339,22 @@ const SmartFlowRouter = (function() {
         }
 
         let endPos, nuevoPuertoId = toPortId;
-        let destinoEsLinea = false;
 
         if (toObj._cachedPoints || toObj.points3D) {
-            destinoEsLinea = true;
             const pts = toObj._cachedPoints || toObj.points3D;
-            if (!pts || pts.length < 2) { notifyUser(`Línea destino sin geometría`, true); return null; }
+            if (!pts || pts.length < 2) {
+                notifyUser(`La línea ${toEquipTag} no tiene geometría definida.`, true);
+                return null;
+            }
             
             if (!toPortId || toPortId === '') {
                 let minDist = Infinity, bestPoint = pts[0];
                 for (let i = 0; i < pts.length - 1; i++) {
                     const proj = projectPointOnSegment(startPos, pts[i], pts[i+1]);
-                    if (proj.distance < minDist) { minDist = proj.distance; bestPoint = proj.point; }
+                    if (proj.distance < minDist) {
+                        minDist = proj.distance;
+                        bestPoint = proj.point;
+                    }
                 }
                 const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, bestPoint, diameter, true);
                 if (!puertoInsertado) return null;
