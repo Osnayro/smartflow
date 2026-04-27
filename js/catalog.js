@@ -2,10 +2,6 @@
 // ============================================================
 // MÓDULO 2: SMARTFLOW CATALOG (Catálogo de Ingeniería) - v2.2
 // Archivo: js/catalog.js
-// Correcciones: Orden de extensión, unificación de dimensiones,
-//               IDs únicos en fittings, getPerpendicular mejorado,
-//               herencia de puertos para variantes de material,
-//               transiciones automáticas de materiales.
 // ============================================================
 
 const SmartFlowCatalog = (function() {
@@ -170,7 +166,6 @@ const SmartFlowCatalog = (function() {
 
     // -------------------- 3. COMPONENTES DE TUBERÍA --------------------
     const components = {
-        // Aseguramos que los componentes base que se extienden más abajo estén definidos primero
         TEE_EQUAL_CS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
         TEE_REDUCING_CS: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora', spec: 'ACERO_150_RF' },
         CROSS_CS: { tipo: 'CROSS', nombre: 'Cruz', spec: 'ACERO_150_RF' },
@@ -181,22 +176,24 @@ const SmartFlowCatalog = (function() {
         PIPE_HDPE_PE100: { tipo: 'PIPE', nombre: 'Tubo HDPE PE100', spec: 'HDPE_PE100' },
         PIPE_PVC_SCH80: { tipo: 'PIPE', nombre: 'Tubo PVC SCH80', spec: 'PVC_SCH80' },
         
-        GATE_VALVE_CS_150: { tipo: 'GATE_VALVE', nombre: 'Válvula Compuerta', spec: 'ACERO_150_RF', clase: '150', norma: 'API 600', longitud_cara_cara: { 3: 203, 4: 229, 6: 267 } },
-        GLOBE_VALVE_SS_300: { tipo: 'GLOBE_VALVE', nombre: 'Válvula Globo', spec: 'SS_150_RF', clase: '300', norma: 'BS 1873', longitud_cara_cara: { 3: 318, 4: 356 } },
-        BUTTERFLY_VALVE_WAFER: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Wafer', spec: 'SS_150_RF', clase: '150', conexion: 'WAFER', longitud_cara_cara: { 3: 46, 4: 48, 6: 54 } },
-        BALL_VALVE_CS_150: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola', spec: 'ACERO_150_RF', clase: '150', longitud_cara_cara: { 3: 203, 4: 229 } },
-        BALL_VALVE_PPR: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', longitud_cara_cara: { 2: 150, 3: 180, 4: 220, 6: 280 } },
+        GATE_VALVE_CS_150: { tipo: 'GATE_VALVE', nombre: 'Válvula Compuerta', spec: 'ACERO_150_RF', clase: '150', norma: 'API 600', material: 'Acero al Carbono', longitud_cara_cara: { 3: 203, 4: 229, 6: 267 } },
+        GLOBE_VALVE_CS_150: { tipo: 'GLOBE_VALVE', nombre: 'Válvula Globo Acero al Carbono 150#', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
+        GLOBE_VALVE_SS_300: { tipo: 'GLOBE_VALVE', nombre: 'Válvula Globo', spec: 'SS_150_RF', clase: '300', norma: 'BS 1873', material: 'Acero Inoxidable 316L', longitud_cara_cara: { 3: 318, 4: 356 } },
+        BUTTERFLY_VALVE_WAFER: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Wafer', spec: 'SS_150_RF', clase: '150', conexion: 'WAFER', material: 'Acero Inoxidable 316L', longitud_cara_cara: { 3: 46, 4: 48, 6: 54 } },
+        BUTTERFLY_VALVE_CS_150: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Acero al Carbono 150#', spec: 'ACERO_150_RF', clase: '150', conexion: 'WAFER', material: 'Acero al Carbono', longitud_cara_cara: { 3: 46, 4: 48, 6: 54 } },
+        BALL_VALVE_CS_150: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono', longitud_cara_cara: { 3: 203, 4: 229 } },
+        BALL_VALVE_PPR: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR', longitud_cara_cara: { 2: 150, 3: 180, 4: 220, 6: 280 } },
         BUTTERFLY_VALVE_PPR: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR', longitud_cara_cara: { 2: 40, 3: 46, 4: 48, 6: 54 } },
-        CHECK_VALVE_SWING_CS: { tipo: 'CHECK_VALVE', subtipo: 'SWING', nombre: 'Válvula Check Swing', spec: 'ACERO_150_RF', clase: '150' },
-        CHECK_VALVE_WAFER_SS: { tipo: 'CHECK_VALVE', subtipo: 'WAFER', nombre: 'Válvula Check Wafer', spec: 'SS_150_RF' },
+        CHECK_VALVE_SWING_CS: { tipo: 'CHECK_VALVE', subtipo: 'SWING', nombre: 'Válvula Check Swing', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
+        CHECK_VALVE_WAFER_SS: { tipo: 'CHECK_VALVE', subtipo: 'WAFER', nombre: 'Válvula Check Wafer', spec: 'SS_150_RF', material: 'Acero Inoxidable 316L' },
         CHECK_VALVE_PPR: { tipo: 'CHECK_VALVE', subtipo: 'SWING', nombre: 'Válvula Check PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR' },
-        DIAPHRAGM_VALVE_PTFE: { tipo: 'DIAPHRAGM_VALVE', nombre: 'Válvula de Diafragma', spec: 'PTFE_LINED', clase: '150' },
-        CONTROL_VALVE_CS: { tipo: 'CONTROL_VALVE', nombre: 'Válvula de Control', spec: 'ACERO_150_RF', actuador: 'DIAFRAGMA' },
+        DIAPHRAGM_VALVE_PTFE: { tipo: 'DIAPHRAGM_VALVE', nombre: 'Válvula de Diafragma', spec: 'PTFE_LINED', clase: '150', material: 'Acero al Carbono Revestido PTFE' },
+        CONTROL_VALVE_CS: { tipo: 'CONTROL_VALVE', nombre: 'Válvula de Control', spec: 'ACERO_150_RF', actuador: 'DIAFRAGMA', material: 'Acero al Carbono' },
         PRESSURE_RELIEF_VALVE: { tipo: 'PRESSURE_RELIEF', nombre: 'Válvula de Alivio', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
         SAFETY_VALVE: { tipo: 'SAFETY_VALVE', nombre: 'Válvula de Seguridad', spec: 'SS_150_RF', clase: '150', material: 'Acero Inoxidable' },
         
-        BUTTERFLY_VALVE_TRI_CLAMP: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Sanitaria', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP' },
-        BALL_VALVE_3A: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola Sanitaria 3A', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP' },
+        BUTTERFLY_VALVE_TRI_CLAMP: { tipo: 'BUTTERFLY_VALVE', nombre: 'Válvula Mariposa Sanitaria', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP', material: 'Acero Inoxidable 316L' },
+        BALL_VALVE_3A: { tipo: 'BALL_VALVE', nombre: 'Válvula de Bola Sanitaria 3A', spec: 'SS_SANITARY', conexion: 'TRI-CLAMP', material: 'Acero Inoxidable 316L' },
         
         CONCENTRIC_REDUCER_CS: { tipo: 'CONCENTRIC_REDUCER', nombre: 'Reductor Concéntrico', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
         ECCENTRIC_REDUCER_CS: { tipo: 'ECCENTRIC_REDUCER', nombre: 'Reductor Excéntrico', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB' },
@@ -302,7 +299,7 @@ const SmartFlowCatalog = (function() {
 
         VACUUM_BREAKER: { tipo: 'VACUUM_BREAKER', nombre: 'Rompedor de Vacío', material: 'Acero Inoxidable' },
 
-        DRAIN_VALVE: { tipo: 'DRAIN_VALVE', nombre: 'Válvula de Purga', spec: 'ACERO_SCH80', conexion: 'NPT' },
+        DRAIN_VALVE: { tipo: 'DRAIN_VALVE', nombre: 'Válvula de Purga', spec: 'ACERO_SCH80', conexion: 'NPT', material: 'Acero al Carbono' },
         AIR_RELEASE_VALVE: { tipo: 'AIR_RELEASE', nombre: 'Válvula de Liberación de Aire', material: 'Acero Inoxidable' },
 
         SAMPLE_COOLER: { tipo: 'SAMPLE_COOLER', nombre: 'Enfriador de Muestra', material: 'Acero Inoxidable' },
@@ -332,7 +329,6 @@ const SmartFlowCatalog = (function() {
     }
 
     function getPerpendicularVector(dir) {
-        // Si la dirección es muy vertical, elegimos una perpendicular horizontal
         if (Math.abs(dir.dy) > 0.9) {
             return { dx: 1, dy: 0, dz: 0 };
         }
@@ -343,7 +339,7 @@ const SmartFlowCatalog = (function() {
         return perp;
     }
 
-    // Ahora extendemos los componentes base que ya existen
+    // Extendemos los componentes base
     components.TEE_EQUAL = {
         ...components.TEE_EQUAL_CS,
         generarPuertos: (line, param, diametro) => {
@@ -445,6 +441,7 @@ const SmartFlowCatalog = (function() {
 
     let _fittingCounter = 1;
 
+
     // -------------------- API PÚBLICA --------------------
     return {
         getSpecs: function() { return specs; },
@@ -496,15 +493,36 @@ const SmartFlowCatalog = (function() {
         },
 
         getTransitionAccessories: function(lineMaterial, componentMaterial, diameter) {
-            const from = lineMaterial.toUpperCase();
-            const to = componentMaterial.toUpperCase();
-            
+            const from = (lineMaterial || '').toUpperCase().trim();
+            const to   = (componentMaterial || '').toUpperCase().trim();
+
+            if (!to) return null;
+            if (from === to) return null;
+
+            const plasticFamilies = [
+                ['PPR', 'PP', 'PPR', 'PP-EPDM', 'PP_EPDM'],
+                ['PE', 'PE100', 'HDPE', 'PE_EPDM'],
+                ['PVC', 'CPVC']
+            ];
+            const isPlasticCompatible = plasticFamilies.some(family => 
+                family.some(m => from.includes(m)) && family.some(m => to.includes(m))
+            );
+            if (isPlasticCompatible) return null;
+
             const transitionMap = {
                 'PPR->ACERO AL CARBONO': {
                     left: 'ADAPTADOR_MACHO_PPR_3IN',
                     right: 'UNION_CS_3000'
                 },
                 'ACERO AL CARBONO->PPR': {
+                    left: 'UNION_CS_3000',
+                    right: 'ADAPTADOR_HEMBRA_PPR_3IN'
+                },
+                'PPR->ACERO INOXIDABLE 316L': {
+                    left: 'ADAPTADOR_MACHO_PPR_3IN',
+                    right: 'UNION_CS_3000'
+                },
+                'ACERO INOXIDABLE 316L->PPR': {
                     left: 'UNION_CS_3000',
                     right: 'ADAPTADOR_HEMBRA_PPR_3IN'
                 },
@@ -524,25 +542,28 @@ const SmartFlowCatalog = (function() {
                     left: null,
                     right: 'UNION_CS_3000'
                 },
-                'PPR->ACERO INOXIDABLE 316L': {
-                    left: 'ADAPTADOR_MACHO_PPR_3IN',
-                    right: 'UNION_CS_3000'
-                },
-                'ACERO INOXIDABLE 316L->PPR': {
+                'ACERO AL CARBONO->ACERO INOXIDABLE 316L': {
                     left: 'UNION_CS_3000',
-                    right: 'ADAPTADOR_HEMBRA_PPR_3IN'
+                    right: null
+                },
+                'ACERO INOXIDABLE 316L->ACERO AL CARBONO': {
+                    left: null,
+                    right: 'UNION_CS_3000'
                 }
             };
-            
+
             const key = `${from}->${to}`;
             if (transitionMap[key]) {
                 return transitionMap[key];
             }
-            
-            if (from !== to) {
+
+            const metalMaterials = ['ACERO', 'INOXIDABLE', 'INOX', 'CARBONO', 'CS', 'SS'];
+            const fromIsMetal = metalMaterials.some(m => from.includes(m));
+            const toIsMetal = metalMaterials.some(m => to.includes(m));
+            if (fromIsMetal && toIsMetal) {
                 return { left: 'UNION_UNIVERSAL_ACERO_3IN', right: 'UNION_UNIVERSAL_ACERO_3IN' };
             }
-            
+
             return null;
         }
     };
