@@ -3,7 +3,8 @@
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.3 FULL
 // Archivo: js/commands.js
 // Incluye: importPCF funcional, corrección de _cachedPoints en todas las conexiones,
-//           transición automática de materiales, notificaciones con nombre legible.
+//           transición automática de materiales, notificaciones con nombre legible,
+//           herencia de material/spec al conectar, auto‑codo en extremos de línea.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -245,7 +246,28 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- CONNECT (CORREGIDO CON _cachedPoints) ---
+    // --- Helper para encontrar codo según material (duplicado del router) ---
+    function findElbowForLine(material, diameter, angleDeg) {
+        const mat = material.toUpperCase();
+        const is90 = (Math.abs(angleDeg - 90) < 10);
+        const is45 = (Math.abs(angleDeg - 45) < 10);
+        if (!is90 && !is45) return null;
+
+        if (mat.includes('PPR')) {
+            return is90 ? 'ELBOW_90_PPR' : 'ELBOW_45_PPR';
+        } else if (mat.includes('HDPE')) {
+            return is90 ? 'ELBOW_90_HDPE' : null;
+        } else if (mat.includes('PVC')) {
+            return is90 ? 'ELBOW_90_PVC' : null;
+        } else if (mat.includes('ACERO')) {
+            return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
+        } else if (mat.includes('INOXIDABLE') || mat.includes('INOX')) {
+            return is90 ? 'ELBOW_90_SANITARY' : null;
+        }
+        return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
+    }
+
+    // --- CONNECT (con herencia de material y auto‑codo en destino) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -286,12 +308,18 @@ const SmartFlowCommands = (function() {
         const isNumeric = !isNaN(numPos) && isFinite(numPos);
         const posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
 
+        // Herencia de diámetro, material y spec desde el objeto destino si no se especificaron explícitamente
         if (isLine && toObj.diameter && !parts.slice(6).some(p => p === 'diameter' || p === 'diametro')) {
             diameter = toObj.diameter;
+        }
+        if (!parts.slice(6).some(p => p === 'material')) {
+            if (toObj.material) material = toObj.material;
+            if (toObj.spec) spec = toObj.spec;
         }
 
         const newTag = `L-${(db.lines?.length || 0) + 1}`;
         let endPos = null;
+        let newComponents = [];
 
         if (isLine && posRelativa !== null) {
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
@@ -324,7 +352,8 @@ const SmartFlowCommands = (function() {
                 origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle },
                 destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
                 waypoints: [],
-                _cachedPoints: [startPos, endPos]
+                _cachedPoints: [startPos, endPos],
+                components: newComponents
             };
             _core.addLine(nuevaLinea);
             if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
@@ -335,6 +364,7 @@ const SmartFlowCommands = (function() {
             notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
             return true;
         } else {
+            // Conexión a puerto concreto (equipo o extremo de línea)
             const nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
             if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
 
@@ -348,12 +378,63 @@ const SmartFlowCommands = (function() {
                     z: basePos.z + (nzTo.relZ || 0)
                 };
             }
+
+            // --- AUTO‑CODO EN DESTINO SI ES EXTREMO DE LÍNEA ---
+            if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+                const pts = toObj._cachedPoints || toObj.points3D;
+                if (pts && pts.length >= 2) {
+                    let lineDir;
+                    if (toNozzleRaw === '0') {
+                        lineDir = {
+                            dx: pts[1].x - pts[0].x,
+                            dy: pts[1].y - pts[0].y,
+                            dz: pts[1].z - pts[0].z
+                        };
+                    } else {
+                        const n = pts.length;
+                        lineDir = {
+                            dx: pts[n-1].x - pts[n-2].x,
+                            dy: pts[n-1].y - pts[n-2].y,
+                            dz: pts[n-1].z - pts[n-2].z
+                        };
+                    }
+                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
+                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
+
+                    // Dirección de llegada de la nueva línea (de startPos a endPos)
+                    const newArriveDir = {
+                        dx: endPos.x - startPos.x,
+                        dy: endPos.y - startPos.y,
+                        dz: endPos.z - startPos.z
+                    };
+                    const newLen = Math.hypot(newArriveDir.dx, newArriveDir.dy, newArriveDir.dz) || 1;
+                    const newDir = { dx: newArriveDir.dx/newLen, dy: newArriveDir.dy/newLen, dz: newArriveDir.dz/newLen };
+
+                    const dot = Math.abs(lineDir.dx*newDir.dx + lineDir.dy*newDir.dy + lineDir.dz*newDir.dz);
+                    const angleRad = Math.acos(Math.min(1, dot));
+                    const angleDeg = angleRad * 180 / Math.PI;
+
+                    if (angleDeg > 15) {
+                        const elbowId = findElbowForLine(material, diameter, angleDeg);
+                        if (elbowId) {
+                            newComponents.push({
+                                type: elbowId,
+                                tag: elbowId + '-' + Date.now().toString().slice(-6),
+                                param: 1.0   // al final de la nueva línea
+                            });
+                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al final de ${newTag}`, false);
+                        }
+                    }
+                }
+            }
+
             const nuevaLinea = {
                 tag: newTag, diameter, material, spec,
                 origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle },
                 destination: { objType: toObj.tipo ? 'equipment' : 'line', equipTag: toEquip, portId: toNozzleRaw },
                 waypoints: [],
-                _cachedPoints: [startPos, endPos]
+                _cachedPoints: [startPos, endPos],
+                components: newComponents
             };
             _core.addLine(nuevaLinea);
             if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
@@ -540,6 +621,11 @@ const SmartFlowCommands = (function() {
                     line.components.push(comp);
                     if (compDef.generarPuertos) {
                         const nuevosPuertos = compDef.generarPuertos(line, position, line.diameter);
+                        if (!nuevosPuertos || nuevosPuertos.length === 0) {
+                            notifyWithVoice(`Error: El componente ${compDef.nombre} no generó puertos válidos`, true);
+                            console.warn('Generación de puertos fallida para', compType, 'parámetros:', line, position, line.diameter);
+                            return true;
+                        }
                         if (!line.puertos) line.puertos = [];
                         nuevosPuertos.forEach((p, idx) => { p.id = `${comp.tag}_${idx}`; line.puertos.push(p); });
                         _core.updateLine(tag, { components: line.components, puertos: line.puertos });
