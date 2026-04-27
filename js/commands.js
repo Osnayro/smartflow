@@ -246,7 +246,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- Helper para encontrar codo según material (duplicado del router) ---
+    // --- Helper para encontrar codo según material ---
     function findElbowForLine(material, diameter, angleDeg) {
         const mat = material.toUpperCase();
         const is90 = (Math.abs(angleDeg - 90) < 10);
@@ -267,7 +267,7 @@ const SmartFlowCommands = (function() {
         return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
     }
 
-    // --- CONNECT (con herencia de material y auto‑codo en destino) ---
+    // --- CONNECT (con herencia de material y auto‑codo en extremos) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -306,7 +306,7 @@ const SmartFlowCommands = (function() {
         const isLine = toObj._cachedPoints || toObj.points3D;
         const numPos = parseFloat(toNozzleRaw);
         const isNumeric = !isNaN(numPos) && isFinite(numPos);
-        const posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
+        let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
 
         // Herencia de diámetro, material y spec desde el objeto destino si no se especificaron explícitamente
         if (isLine && toObj.diameter && !parts.slice(6).some(p => p === 'diameter' || p === 'diametro')) {
@@ -315,6 +315,12 @@ const SmartFlowCommands = (function() {
         if (!parts.slice(6).some(p => p === 'material')) {
             if (toObj.material) material = toObj.material;
             if (toObj.spec) spec = toObj.spec;
+        }
+
+        // Si la posición numérica es un extremo, la tratamos como puerto directo
+        if (isLine && posRelativa !== null && (posRelativa <= 0.01 || posRelativa >= 0.99)) {
+            toNozzleRaw = posRelativa <= 0.01 ? '0' : '1';
+            posRelativa = null;
         }
 
         const newTag = `L-${(db.lines?.length || 0) + 1}`;
@@ -364,7 +370,6 @@ const SmartFlowCommands = (function() {
             notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
             return true;
         } else {
-            // Conexión a puerto concreto (equipo o extremo de línea)
             const nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
             if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
 
@@ -401,7 +406,6 @@ const SmartFlowCommands = (function() {
                     const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
                     lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
 
-                    // Dirección de llegada de la nueva línea (de startPos a endPos)
                     const newArriveDir = {
                         dx: endPos.x - startPos.x,
                         dy: endPos.y - startPos.y,
@@ -420,7 +424,7 @@ const SmartFlowCommands = (function() {
                             newComponents.push({
                                 type: elbowId,
                                 tag: elbowId + '-' + Date.now().toString().slice(-6),
-                                param: 1.0   // al final de la nueva línea
+                                param: 1.0
                             });
                             notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al final de ${newTag}`, false);
                         }
@@ -444,6 +448,7 @@ const SmartFlowCommands = (function() {
             return true;
         }
     }
+
 
     // --- ROUTE (COMANDO) ---
     function parseRoute(cmd) {
