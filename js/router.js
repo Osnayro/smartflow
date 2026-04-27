@@ -11,7 +11,6 @@ const SmartFlowRouter = (function() {
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
 
-    // ---------- AUTO-INICIALIZACIÓN ----------
     function ensureInitialized() {
         if (!_core && typeof SmartFlowCore !== 'undefined') _core = SmartFlowCore;
         if (!_catalog && typeof SmartFlowCatalog !== 'undefined') _catalog = SmartFlowCatalog;
@@ -19,7 +18,6 @@ const SmartFlowRouter = (function() {
         return false;
     }
 
-    // ---------- MOTOR DE VOZ INDEPENDIENTE ----------
     function speakText(text) {
         if (!window.voiceEnabled) return;
         if (typeof window.speechSynthesis !== 'undefined') {
@@ -31,7 +29,6 @@ const SmartFlowRouter = (function() {
         }
     }
 
-    // ---------- NOTIFICACIÓN MEJORADA ----------
     function notifyUser(message, isError = false) {
         if (typeof _notifyUI === 'function') _notifyUI(message, isError);
         const statusEl = document.getElementById('statusMsg');
@@ -41,8 +38,6 @@ const SmartFlowRouter = (function() {
         }
         speakText(message);
     }
-
-    // ==================== NUEVAS RUTINAS DE VALIDACIÓN TÉCNICA ====================
 
     function validateMaterialCompatibility(lineMat, compType) {
         const mat = lineMat.toUpperCase();
@@ -83,7 +78,6 @@ const SmartFlowRouter = (function() {
         return true;
     }
 
-    // ==================== FUNCIONES GEOMÉTRICAS ====================
     function distance(p1, p2) { return Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z); }
     function addPoints(p1, p2) { return { x: p1.x + p2.x, y: p1.y + p2.y, z: p1.z + p2.z }; }
     function subtractPoints(p1, p2) { return { x: p1.x - p2.x, y: p1.y - p2.y, z: p1.z - p2.z }; }
@@ -143,45 +137,56 @@ const SmartFlowRouter = (function() {
         return { dx: 1, dy: 0, dz: 0 };
     }
 
-    // ---------- BÚSQUEDA DE COMPONENTE EN CATÁLOGO ----------
     function findComponentInCatalog(desiredType, lineMaterial = 'PPR', fallbackTypes = []) {
         ensureInitialized();
         const catalog = _catalog || window.SmartFlowCatalog;
         if (!catalog) { notifyUser('Catálogo no disponible', true); return null; }
-        
         const allTypes = catalog.listComponentTypes();
-        
         if (desiredType === 'CONCENTRIC_REDUCER' || desiredType === 'ECCENTRIC_REDUCER') {
             if (allTypes.includes('CONCENTRIC_REDUCER_CS')) return 'CONCENTRIC_REDUCER_CS';
             if (allTypes.includes('ECCENTRIC_REDUCER_CS')) return 'ECCENTRIC_REDUCER_CS';
         }
-        
         const materialUpper = lineMaterial.toUpperCase();
         let materialPrefix = '';
         if (materialUpper.includes('PPR')) materialPrefix = 'PPR';
         else if (materialUpper.includes('HDPE')) materialPrefix = 'HDPE';
         else if (materialUpper.includes('PVC')) materialPrefix = 'PVC';
         else if (materialUpper.includes('ACERO')) materialPrefix = 'CS';
-        
         if (materialPrefix) {
             const withMaterial = `${desiredType}_${materialPrefix}`;
             if (allTypes.includes(withMaterial)) return withMaterial;
         }
-        
         if (allTypes.includes(desiredType)) return desiredType;
         for (let fb of fallbackTypes) if (allTypes.includes(fb)) return fb;
-        
         const baseName = desiredType.split('_')[0];
         for (let type of allTypes) if (type.includes(baseName)) return type;
-        
         return null;
     }
 
-    // ---------- INSERCIÓN AUTOMÁTICA DE ACCESORIOS ----------
+    function findElbowForLine(material, diameter, angleDeg) {
+        const mat = material.toUpperCase();
+        const is90 = (Math.abs(angleDeg - 90) < 10);
+        const is45 = (Math.abs(angleDeg - 45) < 10);
+        if (!is90 && !is45) return null;
+        const catalog = _catalog || window.SmartFlowCatalog;
+        if (!catalog) return null;
+        if (mat.includes('PPR')) {
+            return is90 ? 'ELBOW_90_PPR' : 'ELBOW_45_PPR';
+        } else if (mat.includes('HDPE')) {
+            return is90 ? 'ELBOW_90_HDPE' : null;
+        } else if (mat.includes('PVC')) {
+            return is90 ? 'ELBOW_90_PVC' : null;
+        } else if (mat.includes('ACERO')) {
+            return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
+        } else if (mat.includes('INOXIDABLE') || mat.includes('INOX')) {
+            return is90 ? 'ELBOW_90_SANITARY' : null;
+        }
+        return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
+    }
+
     function insertarAccesorioEnLinea(lineTag, puntoConexion, diametroNuevaLinea, forzarTee = false) {
         ensureInitialized();
         if (!_core) { notifyUser('Core no inicializado', true); return null; }
-        
         const db = _core.getDb();
         const linea = db.lines.find(l => l.tag === lineTag);
         if (!linea) { notifyUser(`Línea ${lineTag} no encontrada`, true); return null; }
@@ -234,7 +239,7 @@ const SmartFlowRouter = (function() {
             notifyUser(`Componente no encontrado en catálogo: ${tipoAccesorio}`, true);
             return null;
         }
-        
+
         if (!validateMaterialCompatibility(lineMaterial, compEnCatalogo)) {
             notifyUser(`Alerta: Material del accesorio no compatible con ${lineMaterial}`, true);
         }
@@ -262,7 +267,6 @@ const SmartFlowRouter = (function() {
         return nuevoPuerto.id;
     }
 
-    // ---------- PROCESAR INTERSECCIONES (para create line) ----------
     function procesarInterseccionesDeLinea(nuevaLinea) {
         ensureInitialized();
         if (!_core) return;
@@ -307,7 +311,6 @@ const SmartFlowRouter = (function() {
         }
     }
 
-    // ---------- ENRUTAMIENTO ENTRE PUERTOS (CON AUTO‑CODO) ----------
     function routeBetweenPorts(fromEquipTag, fromPortId, toEquipTag, toPortId, diameter = 3, material = 'PPR', spec = 'PPR_PN12_5') {
         ensureInitialized();
         if (!_core) { notifyUser('Core no inicializado', true); return null; }
@@ -321,7 +324,6 @@ const SmartFlowRouter = (function() {
         let startPos = getPortPosition(fromObj, fromPortId);
         if (!startPos) { notifyUser(`Puerto origen ${fromPortId} no encontrado`, true); return null; }
 
-        // --- VALIDACIONES DE INGENIERÍA ---
         if (fromPortId.includes('N') && toPortId.includes('N')) {
             const endPosAprox = getPortPosition(toObj, toPortId);
             if (endPosAprox) checkVerticalAlignment(startPos, endPosAprox, fromPortId, toPortId);
@@ -361,10 +363,17 @@ const SmartFlowRouter = (function() {
                 else puntoConexion = getPortPosition(toObj, toPortId);
                 
                 if (!puntoConexion) { notifyUser(`Puerto destino no encontrado`, true); return null; }
-                const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoConexion, diameter, false);
-                if (!puertoInsertado) return null;
-                nuevoPuertoId = puertoInsertado;
-                toObj = db.lines.find(l => l.tag === toEquipTag);
+
+                const esExtremo = (toPortId === '0' || toPortId === '1');
+                const diffDiam = Math.abs(diameter - (toObj.diameter || 4)) > 0.1;
+                if (esExtremo && !diffDiam) {
+                    nuevoPuertoId = toPortId;
+                } else {
+                    const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoConexion, diameter, esExtremo ? false : true);
+                    if (!puertoInsertado) return null;
+                    nuevoPuertoId = puertoInsertado;
+                    toObj = db.lines.find(l => l.tag === toEquipTag);
+                }
             }
         }
 
@@ -397,7 +406,6 @@ const SmartFlowRouter = (function() {
             components: []
         };
 
-        // ----- AUTO‑CODO EN ORIGEN (extremo de línea) -----
         if (!fromObj.posX && (fromPortId === '0' || fromPortId === '1')) {
             const fromPortDir = getPortDirection(fromObj, fromPortId);
             const newStartDir = normalizeVector(subtractPoints(p1, startPos));
@@ -416,7 +424,6 @@ const SmartFlowRouter = (function() {
             }
         }
 
-        // ----- AUTO‑CODO EN DESTINO (extremo de línea) -----
         if (!toObj.posX && (nuevoPuertoId === '0' || nuevoPuertoId === '1')) {
             const toPortDir = getPortDirection(toObj, nuevoPuertoId);
             const arrivingDir = normalizeVector(subtractPoints(endPos, p4));
@@ -455,7 +462,6 @@ const SmartFlowRouter = (function() {
         return nuevaLinea;
     }
 
-    // ---------- MANEJO DEL SNAP ----------
     function handleSnapClick(snapData) {
         if (!snapData) return;
         ensureInitialized();
@@ -467,7 +473,6 @@ const SmartFlowRouter = (function() {
         notifyUser(`Puerto seleccionado: ${snapData.item.tag} - ${snapData.port.id}`);
     }
 
-    // ---------- COMANDO RÁPIDO ----------
     function executeCommand(cmdLine) {
         ensureInitialized();
         const parts = cmdLine.trim().split(/\s+/);
@@ -505,13 +510,12 @@ const SmartFlowRouter = (function() {
         }
     }
 
-    // ---------- INICIALIZACIÓN ----------
     function init(coreInstance, catalogInstance, notifyFn, renderFn) {
         _core = coreInstance;
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('🧭 SmartFlow Router v2.7 FINAL inicializado (completo)');
+        console.log('SmartFlow Router v2.7 FINAL inicializado');
     }
 
     return {
