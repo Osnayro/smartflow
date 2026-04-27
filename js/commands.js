@@ -274,7 +274,7 @@ const SmartFlowCommands = (function() {
         const fromEquip = parts[1], fromNozzle = parts[2];
         if (parts[3] !== 'to' && parts[3] !== 'a') return false;
         const toEquip = parts[4];
-        const toNozzleRaw = parts[5];
+        let toNozzleRaw = parts[5];                     // ← cambiado de const a let
         let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
         for (let i = 6; i < parts.length; i++) {
             if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
@@ -370,6 +370,8 @@ const SmartFlowCommands = (function() {
             notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
             return true;
         } else {
+            // Aseguramos que el array puertos exista
+            if (!toObj.puertos) toObj.puertos = [];
             const nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
             if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
 
@@ -448,7 +450,6 @@ const SmartFlowCommands = (function() {
             return true;
         }
     }
-
 
     // --- ROUTE (COMANDO) ---
     function parseRoute(cmd) {
