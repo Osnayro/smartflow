@@ -1,10 +1,10 @@
-
 // ============================================================
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.3 FULL
 // Archivo: js/commands.js
 // Incluye: importPCF funcional, corrección de _cachedPoints en todas las conexiones,
 //           transición automática de materiales, notificaciones con nombre legible,
-//           herencia de material/spec al conectar, auto‑codo en extremos de línea.
+//           herencia de material/spec al conectar, auto‑codo en extremos de línea,
+//           manejo correcto de puertos virtuales 0 y 1.
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -274,7 +274,7 @@ const SmartFlowCommands = (function() {
         const fromEquip = parts[1], fromNozzle = parts[2];
         if (parts[3] !== 'to' && parts[3] !== 'a') return false;
         const toEquip = parts[4];
-        let toNozzleRaw = parts[5];                     // ← cambiado de const a let
+        let toNozzleRaw = parts[5];                     // let para permitir reasignación
         let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
         for (let i = 6; i < parts.length; i++) {
             if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
@@ -317,7 +317,7 @@ const SmartFlowCommands = (function() {
             if (toObj.spec) spec = toObj.spec;
         }
 
-        // Si la posición numérica es un extremo, la tratamos como puerto directo
+        // Si la posición numérica es un extremo, la tratamos como puerto virtual
         if (isLine && posRelativa !== null && (posRelativa <= 0.01 || posRelativa >= 0.99)) {
             toNozzleRaw = posRelativa <= 0.01 ? '0' : '1';
             posRelativa = null;
@@ -326,8 +326,10 @@ const SmartFlowCommands = (function() {
         const newTag = `L-${(db.lines?.length || 0) + 1}`;
         let endPos = null;
         let newComponents = [];
+        let nzTo = null;   // para almacenar el puerto de destino si es equipo
 
         if (isLine && posRelativa !== null) {
+            // Conexión a punto intermedio: se inserta Tee
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Router no disponible", true);
                 return true;
@@ -352,6 +354,11 @@ const SmartFlowCommands = (function() {
             const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, punto, diameter, true);
             if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
             endPos = punto;
+            // El destino es el puerto generado por la Tee
+            const toObjUpd = db.lines.find(l => l.tag === toEquip);
+            if (toObjUpd?.puertos) {
+                nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
+            }
 
             const nuevaLinea = {
                 tag: newTag, diameter, material, spec,
@@ -364,26 +371,34 @@ const SmartFlowCommands = (function() {
             _core.addLine(nuevaLinea);
             if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
             nzFrom.connectedLine = newTag;
-            const toObjUpd = db.lines.find(l => l.tag === toEquip);
-            if (toObjUpd?.puertos) { const p = toObjUpd.puertos.find(p => p.id === puertoId); if (p) p.connectedLine = newTag; }
+            if (nzTo) nzTo.connectedLine = newTag;
             _core.syncPhysicalData(); _core._saveState(); _renderUI();
             notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
             return true;
         } else {
-            // Aseguramos que el array puertos exista
-            if (!toObj.puertos) toObj.puertos = [];
-            const nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
-            if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
-
-            if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
-                endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
+            // Conexión a puerto concreto (equipo o extremo de línea)
+            // Si es línea, los puertos 0 y 1 son virtuales: obtenemos directamente la posición del extremo
+            if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+                const pts = toObj._cachedPoints || toObj.points3D;
+                if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
+                if (toNozzleRaw === '0') endPos = { ...pts[0] };
+                else endPos = { ...pts[pts.length - 1] };
             } else {
-                const basePos = toObj.posX !== undefined ? { x: toObj.posX, y: toObj.posY, z: toObj.posZ } : (toObj._cachedPoints ? toObj._cachedPoints[0] : {x:0, y:0, z:0});
-                endPos = {
-                    x: basePos.x + (nzTo.relX || 0),
-                    y: basePos.y + (nzTo.relY || 0),
-                    z: basePos.z + (nzTo.relZ || 0)
-                };
+                // Para equipos o puertos de línea existentes (tees)
+                if (!toObj.puertos) toObj.puertos = [];
+                nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
+                if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
+
+                if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
+                    endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
+                } else {
+                    const basePos = toObj.posX !== undefined ? { x: toObj.posX, y: toObj.posY, z: toObj.posZ } : (toObj._cachedPoints ? toObj._cachedPoints[0] : {x:0, y:0, z:0});
+                    endPos = {
+                        x: basePos.x + (nzTo.relX || 0),
+                        y: basePos.y + (nzTo.relY || 0),
+                        z: basePos.z + (nzTo.relZ || 0)
+                    };
+                }
             }
 
             // --- AUTO‑CODO EN DESTINO SI ES EXTREMO DE LÍNEA ---
@@ -437,14 +452,15 @@ const SmartFlowCommands = (function() {
             const nuevaLinea = {
                 tag: newTag, diameter, material, spec,
                 origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: toObj.tipo ? 'equipment' : 'line', equipTag: toEquip, portId: toNozzleRaw },
+                destination: { objType: isLine ? 'line' : 'equipment', equipTag: toEquip, portId: toNozzleRaw },
                 waypoints: [],
                 _cachedPoints: [startPos, endPos],
                 components: newComponents
             };
             _core.addLine(nuevaLinea);
             if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            nzFrom.connectedLine = newTag; nzTo.connectedLine = newTag;
+            nzFrom.connectedLine = newTag;
+            if (nzTo) nzTo.connectedLine = newTag;
             _core.syncPhysicalData(); _core._saveState(); _renderUI();
             notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${toNozzleRaw}`, false);
             return true;
