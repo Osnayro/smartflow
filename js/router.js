@@ -2,6 +2,9 @@
 // ============================================================
 // MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.7 FINAL
 // Archivo: js/router.js
+// Enrutamiento ortogonal (Manhattan) + Flexibilidad en extremos de línea +
+// Filtro de waypoints duplicados + Protección de codo redundante +
+// Corrección de referencia this en executeCommand.
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -385,34 +388,56 @@ const SmartFlowRouter = (function() {
         if (!endPos) { notifyUser(`Puerto destino no encontrado`, true); return null; }
 
         const startDir = normalizeVector(getPortDirection(fromObj, fromPortId));
-        const endDir = normalizeVector(getPortDirection(toObj, nuevoPuertoId));
-        const extStart = 500, extEnd = 500;
+        const extStart = 500;
         const p1 = addPoints(startPos, scalePoint(startDir, extStart));
-        const p4 = addPoints(endPos, scalePoint(endDir, extEnd));
-        const mid = { x: (p1.x+p4.x)/2, y: (p1.y+p4.y)/2, z: (p1.z+p4.z)/2 };
 
-        const waypoints = [p1];
-        if (Math.abs(startPos.y - endPos.y) > 1000) {
-            waypoints.push({ x: p1.x, y: p1.y, z: p1.z });
-            waypoints.push({ x: p4.x, y: p1.y, z: p4.z });
+        // --- FLEXIBILIDAD EN DESTINO ---
+        let endDir, extEnd = 500;
+        if (toObj.posX !== undefined) {
+            endDir = normalizeVector(getPortDirection(toObj, nuevoPuertoId));
         } else {
-            waypoints.push(mid);
+            const vecHaciaDestino = subtractPoints(endPos, p1);
+            if (Math.abs(vecHaciaDestino.x) > Math.abs(vecHaciaDestino.z)) {
+                endDir = { dx: Math.sign(vecHaciaDestino.x), dy: 0, dz: 0 };
+            } else {
+                endDir = { dx: 0, dy: 0, dz: Math.sign(vecHaciaDestino.z) };
+            }
+            extEnd = 0;
+        }
+        const p4 = addPoints(endPos, scalePoint(endDir, extEnd));
+
+        // ========== ENRUTAMIENTO ORTOGONAL ==========
+        const waypoints = [p1];
+        if (Math.abs(p1.y - p4.y) > 10) {
+            waypoints.push({ x: p4.x, y: p1.y, z: p1.z });
+            waypoints.push({ x: p4.x, y: p1.y, z: p4.z });
+            waypoints.push({ x: p4.x, y: p4.y, z: p4.z });
+        } else {
+            waypoints.push({ x: p4.x, y: p1.y, z: p1.z });
+            waypoints.push({ x: p4.x, y: p1.y, z: p4.z });
         }
         waypoints.push(p4);
+
+        // Filtrar puntos duplicados (tolerancia 1 mm)
+        const uniqueWaypoints = waypoints.filter((pt, i, arr) => 
+            i === 0 || distance(pt, arr[i-1]) > 1
+        );
+        // ============================================
 
         const tag = `L-${db.lines.length + 1}`;
         const nuevaLinea = {
             tag, diameter, material, spec,
             origin: { objType: fromObj.posX !== undefined ? 'equipment' : 'line', equipTag: fromEquipTag, portId: fromPortId },
             destination: { objType: toObj.posX !== undefined ? 'equipment' : 'line', equipTag: toEquipTag, portId: nuevoPuertoId },
-            waypoints: waypoints.slice(1, -1),
-            _cachedPoints: [startPos, ...waypoints, endPos],
+            waypoints: uniqueWaypoints.slice(1, -1),
+            _cachedPoints: [...uniqueWaypoints],
             components: []
         };
 
+        // ----- AUTO‑CODO EN ORIGEN -----
         if (!fromObj.posX && (fromPortId === '0' || fromPortId === '1')) {
             const fromPortDir = getPortDirection(fromObj, fromPortId);
-            const newStartDir = normalizeVector(subtractPoints(p1, startPos));
+            const newStartDir = normalizeVector(subtractPoints(uniqueWaypoints[1] || p1, startPos));
             const angleRad = Math.acos(Math.min(1, Math.abs(dotProduct(fromPortDir, newStartDir))));
             const angleDeg = angleRad * 180 / Math.PI;
             if (angleDeg > 15) {
@@ -428,20 +453,25 @@ const SmartFlowRouter = (function() {
             }
         }
 
+        // ----- AUTO‑CODO EN DESTINO (solo si no hay accesorio ya) -----
         if (!toObj.posX && (nuevoPuertoId === '0' || nuevoPuertoId === '1')) {
-            const toPortDir = getPortDirection(toObj, nuevoPuertoId);
-            const arrivingDir = normalizeVector(subtractPoints(endPos, p4));
-            const angleRad = Math.acos(Math.min(1, Math.abs(dotProduct(toPortDir, arrivingDir))));
-            const angleDeg = angleRad * 180 / Math.PI;
-            if (angleDeg > 15) {
-                const elbowId = findElbowForLine(material, diameter, angleDeg);
-                if (elbowId) {
-                    nuevaLinea.components.push({
-                        type: elbowId,
-                        tag: elbowId + '-' + Date.now().toString().slice(-6),
-                        param: 1.0
-                    });
-                    notifyUser(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al final de ${tag}`, false);
+            // Verificar que no se haya insertado ya un accesorio (por dif. de diámetros)
+            const yaTieneAccesorio = toObj.puertos && toObj.puertos.some(p => p.id === nuevoPuertoId && p.connectedLine);
+            if (!yaTieneAccesorio) {
+                const toPortDir = getPortDirection(toObj, nuevoPuertoId);
+                const lastSegDir = normalizeVector(subtractPoints(endPos, uniqueWaypoints[uniqueWaypoints.length - 2]));
+                const angleRad = Math.acos(Math.min(1, Math.abs(dotProduct(toPortDir, lastSegDir))));
+                const angleDeg = angleRad * 180 / Math.PI;
+                if (angleDeg > 15) {
+                    const elbowId = findElbowForLine(material, diameter, angleDeg);
+                    if (elbowId) {
+                        nuevaLinea.components.push({
+                            type: elbowId,
+                            tag: elbowId + '-' + Date.now().toString().slice(-6),
+                            param: 1.0
+                        });
+                        notifyUser(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al final de ${tag}`, false);
+                    }
                 }
             }
         }
@@ -486,7 +516,7 @@ const SmartFlowRouter = (function() {
         switch(action) {
             case 'conectar':
                 if (args.length >= 4) {
-                    this.routeBetweenPorts(args[0], args[1], args[2], args[3]);
+                    routeBetweenPorts(args[0], args[1], args[2], args[3]);
                 } else {
                     notifyUser('Formato: conectar [Origen] [Puerto] [Destino] [Puerto]', true);
                 }
@@ -519,7 +549,7 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('SmartFlow Router v2.7 FINAL inicializado');
+        console.log('SmartFlow Router v2.7 FINAL inicializado (mejoras externas)');
     }
 
     return {
