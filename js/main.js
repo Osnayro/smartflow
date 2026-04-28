@@ -1,11 +1,9 @@
-
 // ============================================================
 // MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
 // Propósito: Inicializar todos los módulos, cablear eventos de UI,
 //            gestionar el ciclo de vida de la aplicación y
 //            manejar guardado/carga de proyectos.
-//            Soporta accesibilidad, enrutamiento automático y autocompletado.
 // ============================================================
 
 (function() {
@@ -43,6 +41,8 @@
     const btnRecalc = document.getElementById('btnRecalc');
     const btnToggleCatalog = document.getElementById('btnToggleCatalog');
     const btnSetElev = document.getElementById('btnSetElev');
+    const btnExportProject = document.getElementById('btnExportProject');
+    const btnImportProject = document.getElementById('btnImportProject');
     
     const toolSelect = document.getElementById('toolSelect');
     const toolMoveEq = document.getElementById('toolMoveEq');
@@ -98,12 +98,10 @@
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         }
         
-        // Inicializar Router (con los 4 parámetros: Core, Catalog, notify, render)
         if (typeof SmartFlowRouter !== 'undefined') {
             SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, window.notify || notify, render);
         }
         
-        // Inicializar Commands
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
         
         notify("SmartProject - Sistema listo", false);
@@ -130,6 +128,39 @@
         } else {
             notify("No hay proyecto guardado.", true);
         }
+    }
+    
+    function exportarProyectoArchivo() {
+        const state = SmartFlowCore.exportProject();
+        const blob = new Blob([state], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${window.currentProjectName || 'Proyecto'}_SmartProject.json`;
+        a.click();
+        notify("Proyecto exportado como archivo JSON.", false);
+    }
+
+    function importarProyectoArchivo() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const state = JSON.parse(ev.target.result);
+                    SmartFlowCore.importState(state.data || state);
+                    autoCenter();
+                    notify("Proyecto importado correctamente.", false);
+                } catch (err) {
+                    notify("Error al importar el proyecto: archivo corrupto.", true);
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
     }
     
     function nuevoProyecto() {
@@ -210,6 +241,56 @@
         voiceEnabled = !voiceEnabled;
         SmartFlowCore.setVoice(voiceEnabled);
         if (btnVoice) btnVoice.textContent = voiceEnabled ? "Voz ON" : "Voz OFF";
+    }
+    
+    // -------------------- ATJOS DE TECLADO --------------------
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', function(e) {
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id !== 'commandText') return;
+            
+            if (e.ctrlKey && e.shiftKey) {
+                switch(e.key.toUpperCase()) {
+                    case 'C':
+                        e.preventDefault();
+                        if (commandPanel) commandPanel.style.display = 'block';
+                        if (commandText) commandText.focus();
+                        break;
+                    case 'R':
+                        e.preventDefault();
+                        resumenProyecto();
+                        break;
+                    case 'V':
+                        e.preventDefault();
+                        autoCenter();
+                        break;
+                    case 'U':
+                        e.preventDefault();
+                        SmartFlowCore.undo();
+                        render();
+                        break;
+                    case 'Y':
+                        e.preventDefault();
+                        SmartFlowCore.redo();
+                        render();
+                        break;
+                    case 'M':
+                        e.preventDefault();
+                        exportarMTO();
+                        break;
+                    case 'P':
+                        e.preventDefault();
+                        if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF();
+                        break;
+                    case 'E':
+                        e.preventDefault();
+                        if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF();
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
     }
     
     // -------------------- 8. EVENTOS DEL CANVAS --------------------
@@ -316,57 +397,6 @@
         });
     }
     
-    // -------------------- ATJOS DE TECLADO --------------------
-    function setupKeyboardShortcuts() {
-        document.addEventListener('keydown', function(e) {
-            // No actuar si el foco está en un campo de texto que no sea el panel de comandos
-            const activeEl = document.activeElement;
-            if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id !== 'commandText') return;
-            
-            if (e.ctrlKey && e.shiftKey) {
-                switch(e.key.toUpperCase()) {
-                    case 'C':
-                        e.preventDefault();
-                        if (commandPanel) commandPanel.style.display = 'block';
-                        if (commandText) commandText.focus();
-                        break;
-                    case 'R':
-                        e.preventDefault();
-                        resumenProyecto();
-                        break;
-                    case 'V':
-                        e.preventDefault();
-                        autoCenter();
-                        break;
-                    case 'U':
-                        e.preventDefault();
-                        SmartFlowCore.undo();
-                        render();
-                        break;
-                    case 'Y':
-                        e.preventDefault();
-                        SmartFlowCore.redo();
-                        render();
-                        break;
-                    case 'M':
-                        e.preventDefault();
-                        exportarMTO();
-                        break;
-                    case 'P':
-                        e.preventDefault();
-                        if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF();
-                        break;
-                    case 'E':
-                        e.preventDefault();
-                        if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF();
-                        break;
-                    default:
-                        break;
-                }
-            }
-        });
-    }
-    
     // -------------------- 9. CABLEADO DE BOTONES --------------------
     function bindEvents() {
         const vincular = (id, accion) => {
@@ -378,6 +408,8 @@
         vincular('btnNew', nuevoProyecto);
         vincular('btnOpen', cargarProyecto);
         vincular('btnSave', guardarProyecto);
+        vincular('btnExportProject', exportarProyectoArchivo);
+        vincular('btnImportProject', importarProyectoArchivo);
         vincular('btnReset', autoCenter);
         vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
         vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
@@ -459,10 +491,14 @@
         await initModules();
         bindEvents();
         initCanvasEvents();
-        setupKeyboardShortcuts();  // Activar atajos de teclado
+        setupKeyboardShortcuts();
         setTool('select');
         setElevation(0);
-        autoCenter();
+        // Pequeño retraso para asegurar que el canvas tenga dimensiones (especialmente en móviles)
+        setTimeout(() => {
+            if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
+            autoCenter();
+        }, 50);
     }
     
     init();
