@@ -2,9 +2,8 @@
 // ============================================================
 // MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v2.7 FINAL
 // Archivo: js/router.js
-// Enrutamiento ortogonal (Manhattan) + Flexibilidad en extremos de línea +
-// Filtro de waypoints duplicados + Protección de codo redundante +
-// Corrección de referencia this en executeCommand.
+// Enrutamiento ortogonal + Flexibilidad en extremos de línea +
+// Filtro de waypoints duplicados + Protección ante arrays vacíos.
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -422,6 +421,16 @@ const SmartFlowRouter = (function() {
         const uniqueWaypoints = waypoints.filter((pt, i, arr) => 
             i === 0 || distance(pt, arr[i-1]) > 1
         );
+
+        // Aseguramos al menos dos puntos (origen y destino)
+        if (uniqueWaypoints.length < 2) {
+            // Reconstruir con los puntos originales no filtrados si el filtro fue demasiado agresivo
+            const fallback = [p1, p4].filter((pt, i, arr) => i === 0 || distance(pt, arr[i-1]) > 1);
+            if (fallback.length >= 2) {
+                uniqueWaypoints.length = 0;
+                Array.prototype.push.apply(uniqueWaypoints, fallback);
+            }
+        }
         // ============================================
 
         const tag = `L-${db.lines.length + 1}`;
@@ -434,8 +443,8 @@ const SmartFlowRouter = (function() {
             components: []
         };
 
-        // ----- AUTO‑CODO EN ORIGEN -----
-        if (!fromObj.posX && (fromPortId === '0' || fromPortId === '1')) {
+        // ----- AUTO‑CODO EN ORIGEN (solo si hay al menos 2 puntos) -----
+        if (uniqueWaypoints.length >= 2 && !fromObj.posX && (fromPortId === '0' || fromPortId === '1')) {
             const fromPortDir = getPortDirection(fromObj, fromPortId);
             const newStartDir = normalizeVector(subtractPoints(uniqueWaypoints[1] || p1, startPos));
             const angleRad = Math.acos(Math.min(1, Math.abs(dotProduct(fromPortDir, newStartDir))));
@@ -453,9 +462,8 @@ const SmartFlowRouter = (function() {
             }
         }
 
-        // ----- AUTO‑CODO EN DESTINO (solo si no hay accesorio ya) -----
-        if (!toObj.posX && (nuevoPuertoId === '0' || nuevoPuertoId === '1')) {
-            // Verificar que no se haya insertado ya un accesorio (por dif. de diámetros)
+        // ----- AUTO‑CODO EN DESTINO (solo si hay al menos 2 puntos y no hay accesorio previo) -----
+        if (uniqueWaypoints.length >= 2 && !toObj.posX && (nuevoPuertoId === '0' || nuevoPuertoId === '1')) {
             const yaTieneAccesorio = toObj.puertos && toObj.puertos.some(p => p.id === nuevoPuertoId && p.connectedLine);
             if (!yaTieneAccesorio) {
                 const toPortDir = getPortDirection(toObj, nuevoPuertoId);
@@ -549,7 +557,7 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('SmartFlow Router v2.7 FINAL inicializado (mejoras externas)');
+        console.log('SmartFlow Router v2.7 FINAL inicializado (con protección de arrays)');
     }
 
     return {
