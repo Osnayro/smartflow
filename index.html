@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -429,6 +428,8 @@
         </div>
         <button id="btnOpen" aria-label="Abrir proyecto">📂 Abrir</button>
         <button id="btnSave" aria-label="Guardar proyecto">💾 Guardar</button>
+        <button id="btnExportProject" aria-label="Exportar proyecto">📤 Exportar Proy</button>
+        <button id="btnImportProject" aria-label="Importar proyecto">📥 Importar Proy</button>
         <button id="btnReset" aria-label="Centrar vista">🔄 Centrar</button>
         <button id="btnCommand" class="btn-primary" aria-label="Abrir panel de comandos">🤖 Comandos</button>
         <button id="btnAddTank" aria-label="Añadir tanque">🏭 Tanque</button>
@@ -514,7 +515,7 @@
         window.SmartFlowAccessibility = { 
             isVoiceEnabled: function() { return window.voiceEnabled; }, 
             speak: function(m) { console.log("IA Voice:", m); },
-            processAccessibilityCommand: function(cmd) { return false; }  // ← Añadido para evitar error al ejecutar comandos
+            processAccessibilityCommand: function(cmd) { return false; }
         };
 
         function setElevation(level) {
