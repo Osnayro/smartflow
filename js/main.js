@@ -123,10 +123,12 @@
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         }
         
+        // Inicializar Router (con los 4 parámetros: Core, Catalog, notify, render)
         if (typeof SmartFlowRouter !== 'undefined') {
             SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, window.notify || notify, render);
         }
         
+        // Inicializar Commands
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
         
         notify("SmartProject - Sistema listo", false);
