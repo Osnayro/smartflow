@@ -88,7 +88,7 @@
         }
     }
 
-    // Funciones para el panel de propiedades (movidas aquí para evitar dependencias externas)
+    // Funciones para el panel de propiedades
     function togglePanel(show) {
         const panel = document.getElementById('side-panel');
         if (panel) {
@@ -123,26 +123,24 @@
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         }
         
-        // Inicializar Router (con los 4 parámetros: Core, Catalog, notify, render)
         if (typeof SmartFlowRouter !== 'undefined') {
             SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, window.notify || notify, render);
         }
         
-        // Inicializar Commands
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
         
-        notify("SmartProject - Sistema listo", false);
+        notify("Smart Engineering - Sistema listo", false);
     }
     
     // -------------------- 5. GESTIÓN DE PROYECTOS --------------------
     function guardarProyecto() {
         const state = SmartFlowCore.exportProject();
-        localStorage.setItem('smartproject_v2_project', state);
+        localStorage.setItem('smartengp_v2_project', state);
         notify("Proyecto guardado en el navegador.", false);
     }
     
     function cargarProyecto() {
-        const data = localStorage.getItem('smartproject_v2_project');
+        const data = localStorage.getItem('smartengp_v2_project');
         if (data) {
             try {
                 const state = JSON.parse(data);
@@ -162,7 +160,7 @@
         const blob = new Blob([state], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `${window.currentProjectName || 'Proyecto'}_SmartProject.json`;
+        a.download = `${window.currentProjectName || 'Proyecto'}_SmartEngp.json`;
         a.click();
         notify("Proyecto exportado como archivo JSON.", false);
     }
