@@ -1,3 +1,718 @@
+
+// ============================================================
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.3 FULL
+// Archivo: js/commands.js
+// ============================================================
+
+const SmartFlowCommands = (function() {
+    
+    let _core = null;
+    let _catalog = null;
+    let _renderer = null;
+    let _notifyUI = (msg, isErr) => console.log(msg);
+    let _renderUI = () => {};
+
+    // -------------------- DICCIONARIO DE INTENCIONES --------------------
+    const IntentDictionary = {
+        'crear': 'create', 'nuevo': 'create', 'añadir': 'create', 'instalar': 'create', 'pon': 'create', 'crea': 'create',
+        'create': 'create', 'add': 'create',
+        'conectar': 'connect', 'unir': 'connect', 'enlazar': 'connect', 'link': 'connect', 'vincula': 'connect', 'junta': 'connect', 'une': 'connect',
+        'connect': 'connect',
+        'ruta': 'route', 'route': 'route',
+        'eliminar': 'delete', 'borrar': 'delete', 'quitar': 'delete', 'suprimir': 'delete', 'quita': 'delete', 'elimina': 'delete', 'limpiar': 'delete',
+        'delete': 'delete', 'remove': 'delete',
+        'editar': 'edit', 'modificar': 'edit', 'cambiar': 'edit', 'ajustar': 'edit', 'cambia': 'edit',
+        'edit': 'edit', 'set': 'edit', 'update': 'edit', 'mover': 'edit', 'move': 'edit',
+        'establecer': 'edit', 'spec': 'edit', 'diametro': 'edit',
+        'listar': 'list', 'lista': 'list', 'list': 'list', 'inventory': 'list', 'showall': 'list',
+        'auditar': 'audit', 'revisar': 'audit', 'verificar': 'audit', 'validar': 'audit', 'audita': 'audit', 'status': 'audit',
+        'audit': 'audit', 'check': 'audit',
+        'bom': 'bom', 'mto': 'bom', 'generar': 'bom', 'generate': 'bom',
+        'ayuda': 'help', 'help': 'help', 'comandos': 'help', '?': 'help', 'h': 'help',
+        'deshacer': 'undo', 'undo': 'undo',
+        'rehacer': 'redo', 'redo': 'redo',
+        'info': 'info', 'información': 'info', 'informacion': 'info', 'detalles': 'info', 'ver': 'info', 'describe': 'info',
+        'tap': 'tap', 'derivar': 'tap',
+        'split': 'split', 'dividir': 'split', 'romper': 'split'
+    };
+
+    function getIntent(word) {
+        if (!word) return null;
+        return IntentDictionary[word.toLowerCase()] || null;
+    }
+
+    function normalizeCommand(cmd) {
+        const parts = cmd.trim().split(/\s+/);
+        if (parts.length === 0) return cmd;
+        const intent = getIntent(parts[0]);
+        if (intent) { parts[0] = intent; return parts.join(' '); }
+        return cmd;
+    }
+
+    // -------------------- UTILIDADES DE EXTRACCIÓN FLEXIBLE --------------------
+    function extractCoords(str) {
+        const m = str.match(/\((-?\d+\.?\d*)\s*,?\s*(-?\d+\.?\d*)\s*,?\s*(-?\d+\.?\d*)\)/);
+        return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) } : null;
+    }
+
+    function extractValue(parts, keys) {
+        if (!Array.isArray(parts)) return null;
+        for (let i = 0; i < parts.length; i++) {
+            if (keys.includes(parts[i].toLowerCase()) && i + 1 < parts.length) {
+                return parts[i + 1];
+            }
+        }
+        return null;
+    }
+
+    // -------------------- NOTIFICACIÓN MEJORADA (VOZ + VISUAL) --------------------
+    function notifyWithVoice(message, isError = false) {
+        if (typeof _notifyUI === 'function') _notifyUI(message, isError);
+        const statusEl = document.getElementById('statusMsg');
+        if (statusEl) {
+            statusEl.innerText = message;
+            statusEl.style.color = isError ? '#ef4444' : '#00f2ff';
+        }
+        if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
+            SmartFlowAccessibility.speak(message);
+        }
+    }
+
+    // ==================== COMANDOS INFO ====================
+    function parseInfo(cmd) {
+        const parts = cmd.trim().split(/\s+/);
+        if (parts[0] !== 'info') return false;
+        if (parts.length < 2) {
+            notifyWithVoice("Uso: info line [TAG] | info equipment [TAG] | info component [TAG]", true);
+            return true;
+        }
+        const type = parts[1].toLowerCase();
+        const tag = parts[2];
+        if (!tag) { notifyWithVoice(`Especifique el tag del ${type}`, true); return true; }
+        if (type === 'line' || type === 'línea' || type === 'linea') return infoLine(tag);
+        if (type === 'equipment' || type === 'equipo') return infoEquipment(tag);
+        if (type === 'component' || type === 'componente') return infoComponent(tag);
+        notifyWithVoice(`Tipo desconocido: ${type}. Use line, equipment o component`, true);
+        return true;
+    }
+
+    function infoLine(tag) {
+        if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
+        const db = _core.getDb();
+        const line = db.lines.find(l => l.tag === tag);
+        if (!line) { notifyWithVoice(`Línea ${tag} no encontrada`, true); return true; }
+        const pts = line._cachedPoints || line.points3D;
+        const numPuntos = pts ? pts.length : 0;
+        let origen = "Ninguno", destino = "Ninguno";
+        if (line.origin) {
+            const obj = db.equipos.find(e => e.tag === line.origin.equipTag) || db.lines.find(l => l.tag === line.origin.equipTag);
+            origen = `${line.origin.equipTag}.${line.origin.portId} (${obj?.tipo || 'line'})`;
+        }
+        if (line.destination) {
+            const obj = db.equipos.find(e => e.tag === line.destination.equipTag) || db.lines.find(l => l.tag === line.destination.equipTag);
+            destino = `${line.destination.equipTag}.${line.destination.portId} (${obj?.tipo || 'line'})`;
+        }
+        const msg = `📋 Línea ${tag} | Diámetro: ${line.diameter || '?'}" | Material: ${line.material || 'N/D'} | Spec: ${line.spec || 'N/D'} | Puntos: ${numPuntos} | Componentes: ${line.components?.length || 0} | Origen: ${origen} | Destino: ${destino}`;
+        notifyWithVoice(msg, false);
+        return true;
+    }
+
+    function infoEquipment(tag) {
+        if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
+        const db = _core.getDb();
+        const eq = db.equipos.find(e => e.tag === tag);
+        if (!eq) { notifyWithVoice(`Equipo ${tag} no encontrado`, true); return true; }
+        const tipo = eq.tipo;
+        const material = eq.material || 'N/D';
+        const pos = `(${eq.posX}, ${eq.posY}, ${eq.posZ})`;
+        const dimensiones = `Diam: ${eq.diametro || 'N/D'} Altura: ${eq.altura || 'N/D'}`;
+        const puertos = eq.puertos ? eq.puertos.map(p => p.id).join(', ') : 'Ninguno';
+        const msg = `📋 Equipo ${tag} | Tipo: ${tipo} | Material: ${material} | Posición: ${pos} | ${dimensiones} | Puertos: ${puertos}`;
+        notifyWithVoice(msg, false);
+        return true;
+    }
+
+    function infoComponent(tag) {
+        if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
+        const db = _core.getDb();
+        let foundComp = null, foundLine = null;
+        for (let line of db.lines) {
+            if (line.components) {
+                const comp = line.components.find(c => c.tag === tag);
+                if (comp) { foundComp = comp; foundLine = line; break; }
+            }
+        }
+        if (!foundComp) { notifyWithVoice(`Componente ${tag} no encontrado`, true); return true; }
+        const tipo = foundComp.type;
+        const descripcion = foundComp.description || 'Sin descripción';
+        const posParam = foundComp.param ? `Parámetro: ${foundComp.param.toFixed(2)}` : '';
+        const msg = `📋 Componente ${tag} | Tipo: ${tipo} | Descripción: ${descripcion} | Pertenece a línea: ${foundLine.tag} | ${posParam}`;
+        notifyWithVoice(msg, false);
+        return true;
+    }
+
+    // --- CREATE (CON SINCRONIZACIÓN AL PANEL) ---
+    function parseCreate(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'create') return false;
+        const tipo = parts[1]; const tag = parts[2];
+        if (parts[3] !== 'at') return false;
+        let coordStr = '';
+        for (let i = 4; i < parts.length; i++) { coordStr += parts[i]; if (parts[i].includes(')')) break; }
+        const coords = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+        if (!coords) return false;
+        const x = parseFloat(coords[1]), y = parseFloat(coords[2]), z = parseFloat(coords[3]);
+        let params = {};
+        for (let i = 5; i < parts.length; i++) {
+            let key = parts[i];
+            if (key === 'diam' || key === 'diametro') params.diametro = parseFloat(parts[++i]);
+            else if (key === 'height' || key === 'altura') params.altura = parseFloat(parts[++i]);
+            else if (key === 'largo') params.largo = parseFloat(parts[++i]);
+            else if (key === 'material') params.material = parts[++i].toUpperCase();
+            else if (key === 'spec') params.spec = parts[++i];
+        }
+        const equipoDef = _catalog.getEquipment(tipo);
+        if (!equipoDef) { notifyWithVoice(`Tipo de equipo desconocido: ${tipo}`, true); return true; }
+        const equipo = _catalog.createEquipment(tipo, tag, x, y, z, params);
+        if (equipo) {
+            _core.addEquipment(equipo);
+            if (_core.setSelected) _core.setSelected({ type: 'equipment', obj: equipo });
+            notifyWithVoice(`Equipo ${tag} (${equipoDef.nombre}) creado`, false);
+        }
+        return true;
+    }
+
+    function parseCreateLine(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'create' || parts[1] !== 'line') return false;
+        const tag = parts[2];
+        let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5', points = [], i = 3;
+        while (i < parts.length) {
+            if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
+            else if (parts[i] === 'material') material = parts[++i].toUpperCase();
+            else if (parts[i] === 'spec') spec = parts[++i];
+            else if (parts[i] === 'route' || parts[i] === 'ruta') {
+                i++;
+                while (i < parts.length) {
+                    const coordStr = parts[i];
+                    const m = coordStr.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+                    if (m) points.push({ x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) });
+                    else break;
+                    i++;
+                }
+                continue;
+            }
+            i++;
+        }
+        if (points.length < 2) { notifyWithVoice("Error: Se requieren al menos 2 puntos", true); return true; }
+        const nuevaLinea = { tag, diameter, material, spec, _cachedPoints: points, waypoints: points.slice(1, -1), components: [] };
+        _core.addLine(nuevaLinea);
+        if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
+        notifyWithVoice(`Línea ${tag} creada`, false);
+        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.procesarInterseccionesDeLinea) {
+            SmartFlowRouter.procesarInterseccionesDeLinea(nuevaLinea);
+        }
+        _renderUI();
+        return true;
+    }
+
+    function parseCreateManifold(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'create' || parts[1] !== 'manifold') return false;
+        let idx = 2; const tag = parts[idx++];
+        if (parts[idx] !== 'at') return false; idx++;
+        const coords = parts[idx++].match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
+        if (!coords) return false;
+        const x = parseFloat(coords[1]), y = parseFloat(coords[2]), z = parseFloat(coords[3]);
+        let numEntradas = 2, spacing = 3000, outputPos = 'center', diametro = 4, material = 'PPR', spec = 'PPR_PN12_5';
+        while (idx < parts.length) {
+            const key = parts[idx++].toLowerCase();
+            if (key === 'entries' || key === 'entradas') numEntradas = parseInt(parts[idx++]);
+            else if (key === 'spacing' || key === 'espaciado') spacing = parseFloat(parts[idx++]);
+            else if (key === 'output' || key === 'salida') outputPos = parts[idx++].toLowerCase();
+            else if (key === 'diameter' || key === 'diametro') diametro = parseFloat(parts[idx++]);
+            else if (key === 'material') material = parts[idx++].toUpperCase();
+            else if (key === 'spec') spec = parts[idx++];
+        }
+        const colector = { tag, tipo: 'colector', posX: x, posY: y, posZ: z, diametro, altura: 0, largo: (numEntradas - 1) * spacing, material, spec, num_entradas: numEntradas, spacing, salida_pos: outputPos, diametro_entrada: diametro, diametro_salida: diametro };
+        const def = _catalog.getEquipment('colector');
+        colector.puertos = def.generarPuertos(colector);
+        _core.addEquipment(colector);
+        if (_core.setSelected) _core.setSelected({ type: 'equipment', obj: colector });
+        notifyWithVoice(`Colector ${tag} creado`, false);
+        return true;
+    }
+
+    // --- Helper para encontrar codo según material ---
+    function findElbowForLine(material, diameter, angleDeg) {
+        const mat = material.toUpperCase();
+        const is90 = (Math.abs(angleDeg - 90) < 10);
+        const is45 = (Math.abs(angleDeg - 45) < 10);
+        if (!is90 && !is45) return null;
+
+        if (mat.includes('PPR')) {
+            return is90 ? 'ELBOW_90_PPR' : 'ELBOW_45_PPR';
+        } else if (mat.includes('HDPE')) {
+            return is90 ? 'ELBOW_90_HDPE' : null;
+        } else if (mat.includes('PVC')) {
+            return is90 ? 'ELBOW_90_PVC' : null;
+        } else if (mat.includes('ACERO')) {
+            return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
+        } else if (mat.includes('INOXIDABLE') || mat.includes('INOX')) {
+            return is90 ? 'ELBOW_90_SANITARY' : null;
+        }
+        return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
+    }
+
+    // --- CONNECT (con herencia, auto‑codo siempre, y detección inteligente de puerto omitido) ---
+    function parseConnect(cmd) {
+        const parts = cmd.split(/\s+/);
+        if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
+        const fromEquip = parts[1], fromNozzle = parts[2];
+        if (parts[3] !== 'to' && parts[3] !== 'a') return false;
+        const toEquip = parts[4];
+        let toNozzleRaw = parts[5];
+        let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
+        // Detectar si el siguiente token después del destino parece un parámetro en lugar de un puerto
+        if (toNozzleRaw && isNaN(parseFloat(toNozzleRaw)) && toNozzleRaw !== '0' && toNozzleRaw !== '1' && !/^[A-Za-z]/.test(toNozzleRaw?.[0]||'')) {
+            // es un parámetro; no se especificó puerto → forzamos a vacío
+            toNozzleRaw = '';
+        }
+        for (let i = 6; i < parts.length; i++) {
+            if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
+            else if (parts[i] === 'material') material = parts[++i].toUpperCase();
+            else if (parts[i] === 'spec') spec = parts[++i];
+        }
+
+        const db = _core.getDb();
+        const fromObj = db.equipos.find(e => e.tag === fromEquip) || db.lines.find(l => l.tag === fromEquip);
+        const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
+        if (!fromObj || !toObj) { notifyWithVoice("Objeto no encontrado", true); return true; }
+
+        // --- ORIGEN: manejar puertos virtuales 0/1 en líneas ---
+        let startPos = null;
+        let fromDiameter = 4;
+        if (fromObj._cachedPoints && (fromNozzle === '0' || fromNozzle === '1')) {
+            const pts = fromObj._cachedPoints;
+            if (pts && pts.length >= 2) {
+                startPos = fromNozzle === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
+                fromDiameter = fromObj.diameter || 4;
+            } else {
+                notifyWithVoice("La línea origen no tiene geometría válida", true);
+                return true;
+            }
+        } else {
+            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+            if (!nzFrom) { notifyWithVoice("Puerto origen no encontrado", true); return true; }
+            fromDiameter = nzFrom.diametro || 4;
+            if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
+                startPos = SmartFlowRouter.getPortPosition(fromObj, fromNozzle);
+            } else {
+                const basePos = fromObj.posX !== undefined ? { x: fromObj.posX, y: fromObj.posY, z: fromObj.posZ } : (fromObj._cachedPoints ? fromObj._cachedPoints[0] : {x:0, y:0, z:0});
+                startPos = {
+                    x: basePos.x + (nzFrom.relX || 0),
+                    y: basePos.y + (nzFrom.relY || 0),
+                    z: basePos.z + (nzFrom.relZ || 0)
+                };
+            }
+        }
+        if (!startPos) { notifyWithVoice("No se pudo obtener la posición del puerto origen", true); return true; }
+
+        const isFromLine = fromObj._cachedPoints || fromObj.points3D;
+        const isLine = toObj._cachedPoints || toObj.points3D;
+
+        // --- AUTO‑DETECCIÓN DEL PUNTO MÁS CERCANO SI NO SE ESPECIFICÓ PUERTO ---
+        if (isLine && (!toNozzleRaw || toNozzleRaw === '')) {
+            const pts = toObj._cachedPoints || toObj.points3D;
+            if (!pts || pts.length < 2) {
+                notifyWithVoice("La línea destino no tiene geometría", true);
+                return true;
+            }
+            let minDist = Infinity, bestPoint = pts[0];
+            let lengths = [];
+            let totalLen = 0;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+                lengths.push(d);
+                totalLen += d;
+            }
+            if (totalLen === 0) {
+                notifyWithVoice("La línea destino tiene longitud cero", true);
+                return true;
+            }
+            let accum = 0;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const a = pts[i], b = pts[i+1];
+                const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+                const ap = { x: startPos.x - a.x, y: startPos.y - a.y, z: startPos.z - a.z };
+                const len2 = ab.x*ab.x + ab.y*ab.y + ab.z*ab.z;
+                let t = 0;
+                if (len2 !== 0) {
+                    t = (ap.x*ab.x + ap.y*ab.y + ap.z*ab.z) / len2;
+                    t = Math.max(0, Math.min(1, t));
+                }
+                const proj = { x: a.x + ab.x * t, y: a.y + ab.y * t, z: a.z + ab.z * t };
+                const dist = Math.hypot(startPos.x - proj.x, startPos.y - proj.y, startPos.z - proj.z);
+                if (dist < minDist) {
+                    minDist = dist;
+                    bestPoint = proj;
+                }
+                accum += lengths[i];
+            }
+
+            if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
+                notifyWithVoice("Router no disponible", true);
+                return true;
+            }
+
+            const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, bestPoint, diameter, true);
+            if (!puertoId) {
+                notifyWithVoice("No se pudo insertar el accesorio automáticamente. Verifique que el catálogo tenga el componente adecuado.", true);
+                return true;
+            }
+
+            const endPos = bestPoint;
+            const newTag = `L-${(db.lines?.length || 0) + 1}`;
+            const newComponents = [];
+
+            // --- AUTO‑CODO EN ORIGEN (extremo de línea) ---
+            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
+                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
+                if (ptsFrom && ptsFrom.length >= 2) {
+                    let lineDir;
+                    if (fromNozzle === '0') {
+                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
+                    } else {
+                        const n = ptsFrom.length;
+                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
+                    }
+                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
+                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
+
+                    const newStartDir = {
+                        dx: endPos.x - startPos.x,
+                        dy: endPos.y - startPos.y,
+                        dz: endPos.z - startPos.z
+                    };
+                    const newLen = Math.hypot(newStartDir.dx, newStartDir.dy, newStartDir.dz) || 1;
+                    const newDir = { dx: newStartDir.dx/newLen, dy: newStartDir.dy/newLen, dz: newStartDir.dz/newLen };
+
+                    const dot = Math.abs(lineDir.dx*newDir.dx + lineDir.dy*newDir.dy + lineDir.dz*newDir.dz);
+                    const angleRad = Math.acos(Math.min(1, dot));
+                    const angleDeg = angleRad * 180 / Math.PI;
+
+                    if (angleDeg > 15) {
+                        const elbowId = findElbowForLine(material, diameter, angleDeg);
+                        if (elbowId) {
+                            newComponents.push({
+                                type: elbowId,
+                                tag: elbowId + '-' + Date.now().toString().slice(-6),
+                                param: 0.0
+                            });
+                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al inicio de ${newTag}`, false);
+                        }
+                    }
+                }
+            }
+
+            const nuevaLinea = {
+                tag: newTag, diameter, material, spec,
+                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
+                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
+                waypoints: [],
+                _cachedPoints: [startPos, endPos],
+                components: newComponents
+            };
+            _core.addLine(nuevaLinea);
+            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
+            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+            if (nzFrom) nzFrom.connectedLine = newTag;
+            const toObjUpd = db.lines.find(l => l.tag === toEquip);
+            if (toObjUpd?.puertos) {
+                const p = toObjUpd.puertos.find(p => p.id === puertoId);
+                if (p) p.connectedLine = newTag;
+            }
+            _core.syncPhysicalData(); _core._saveState(); _renderUI();
+            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en el punto más cercano`, false);
+            return true;
+        }
+
+        const numPos = parseFloat(toNozzleRaw);
+        const isNumeric = !isNaN(numPos) && isFinite(numPos);
+        let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
+
+        // Herencia de diámetro, material y spec desde el objeto destino si no se especificaron explícitamente
+        if (isLine && toObj.diameter && !parts.slice(6).some(p => p === 'diameter' || p === 'diametro')) {
+            diameter = toObj.diameter;
+        }
+        if (!parts.slice(6).some(p => p === 'material')) {
+            if (toObj.material) material = toObj.material;
+            if (toObj.spec) spec = toObj.spec;
+        }
+
+        // Si la posición numérica del destino es un extremo, la tratamos como puerto virtual
+        if (isLine && posRelativa !== null && (posRelativa <= 0.01 || posRelativa >= 0.99)) {
+            toNozzleRaw = posRelativa <= 0.01 ? '0' : '1';
+            posRelativa = null;
+        }
+
+        const newTag = `L-${(db.lines?.length || 0) + 1}`;
+        let endPos = null;
+        let newComponents = [];
+        let nzTo = null;
+
+        // Obtener diámetro de destino
+        let toDiameter = diameter;
+        if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+            toDiameter = toObj.diameter || 4;
+        } else if (toObj.puertos) {
+            const port = toObj.puertos.find(p => p.id === toNozzleRaw);
+            if (port) toDiameter = port.diametro || 4;
+        }
+
+        if (isLine && posRelativa !== null) {
+            // Conexión a punto intermedio: se inserta Tee
+            if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
+                notifyWithVoice("Router no disponible", true);
+                return true;
+            }
+            const pts = toObj._cachedPoints || toObj.points3D;
+            if (!pts || pts.length < 2) { notifyWithVoice("Geometría inválida", true); return true; }
+            let totalLen = 0, lengths = [];
+            for (let i = 0; i < pts.length - 1; i++) {
+                const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+                lengths.push(d); totalLen += d;
+            }
+            const targetLen = totalLen * posRelativa;
+            let accum = 0, segIdx = 0, t = 0;
+            for (let i = 0; i < lengths.length; i++) {
+                if (accum + lengths[i] >= targetLen || i === lengths.length - 1) {
+                    segIdx = i; t = (targetLen - accum) / (lengths[i] || 1); break;
+                }
+                accum += lengths[i];
+            }
+            const pA = pts[segIdx], pB = pts[segIdx + 1];
+            const punto = { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t, z: pA.z + (pB.z - pA.z) * t };
+            const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, punto, diameter, true);
+            if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
+            endPos = punto;
+            const toObjUpd = db.lines.find(l => l.tag === toEquip);
+            if (toObjUpd?.puertos) {
+                nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
+            }
+
+            // --- AUTO‑CODO EN ORIGEN (extremo de línea) ---
+            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
+                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
+                if (ptsFrom && ptsFrom.length >= 2) {
+                    let lineDir;
+                    if (fromNozzle === '0') {
+                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
+                    } else {
+                        const n = ptsFrom.length;
+                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
+                    }
+                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
+                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
+
+                    const newStartDir = {
+                        dx: endPos.x - startPos.x,
+                        dy: endPos.y - startPos.y,
+                        dz: endPos.z - startPos.z
+                    };
+                    const newLen = Math.hypot(newStartDir.dx, newStartDir.dy, newStartDir.dz) || 1;
+                    const newDir = { dx: newStartDir.dx/newLen, dy: newStartDir.dy/newLen, dz: newStartDir.dz/newLen };
+
+                    const dot = Math.abs(lineDir.dx*newDir.dx + lineDir.dy*newDir.dy + lineDir.dz*newDir.dz);
+                    const angleRad = Math.acos(Math.min(1, dot));
+                    const angleDeg = angleRad * 180 / Math.PI;
+
+                    if (angleDeg > 15) {
+                        const elbowId = findElbowForLine(material, diameter, angleDeg);
+                        if (elbowId) {
+                            newComponents.push({
+                                type: elbowId,
+                                tag: elbowId + '-' + Date.now().toString().slice(-6),
+                                param: 0.0
+                            });
+                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al inicio de ${newTag}`, false);
+                        }
+                    }
+                }
+            }
+
+            const nuevaLinea = {
+                tag: newTag, diameter, material, spec,
+                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
+                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
+                waypoints: [],
+                _cachedPoints: [startPos, endPos],
+                components: newComponents
+            };
+            _core.addLine(nuevaLinea);
+            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
+            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+            if (nzFrom) nzFrom.connectedLine = newTag;
+            if (nzTo) nzTo.connectedLine = newTag;
+            _core.syncPhysicalData(); _core._saveState(); _renderUI();
+            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
+            return true;
+        } else {
+            // Conexión a puerto concreto o extremo de línea
+            if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+                const pts = toObj._cachedPoints || toObj.points3D;
+                if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
+                if (toNozzleRaw === '0') endPos = { ...pts[0] };
+                else endPos = { ...pts[pts.length - 1] };
+            } else {
+                if (!toObj.puertos) toObj.puertos = [];
+                nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
+                if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
+
+                if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
+                    endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
+                } else {
+                    const basePos = toObj.posX !== undefined ? { x: toObj.posX, y: toObj.posY, z: toObj.posZ } : (toObj._cachedPoints ? toObj._cachedPoints[0] : {x:0, y:0, z:0});
+                    endPos = {
+                        x: basePos.x + (nzTo.relX || 0),
+                        y: basePos.y + (nzTo.relY || 0),
+                        z: basePos.z + (nzTo.relZ || 0)
+                    };
+                }
+            }
+
+            // --- MANEJO DE DIFERENCIA DE DIÁMETROS ---
+            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
+                const diffDiam = Math.abs(fromDiameter - diameter) > 0.1;
+                if (diffDiam) {
+                    const puertoInsertado = SmartFlowRouter.insertarAccesorioEnLinea(fromEquip, startPos, diameter, false);
+                    if (!puertoInsertado) {
+                        const reductorId = (material.toUpperCase().includes('PPR')) ? 'CONCENTRIC_REDUCER_PPR' : 'CONCENTRIC_REDUCER_CS';
+                        newComponents.push({
+                            type: reductorId,
+                            tag: reductorId + '-' + Date.now().toString().slice(-6),
+                            param: 0.0
+                        });
+                        notifyWithVoice(`⚠️ No se pudo insertar reductor en ${fromEquip}. Se añadirá al inicio de ${newTag}`, false);
+                    }
+                }
+            }
+            if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+                const diffDiam = Math.abs(toDiameter - diameter) > 0.1;
+                if (diffDiam) {
+                    const puertoInsertado = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, endPos, diameter, false);
+                    if (!puertoInsertado) {
+                        const reductorId = (material.toUpperCase().includes('PPR')) ? 'CONCENTRIC_REDUCER_PPR' : 'CONCENTRIC_REDUCER_CS';
+                        newComponents.push({
+                            type: reductorId,
+                            tag: reductorId + '-' + Date.now().toString().slice(-6),
+                            param: 1.0
+                        });
+                        notifyWithVoice(`⚠️ No se pudo insertar reductor en ${toEquip}. Se añadirá al final de ${newTag}`, false);
+                    }
+                }
+            }
+
+            // --- AUTO‑CODO EN ORIGEN (extremo de línea) ---
+            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
+                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
+                if (ptsFrom && ptsFrom.length >= 2) {
+                    let lineDir;
+                    if (fromNozzle === '0') {
+                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
+                    } else {
+                        const n = ptsFrom.length;
+                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
+                    }
+                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
+                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
+
+                    const newStartDir = {
+                        dx: endPos.x - startPos.x,
+                        dy: endPos.y - startPos.y,
+                        dz: endPos.z - startPos.z
+                    };
+                    const newLen = Math.hypot(newStartDir.dx, newStartDir.dy, newStartDir.dz) || 1;
+                    const newDir = { dx: newStartDir.dx/newLen, dy: newStartDir.dy/newLen, dz: newStartDir.dz/newLen };
+
+                    const dot = Math.abs(lineDir.dx*newDir.dx + lineDir.dy*newDir.dy + lineDir.dz*newDir.dz);
+                    const angleRad = Math.acos(Math.min(1, dot));
+                    const angleDeg = angleRad * 180 / Math.PI;
+
+                    if (angleDeg > 15) {
+                        const elbowId = findElbowForLine(material, diameter, angleDeg);
+                        if (elbowId) {
+                            newComponents.push({
+                                type: elbowId,
+                                tag: elbowId + '-' + Date.now().toString().slice(-6),
+                                param: 0.0
+                            });
+                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al inicio de ${newTag}`, false);
+                        }
+                    }
+                }
+            }
+
+            // --- AUTO‑CODO EN DESTINO (extremo de línea) ---
+            if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+                const pts = toObj._cachedPoints || toObj.points3D;
+                if (pts && pts.length >= 2) {
+                    let lineDir;
+                    if (toNozzleRaw === '0') {
+                        lineDir = { dx: pts[1].x - pts[0].x, dy: pts[1].y - pts[0].y, dz: pts[1].z - pts[0].z };
+                    } else {
+                        const n = pts.length;
+                        lineDir = { dx: pts[n-1].x - pts[n-2].x, dy: pts[n-1].y - pts[n-2].y, dz: pts[n-1].z - pts[n-2].z };
+                    }
+                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
+                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
+
+                    const newArriveDir = {
+                        dx: endPos.x - startPos.x,
+                        dy: endPos.y - startPos.y,
+                        dz: endPos.z - startPos.z
+                    };
+                    const newLen = Math.hypot(newArriveDir.dx, newArriveDir.dy, newArriveDir.dz) || 1;
+                    const newDir = { dx: newArriveDir.dx/newLen, dy: newArriveDir.dy/newLen, dz: newArriveDir.dz/newLen };
+
+                    const dot = Math.abs(lineDir.dx*newDir.dx + lineDir.dy*newDir.dy + lineDir.dz*newDir.dz);
+                    const angleRad = Math.acos(Math.min(1, dot));
+                    const angleDeg = angleRad * 180 / Math.PI;
+
+                    if (angleDeg > 15) {
+                        const elbowId = findElbowForLine(material, diameter, angleDeg);
+                        if (elbowId) {
+                            newComponents.push({
+                                type: elbowId,
+                                tag: elbowId + '-' + Date.now().toString().slice(-6),
+                                param: 1.0
+                            });
+                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) insertado al final de ${newTag}`, false);
+                        }
+                    }
+                }
+            }
+
+            const nuevaLinea = {
+                tag: newTag, diameter, material, spec,
+                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
+                destination: { objType: isLine ? 'line' : 'equipment', equipTag: toEquip, portId: toNozzleRaw },
+                waypoints: [],
+                _cachedPoints: [startPos, endPos],
+                components: newComponents
+            };
+            _core.addLine(nuevaLinea);
+            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
+            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+            if (nzFrom) nzFrom.connectedLine = newTag;
+            if (nzTo) nzTo.connectedLine = newTag;
+            _core.syncPhysicalData(); _core._saveState(); _renderUI();
+            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${toNozzleRaw}`, false);
+            return true;
+        }
+    }
+
+
     // --- ROUTE (COMANDO) ---
     function parseRoute(cmd) {
         const parts = cmd.split(/\s+/);
