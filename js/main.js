@@ -1,3 +1,4 @@
+
 // ============================================================
 // MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
@@ -92,7 +93,9 @@
     
     // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
     async function initModules() {
-        SmartFlowCore.init(notify, render);
+        // ¡Atención! El tercer parámetro (updatePropertyPanel) es el que permite que la barra
+        // de propiedades se actualice al seleccionar un equipo o línea.
+        SmartFlowCore.init(notify, render, updatePropertyPanel);
         SmartFlowRenderer = window.SmartFlowRenderer;
         if (SmartFlowRenderer) {
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
@@ -181,10 +184,6 @@
             const pts = line._cachedPoints || line.points3D;
             if (pts) for (let i = 0; i < pts.length - 1; i++) length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
             items.push([line.tag, `Tubería ${line.material || 'PPR'} ${line.diameter}"`, "m", (length / 1000).toFixed(2)]);
-            if (pts && pts.length > 2) {
-                const codos = pts.filter(p => !p.isControlPoint).length - 2;
-                if (codos > 0) items.push([`CODO-${line.tag}`, `Codo 90° ${line.material} ${line.diameter}"`, "Und", codos]);
-            }
             if (line.components) {
                 line.components.forEach(comp => {
                     let desc = comp.type;
@@ -209,8 +208,15 @@
         let totalCodos = 0, totalValvulas = 0;
         lines.forEach(l => {
             const pts = l._cachedPoints || l.points3D;
+            // Codos geométricos (líneas con múltiples puntos)
             if (pts) totalCodos += Math.max(0, pts.filter(p => !p.isControlPoint).length - 2);
-            if (l.components) l.components.forEach(c => { if (c.type.includes('VALVE')) totalValvulas++; });
+            // Contar codos como componentes (auto‑codos)
+            if (l.components) {
+                l.components.forEach(c => {
+                    if (c.type.includes('ELBOW')) totalCodos++;
+                    if (c.type.includes('VALVE')) totalValvulas++;
+                });
+            }
         });
         const resumen = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${colectores.length} colectores, ${lines.length} tuberías, ${totalCodos} codos, ${totalValvulas} válvulas.`;
         notify(resumen, false);
@@ -494,7 +500,6 @@
         setupKeyboardShortcuts();
         setTool('select');
         setElevation(0);
-        // Pequeño retraso para asegurar que el canvas tenga dimensiones (especialmente en móviles)
         setTimeout(() => {
             if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
             autoCenter();
