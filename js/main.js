@@ -2,9 +2,6 @@
 // ============================================================
 // MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
 // Archivo: js/main.js
-// Propósito: Inicializar todos los módulos, cablear eventos de UI,
-//            gestionar el ciclo de vida de la aplicación y
-//            manejar guardado/carga de proyectos.
 // ============================================================
 
 (function() {
@@ -90,11 +87,36 @@
             notify("Vista centrada correctamente.", false);
         }
     }
+
+    // Funciones para el panel de propiedades (movidas aquí para evitar dependencias externas)
+    function togglePanel(show) {
+        const panel = document.getElementById('side-panel');
+        if (panel) {
+            if (show) panel.classList.remove('hidden');
+            else panel.classList.add('hidden');
+        }
+    }
+
+    function updatePropertyPanel(obj) {
+        const content = document.getElementById('panel-content');
+        if (!obj) { togglePanel(false); return; }
+        togglePanel(true);
+        content.innerHTML = `
+            <div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">${obj.tag}</span></div>
+            <div class="prop-group"><span class="prop-label">TIPO</span><span class="prop-value">${obj.tipo || 'Tubería'}</span></div>
+            <div class="prop-group"><span class="prop-label">MATERIAL</span><span class="prop-value">${obj.material || 'N/A'}</span></div>
+            <div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">${obj.diametro}"</span></div>
+            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
+            <div class="prop-group"><span class="prop-label">PUERTOS</span>
+                ${obj.puertos ? obj.puertos.map(p => `
+                    <div class="port-item"><span>${p.id}</span><span class="${p.status === 'open' ? 'port-open' : 'port-connected'}">${p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO a ' + (p.connectedTo || '')}</span></div>
+                `).join('') : '<p>Sin puertos</p>'}
+            </div>
+        `;
+    }
     
     // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
     async function initModules() {
-        // ¡Atención! El tercer parámetro (updatePropertyPanel) es el que permite que la barra
-        // de propiedades se actualice al seleccionar un equipo o línea.
         SmartFlowCore.init(notify, render, updatePropertyPanel);
         SmartFlowRenderer = window.SmartFlowRenderer;
         if (SmartFlowRenderer) {
@@ -208,9 +230,7 @@
         let totalCodos = 0, totalValvulas = 0;
         lines.forEach(l => {
             const pts = l._cachedPoints || l.points3D;
-            // Codos geométricos (líneas con múltiples puntos)
             if (pts) totalCodos += Math.max(0, pts.filter(p => !p.isControlPoint).length - 2);
-            // Contar codos como componentes (auto‑codos)
             if (l.components) {
                 l.components.forEach(c => {
                     if (c.type.includes('ELBOW')) totalCodos++;
