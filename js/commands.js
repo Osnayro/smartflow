@@ -277,7 +277,7 @@ const SmartFlowCommands = (function() {
         const fromEquip = parts[1], fromNozzle = parts[2];
         if (parts[3] !== 'to' && parts[3] !== 'a') return false;
         const toEquip = parts[4];
-        let toNozzleRaw = parts[5];      // puede ser undefined si no se especificó
+        let toNozzleRaw = parts[5];
         let diameter = 4, material = 'PPR', spec = 'PPR_PN12_5';
         for (let i = 6; i < parts.length; i++) {
             if (parts[i] === 'diameter' || parts[i] === 'diametro') diameter = parseFloat(parts[++i]);
@@ -337,7 +337,6 @@ const SmartFlowCommands = (function() {
             let accum = 0;
             for (let i = 0; i < pts.length - 1; i++) {
                 const a = pts[i], b = pts[i+1];
-                // Proyectar startPos sobre segmento
                 const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
                 const ap = { x: startPos.x - a.x, y: startPos.y - a.y, z: startPos.z - a.z };
                 const len2 = ab.x*ab.x + ab.y*ab.y + ab.z*ab.z;
@@ -355,10 +354,6 @@ const SmartFlowCommands = (function() {
                 }
                 accum += lengths[i];
             }
-            // Forzamos el tratamiento como punto intermedio (se insertará Tee)
-            toNozzleRaw = null;        // no es un puerto físico
-            let posRelativa = bestParam;
-            // Ahora saltamos a la lógica de punto intermedio directamente
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Router no disponible", true);
                 return true;
@@ -623,7 +618,7 @@ const SmartFlowCommands = (function() {
             return true;
         }
     }
-Cc
+
     // --- ROUTE (COMANDO) ---
     function parseRoute(cmd) {
         const parts = cmd.split(/\s+/);
@@ -1145,3 +1140,4 @@ Cc
 
     return { init, executeCommand, executeBatch, importPCF };
 })();
+
