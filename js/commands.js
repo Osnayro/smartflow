@@ -3,9 +3,9 @@
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.3 FULL
 // Archivo: js/commands.js
 // Incluye: importPCF funcional, corrección de _cachedPoints en todas las conexiones,
-//           transición automática de materiales, notificaciones con nombre legible,
-//           herencia de material/spec al conectar, auto‑codo en extremos de línea,
-//           manejo de puertos virtuales 0/1 en origen y destino,
+//           transición automática de materiales (con flag nt para suprimirla),
+//           notificaciones con nombre legible, herencia de material/spec al conectar,
+//           auto‑codo en extremos de línea, manejo de puertos virtuales 0/1 en origen y destino,
 //           manejo robusto de diferencia de diámetros (reductor en nueva línea),
 //           auto‑detección del punto más cercano cuando no se especifica puerto destino.
 // ============================================================
@@ -325,14 +325,21 @@ const SmartFlowCommands = (function() {
         // --- AUTO‑DETECCIÓN DEL PUNTO MÁS CERCANO SI NO SE ESPECIFICÓ PUERTO ---
         if (isLine && (!toNozzleRaw || toNozzleRaw === '')) {
             const pts = toObj._cachedPoints || toObj.points3D;
-            if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
-            let minDist = Infinity, bestParam = 0, bestPoint = pts[0];
+            if (!pts || pts.length < 2) {
+                notifyWithVoice("La línea destino no tiene geometría", true);
+                return true;
+            }
+            let minDist = Infinity, bestPoint = pts[0];
             let lengths = [];
             let totalLen = 0;
             for (let i = 0; i < pts.length - 1; i++) {
                 const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
                 lengths.push(d);
                 totalLen += d;
+            }
+            if (totalLen === 0) {
+                notifyWithVoice("La línea destino tiene longitud cero", true);
+                return true;
             }
             let accum = 0;
             for (let i = 0; i < pts.length - 1; i++) {
@@ -349,17 +356,22 @@ const SmartFlowCommands = (function() {
                 const dist = Math.hypot(startPos.x - proj.x, startPos.y - proj.y, startPos.z - proj.z);
                 if (dist < minDist) {
                     minDist = dist;
-                    bestParam = (accum + t * lengths[i]) / totalLen;
                     bestPoint = proj;
                 }
                 accum += lengths[i];
             }
+
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Router no disponible", true);
                 return true;
             }
+
             const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, bestPoint, diameter, true);
-            if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
+            if (!puertoId) {
+                notifyWithVoice("No se pudo insertar el accesorio automáticamente. Verifique que el catálogo tenga el componente adecuado.", true);
+                return true;
+            }
+
             const endPos = bestPoint;
             const newTag = `L-${(db.lines?.length || 0) + 1}`;
             const nuevaLinea = {
@@ -380,7 +392,7 @@ const SmartFlowCommands = (function() {
                 if (p) p.connectedLine = newTag;
             }
             _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en el punto más cercano (${bestParam.toFixed(2)})`, false);
+            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en el punto más cercano`, false);
             return true;
         }
 
@@ -671,7 +683,7 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // --- EDIT (COMPLETO con transición automática de materiales y notificaciones legibles) ---
+    // --- EDIT (COMPLETO con transición automática de materiales, flag nt y notificaciones legibles) ---
     function parseEditCommand(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'edit' && parts[0] !== 'editar') return false;
@@ -741,15 +753,17 @@ const SmartFlowCommands = (function() {
                 const compType = parts[5];
                 let position = 0.5; const atIdx = parts.indexOf('at') !== -1 ? parts.indexOf('at') : parts.indexOf('en');
                 if (atIdx !== -1) position = parseFloat(parts[atIdx + 1]);
+                // Detectar flag nt (no transition) en los argumentos restantes
+                const suppressTransition = parts.slice(atIdx !== -1 ? atIdx + 2 : 6).some(p => p === 'nt' || p === 'notransition');
                 const db = _core.getDb(); const line = db.lines.find(l => l.tag === tag);
                 if (line) {
                     const compDef = _catalog.getComponent(compType);
                     if (!compDef) { notifyWithVoice(`Componente desconocido: ${compType}`, true); return true; }
 
-                    // ---- TRANSICIÓN AUTOMÁTICA DE MATERIALES ----
+                    // ---- TRANSICIÓN AUTOMÁTICA DE MATERIALES (suprimible con nt) ----
                     const lineMaterial = (line.material || 'PPR').toUpperCase();
                     const compMaterial = (compDef.material || '').toUpperCase();
-                    if (compMaterial && lineMaterial !== compMaterial) {
+                    if (compMaterial && lineMaterial !== compMaterial && !suppressTransition) {
                         const transition = _catalog.getTransitionAccessories(lineMaterial, compMaterial, line.diameter);
                         if (transition) {
                             if (transition.left) {
@@ -785,7 +799,9 @@ const SmartFlowCommands = (function() {
                                 }
                             }
                         } else {
-                            notifyWithVoice(`Advertencia: No se encontró adaptador para transición ${lineMaterial} → ${compMaterial}`, true);
+                            if (!suppressTransition) {
+                                notifyWithVoice(`Advertencia: No se encontró adaptador para transición ${lineMaterial} → ${compMaterial}`, true);
+                            }
                         }
                     }
 
@@ -856,7 +872,7 @@ const SmartFlowCommands = (function() {
         ayuda += "CONEXIÓN:\n  connect/conectar [origen] [puerto] to/a [destino] [puerto o 0-1] [diametro N]\n  route/ruta desde [origen] [puerto] a/hasta [destino] [puerto-opcional] [diametro N]\n\n";
         ayuda += "INFORMACIÓN:\n  info line/línea [TAG]\n  info equipment/equipo [TAG]\n  info component/componente [TAG]\n\n";
         ayuda += "ELIMINACIÓN:\n  delete/eliminar equipment/equipo [tag]\n  delete/eliminar line/línea [tag]\n\n";
-        ayuda += "EDICIÓN:\n  edit/editar equipment/equipo [tag] move/mover to (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] pos/posicion (x,y,z)\n  edit/editar line/línea [tag] set/establecer material [M]\n  edit/editar line/línea [tag] add/añadir component/componente [tipo] at/en [0-1]\n  (consulte 'help' para lista completa)\n\n";
+        ayuda += "EDICIÓN:\n  edit/editar equipment/equipo [tag] move/mover to (x,y,z)\n  edit/editar equipment/equipo [tag] set/establecer puerto [id] pos/posicion (x,y,z)\n  edit/editar line/línea [tag] set/establecer material [M]\n  edit/editar line/línea [tag] add/añadir component/componente [tipo] at/en [0-1] [nt]\n  (consulte 'help' para lista completa)\n\n";
         ayuda += "NUEVOS COMANDOS:\n  tap/derivar [Equipo] [Puerto] to [Línea] [Posición 0-1]\n  split/dividir [Línea] at (x,y,z) [type TEE_EQUAL]\n\n";
         ayuda += "REPORTES:\n  bom | mto | generate bom\n  audit/auditar\n\n";
         ayuda += "OTROS:\n  undo/deshacer | redo/rehacer | help/ayuda\n═══════════════════════════════════════════════════════════\n";
@@ -1140,4 +1156,3 @@ const SmartFlowCommands = (function() {
 
     return { init, executeCommand, executeBatch, importPCF };
 })();
-
