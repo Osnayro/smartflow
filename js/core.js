@@ -249,8 +249,10 @@ const SmartFlowCore = (function() {
             this._saveState(); _renderUI(); _notifyUI("Nuevo proyecto creado.", false);
         },
         importState: function(state) {
-            if (state && state.equipos && state.lines) {
-                _db.equipos = _deepClone(state.equipos); _db.lines = _deepClone(state.lines);
+            // 🔄 ADAPTADOR: Convierte datos 3D a formato 2D antes de importar
+            const cleanData = SmartFlowAdapter.ensure2DReady(state);
+            if (cleanData && cleanData.equipos && cleanData.lines) {
+                _db.equipos = _deepClone(cleanData.equipos); _db.lines = _deepClone(cleanData.lines);
                 _selectedElement = null; this._saveState(); syncPhysicalData(); _renderUI();
                 _notifyUI("Proyecto importado correctamente.", false); return true;
             }
