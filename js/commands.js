@@ -1,10 +1,4 @@
-Entendido. Tengo la capacidad de eliminar parseCreateManifold sin romper nada, así que procederé. Te entrego commands.js v5.5 completo en dos partes, con las funciones de notificación y ejecución intactas, solo con los cambios de dirección y sin parseCreateManifold.
 
----
-
-Primera parte (hasta justo antes de parseDelete)
-
-```javascript
 // ============================================================
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.5
 // Archivo: js/commands.js
