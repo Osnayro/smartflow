@@ -1,7 +1,14 @@
+Entendido. Tengo la capacidad de eliminar parseCreateManifold sin romper nada, así que procederé. Te entrego commands.js v5.5 completo en dos partes, con las funciones de notificación y ejecución intactas, solo con los cambios de dirección y sin parseCreateManifold.
 
+---
+
+Primera parte (hasta justo antes de parseDelete)
+
+```javascript
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.4 FULL
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.5
 // Archivo: js/commands.js
+// Cambios: Captura de dirección de puerto + routingData estandarizado
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -80,6 +87,38 @@ const SmartFlowCommands = (function() {
         return obj._cachedPoints || obj.points3D || obj.points || [];
     }
 
+    // ==================== NUEVO: Obtener dirección de puerto localmente ====================
+    function getPortDirectionLocal(obj, portId) {
+        if (!obj) return { dx: 1, dy: 0, dz: 0 };
+        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortDirection) {
+            return SmartFlowRouter.getPortDirection(obj, portId);
+        }
+        if (obj.posX !== undefined || (obj.pos && obj.pos.x !== undefined)) {
+            const puerto = obj.puertos?.find(p => p.id === portId);
+            if (puerto) {
+                if (puerto.orientacion) return puerto.orientacion;
+                if (puerto.dir) return puerto.dir;
+                if (puerto.normal) return puerto.normal;
+            }
+            return { dx: 1, dy: 0, dz: 0 };
+        }
+        const pts = obj._cachedPoints || obj.points3D || obj.points;
+        if (pts && pts.length >= 2) {
+            if (portId === '0') {
+                const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y, dz = pts[1].z - pts[0].z;
+                const len = Math.hypot(dx, dy, dz) || 1;
+                return { dx: dx/len, dy: dy/len, dz: dz/len };
+            }
+            if (portId === '1') {
+                const n = pts.length;
+                const dx = pts[n-1].x - pts[n-2].x, dy = pts[n-1].y - pts[n-2].y, dz = pts[n-1].z - pts[n-2].z;
+                const len = Math.hypot(dx, dy, dz) || 1;
+                return { dx: dx/len, dy: dy/len, dz: dz/len };
+            }
+        }
+        return { dx: 1, dy: 0, dz: 0 };
+    }
+
     function calcularPuntoParametrico(lineObj, param) {
         const pts = getPoints(lineObj);
         if (pts.length < 2) return null;
@@ -111,7 +150,7 @@ const SmartFlowCommands = (function() {
         }
     }
 
-    // ==================== NUEVO: COMANDO COORDENADAS / PUNTO ====================
+    // ==================== COMANDO COORDENADAS / PUNTO ====================
     function parsePoint(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'point' && parts[0] !== 'coordenadas') return false;
@@ -225,7 +264,7 @@ const SmartFlowCommands = (function() {
         }
     }
 
-    // ==================== NUEVO: COMANDO NODOS ====================
+    // ==================== COMANDO NODOS ====================
     function parseNodes(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'nodes' && parts[0] !== 'nodos') return false;
@@ -316,7 +355,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- CREATE ---
+    // --- CREATE (sin manifold) ---
     function parseCreate(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'create') return false;
@@ -381,34 +420,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    function parseCreateManifold(cmd) {
-        const parts = cmd.split(/\s+/);
-        if (parts[0] !== 'create' || parts[1] !== 'manifold') return false;
-        let idx = 2; const tag = parts[idx++];
-        if (parts[idx] !== 'at') return false; idx++;
-        const coords = parts[idx++].match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/);
-        if (!coords) return false;
-        const x = parseFloat(coords[1]), y = parseFloat(coords[2]), z = parseFloat(coords[3]);
-        let numEntradas = 2, spacing = 3000, outputPos = 'center', diametro = 4, material = 'PPR', spec = 'PPR_PN12_5';
-        while (idx < parts.length) {
-            const key = parts[idx++].toLowerCase();
-            if (key === 'entries' || key === 'entradas') numEntradas = parseInt(parts[idx++]);
-            else if (key === 'spacing' || key === 'espaciado') spacing = parseFloat(parts[idx++]);
-            else if (key === 'output' || key === 'salida') outputPos = parts[idx++].toLowerCase();
-            else if (key === 'diameter' || key === 'diametro') diametro = parseFloat(parts[idx++]);
-            else if (key === 'material') material = parts[idx++].toUpperCase();
-            else if (key === 'spec') spec = parts[idx++];
-        }
-        const colector = { tag, tipo: 'colector', posX: x, posY: y, posZ: z, diametro, altura: 0, largo: (numEntradas - 1) * spacing, material, spec, num_entradas: numEntradas, spacing, salida_pos: outputPos, diametro_entrada: diametro, diametro_salida: diametro };
-        const def = _catalog.getEquipment('colector');
-        colector.puertos = def.generarPuertos(colector);
-        _core.addEquipment(colector);
-        if (_core.setSelected) _core.setSelected({ type: 'equipment', obj: colector });
-        notifyWithVoice(`Colector ${tag} creado`, false);
-        return true;
-    }
-
-    // --- Helper codo ---
+    // --- Helper codo (en commands.js se mantiene igual) ---
     function findElbowForLine(material, diameter, angleDeg) {
         const mat = material.toUpperCase();
         const is90 = (Math.abs(angleDeg - 90) < 10);
@@ -421,7 +433,8 @@ const SmartFlowCommands = (function() {
         if (mat.includes('INOXIDABLE') || mat.includes('INOX')) return is90 ? 'ELBOW_90_SANITARY' : null;
         return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
     }
-   // --- CONNECT (con herencia, auto‑codo siempre, y detección inteligente de puerto omitido) ---
+
+    // --- CONNECT (con herencia, auto‑codo siempre, y detección inteligente de puerto omitido) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -443,6 +456,10 @@ const SmartFlowCommands = (function() {
         const fromObj = db.equipos.find(e => e.tag === fromEquip) || db.lines.find(l => l.tag === fromEquip);
         const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
         if (!fromObj || !toObj) { notifyWithVoice("Objeto no encontrado", true); return true; }
+
+        // ===== CAPTURA DE DIRECCIONES (v5.5) =====
+        let fromDir = getPortDirectionLocal(fromObj, fromNozzle);
+        let toDir = null;
 
         let startPos = null;
         let fromDiameter = 4;
@@ -475,6 +492,18 @@ const SmartFlowCommands = (function() {
         const isFromLine = fromObj._cachedPoints || fromObj.points3D;
         const isLine = toObj._cachedPoints || toObj.points3D;
 
+        // Construcción del routingData
+        const routingData = {
+            origin: startPos,
+            originDir: fromDir,
+            target: null,
+            targetDir: null,
+            diameter: diameter,
+            material: material,
+            spec: spec,
+            autoElbow: true
+        };
+
         if (isLine && (!toNozzleRaw || toNozzleRaw === '')) {
             const pts = toObj._cachedPoints || toObj.points3D;
             if (!pts || pts.length < 2) {
@@ -496,6 +525,16 @@ const SmartFlowCommands = (function() {
                 const dist = Math.hypot(startPos.x - proj.x, startPos.y - proj.y, startPos.z - proj.z);
                 if (dist < minDist) { minDist = dist; bestPoint = proj; }
             }
+
+            toDir = {
+                dx: bestPoint.x - startPos.x,
+                dy: bestPoint.y - startPos.y,
+                dz: bestPoint.z - startPos.z
+            };
+            const lenToDir = Math.hypot(toDir.dx, toDir.dy, toDir.dz) || 1;
+            toDir = { dx: toDir.dx/lenToDir, dy: toDir.dy/lenToDir, dz: toDir.dz/lenToDir };
+            routingData.target = bestPoint;
+            routingData.targetDir = toDir;
 
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Router no disponible", true);
@@ -575,6 +614,10 @@ const SmartFlowCommands = (function() {
             posRelativa = null;
         }
 
+        routingData.diameter = diameter;
+        routingData.material = material;
+        routingData.spec = spec;
+
         const newTag = `L-${(db.lines?.length || 0) + 1}`;
         let endPos = null;
         let newComponents = [];
@@ -603,6 +646,12 @@ const SmartFlowCommands = (function() {
             const toObjUpd = db.lines.find(l => l.tag === toEquip);
             if (toObjUpd?.puertos) nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
 
+            const segDir = { dx: pB.x - pA.x, dy: pB.y - pA.y, dz: pB.z - pA.z };
+            const segLen = Math.hypot(segDir.dx, segDir.dy, segDir.dz) || 1;
+            toDir = { dx: segDir.dx/segLen, dy: segDir.dy/segLen, dz: segDir.dz/segLen };
+            routingData.target = endPos;
+            routingData.targetDir = toDir;
+
             const nuevaLinea = {
                 tag: newTag, diameter, material, spec,
                 origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
@@ -622,10 +671,12 @@ const SmartFlowCommands = (function() {
                 const pts = toObj._cachedPoints || toObj.points3D;
                 if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
                 endPos = toNozzleRaw === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
+                toDir = getPortDirectionLocal(toObj, toNozzleRaw);
             } else {
                 if (!toObj.puertos) toObj.puertos = [];
                 nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
                 if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
+                toDir = getPortDirectionLocal(toObj, toNozzleRaw);
                 if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
                     endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
                 } else {
@@ -633,6 +684,8 @@ const SmartFlowCommands = (function() {
                     endPos = { x: basePos.x + (nzTo.relX || 0), y: basePos.y + (nzTo.relY || 0), z: basePos.z + (nzTo.relZ || 0) };
                 }
             }
+            routingData.target = endPos;
+            routingData.targetDir = toDir;
 
             const nuevaLinea = {
                 tag: newTag, diameter, material, spec,
@@ -667,6 +720,25 @@ const SmartFlowCommands = (function() {
             else if (parts[i] === 'material') material = parts[++i].toUpperCase();
             else if (parts[i] === 'spec') spec = parts[++i];
         }
+
+        // ===== CAPTURA DE DIRECCIONES PARA ROUTE (v5.5) =====
+        const db = _core.getDb();
+        const fromObj = db.equipos.find(e => e.tag === fromEquip) || db.lines.find(l => l.tag === fromEquip);
+        const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
+        let fromDir = fromObj ? getPortDirectionLocal(fromObj, fromNozzle) : { dx: 1, dy: 0, dz: 0 };
+        let toDir = toObj ? (toNozzle ? getPortDirectionLocal(toObj, toNozzle) : { dx: 0, dy: 0, dz: 1 }) : { dx: 0, dy: 0, dz: 1 };
+
+        const routingData = {
+            origin: null,
+            originDir: fromDir,
+            target: null,
+            targetDir: toDir,
+            diameter: diameter,
+            material: material,
+            spec: spec,
+            autoElbow: true
+        };
+
         if (typeof SmartFlowRouter !== 'undefined') {
             SmartFlowRouter.routeBetweenPorts(fromEquip, fromNozzle, toEquip, toNozzle, diameter, material, spec);
         } else { notifyWithVoice("Módulo Router no disponible.", true); }
@@ -713,7 +785,7 @@ const SmartFlowCommands = (function() {
                     const puertoId = parts[5], subParam = parts[6];
                     if (subParam === 'diam' || subParam === 'diametro') { const nuevoDiam = parseFloat(parts[7]); if (!isNaN(nuevoDiam)) { _core.updatePuerto(tag, puertoId, { diametro: nuevoDiam }); notifyWithVoice(`Puerto ${puertoId} diámetro ${nuevoDiam}"`, false); return true; } }
                     else if (subParam === 'pos' || subParam === 'posicion') { let cs=''; for(let i=7;i<parts.length;i++){cs+=parts[i];if(parts[i].includes(')'))break;} const m=cs.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/); if(m){_core.updatePuerto(tag,puertoId,{pos:{x:parseFloat(m[1]),y:parseFloat(m[2]),z:parseFloat(m[3])}});notifyWithVoice(`Puerto ${puertoId} posición actualizada`,false);return true;} }
-                    else if (subParam === 'dir' || subParam === 'direccion') { let cs='';for(let i=7;i<parts.length;i++){cs+=parts[i];if(parts[i].includes(')'))break;} const m=cs.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/); if(m){_core.updatePuerto(tag,puertoId,{dir:{dx:parseFloat(m[1]),dy:parseFloat(m[2]),dz:parseFloat(m[3])}});notifyWithVoice(`Puerto ${puertoId} dirección actualizada`,false);return true;} }
+                    else if (subParam === 'dir' || subParam === 'direccion') { let cs=''; for(let i=7;i<parts.length;i++){cs+=parts[i];if(parts[i].includes(')'))break;} const m=cs.match(/\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)/); if(m){_core.updatePuerto(tag,puertoId,{dir:{dx:parseFloat(m[1]),dy:parseFloat(m[2]),dz:parseFloat(m[3])}});notifyWithVoice(`Puerto ${puertoId} dirección actualizada`,false);return true;} }
                 }
             }
         } else if (parts[1] === 'line' || parts[1] === 'línea') {
@@ -837,11 +909,19 @@ const SmartFlowCommands = (function() {
         const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toLine, puntoConexion, diameter, true);
         if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
         const newTag = `L-${(db.lines?.length || 0) + 1}`;
+        // Capturar direcciones para tap también (v5.5)
+        const fromDirTap = getPortDirectionLocal(fromObj, fromNozzle);
+        const toDirTap = getPortDirectionLocal(toObj, '0');
         const nuevaLinea = { 
             tag: newTag, diameter, material, spec, 
             origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle }, 
             destination: { objType: 'line', equipTag: toLine, portId: puertoId }, 
-            waypoints: [], _cachedPoints: [startPos, puntoConexion]
+            waypoints: [], _cachedPoints: [startPos, puntoConexion],
+            _routingData: {
+                originDir: fromDirTap,
+                targetDir: toDirTap,
+                autoElbow: true
+            }
         };
         _core.addLine(nuevaLinea);
         if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
@@ -1024,7 +1104,7 @@ const SmartFlowCommands = (function() {
         const normalized = normalizeCommand(cmd);
         const trimmed = normalized.trim();
         if (parseCreateLine(trimmed)) return true;
-        if (parseCreateManifold(trimmed)) return true;
+        // parseCreateManifold eliminado
         if (parseCreate(trimmed)) return true;
         if (parseConnect(trimmed)) return true;
         if (parseRoute(trimmed)) return true;
@@ -1061,7 +1141,8 @@ const SmartFlowCommands = (function() {
     function init(coreInstance, catalogInstance, rendererInstance, notifyFn, renderFn) {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
+        console.log('✅ SmartFlow Commands v5.5 (captura de dirección + routingData listo)');
     }
 
-    return { init, executeCommand, executeBatch, importPCF };
+    return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
 })();
