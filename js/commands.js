@@ -1,8 +1,8 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.5
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.6
 // Archivo: js/commands.js
-// Cambios: Captura de dirección de puerto + routingData estandarizado
+// Cambios: Delegación al router para generación de codos
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -428,7 +428,7 @@ const SmartFlowCommands = (function() {
         return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
     }
 
-    // --- CONNECT (con herencia, auto‑codo siempre, y detección inteligente de puerto omitido) ---
+    // --- CONNECT (versión final que usa el router) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -451,59 +451,36 @@ const SmartFlowCommands = (function() {
         const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
         if (!fromObj || !toObj) { notifyWithVoice("Objeto no encontrado", true); return true; }
 
-        // ===== CAPTURA DE DIRECCIONES (v5.5) =====
-        let fromDir = getPortDirectionLocal(fromObj, fromNozzle);
-        let toDir = null;
-
-        let startPos = null;
-        let fromDiameter = 4;
-        if (fromObj._cachedPoints && (fromNozzle === '0' || fromNozzle === '1')) {
-            const pts = fromObj._cachedPoints;
-            if (pts && pts.length >= 2) {
-                startPos = fromNozzle === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
-                fromDiameter = fromObj.diameter || 4;
-            } else {
-                notifyWithVoice("La línea origen no tiene geometría válida", true);
-                return true;
-            }
-        } else {
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (!nzFrom) { notifyWithVoice("Puerto origen no encontrado", true); return true; }
-            fromDiameter = nzFrom.diametro || 4;
-            if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
-                startPos = SmartFlowRouter.getPortPosition(fromObj, fromNozzle);
-            } else {
-                const basePos = getBasePosition(fromObj);
-                startPos = {
-                    x: basePos.x + (nzFrom.relX || 0),
-                    y: basePos.y + (nzFrom.relY || 0),
-                    z: basePos.z + (nzFrom.relZ || 0)
-                };
-            }
-        }
-        if (!startPos) { notifyWithVoice("No se pudo obtener la posición del puerto origen", true); return true; }
-
-        const isFromLine = fromObj._cachedPoints || fromObj.points3D;
         const isLine = toObj._cachedPoints || toObj.points3D;
 
-        // Construcción del routingData
-        const routingData = {
-            origin: startPos,
-            originDir: fromDir,
-            target: null,
-            targetDir: null,
-            diameter: diameter,
-            material: material,
-            spec: spec,
-            autoElbow: true
-        };
-
+        // Caso 1: destino es línea sin puerto explícito → insertar tee + router
         if (isLine && (!toNozzleRaw || toNozzleRaw === '')) {
             const pts = toObj._cachedPoints || toObj.points3D;
             if (!pts || pts.length < 2) {
                 notifyWithVoice("La línea destino no tiene geometría", true);
                 return true;
             }
+
+            let startPos = null;
+            // obtener startPos del puerto origen (código igual que antes)
+            if (fromObj._cachedPoints && (fromNozzle === '0' || fromNozzle === '1')) {
+                const ptsFrom = fromObj._cachedPoints;
+                if (ptsFrom && ptsFrom.length >= 2) {
+                    startPos = fromNozzle === '0' ? { ...ptsFrom[0] } : { ...ptsFrom[ptsFrom.length - 1] };
+                }
+            } else {
+                const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+                if (!nzFrom) { notifyWithVoice("Puerto origen no encontrado", true); return true; }
+                if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
+                    startPos = SmartFlowRouter.getPortPosition(fromObj, fromNozzle);
+                } else {
+                    const basePos = getBasePosition(fromObj);
+                    startPos = { x: basePos.x + (nzFrom.relX || 0), y: basePos.y + (nzFrom.relY || 0), z: basePos.z + (nzFrom.relZ || 0) };
+                }
+            }
+            if (!startPos) { notifyWithVoice("No se pudo obtener la posición del puerto origen", true); return true; }
+
+            // encontrar punto más cercano en línea destino
             let minDist = Infinity, bestPoint = pts[0];
             for (let i = 0; i < pts.length - 1; i++) {
                 const a = pts[i], b = pts[i+1];
@@ -520,16 +497,6 @@ const SmartFlowCommands = (function() {
                 if (dist < minDist) { minDist = dist; bestPoint = proj; }
             }
 
-            toDir = {
-                dx: bestPoint.x - startPos.x,
-                dy: bestPoint.y - startPos.y,
-                dz: bestPoint.z - startPos.z
-            };
-            const lenToDir = Math.hypot(toDir.dx, toDir.dy, toDir.dz) || 1;
-            toDir = { dx: toDir.dx/lenToDir, dy: toDir.dy/lenToDir, dz: toDir.dz/lenToDir };
-            routingData.target = bestPoint;
-            routingData.targetDir = toDir;
-
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Router no disponible", true);
                 return true;
@@ -541,58 +508,21 @@ const SmartFlowCommands = (function() {
                 return true;
             }
 
-            const endPos = bestPoint;
-            const newTag = `L-${(db.lines?.length || 0) + 1}`;
-            const newComponents = [];
-
-            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
-                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
-                if (ptsFrom && ptsFrom.length >= 2) {
-                    let lineDir;
-                    if (fromNozzle === '0') {
-                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
-                    } else {
-                        const n = ptsFrom.length;
-                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
-                    }
-                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
-                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
-
-                    const newStartDir = { dx: endPos.x - startPos.x, dy: endPos.y - startPos.y, dz: endPos.z - startPos.z };
-                    const newLen = Math.hypot(newStartDir.dx, newStartDir.dy, newStartDir.dz) || 1;
-                    const newDir = { dx: newStartDir.dx/newLen, dy: newStartDir.dy/newLen, dz: newStartDir.dz/newLen };
-
-                    const dot = Math.abs(lineDir.dx*newDir.dx + lineDir.dy*newDir.dy + lineDir.dz*newDir.dz);
-                    const angleRad = Math.acos(Math.min(1, dot));
-                    const angleDeg = angleRad * 180 / Math.PI;
-
-                    if (angleDeg > 15) {
-                        const elbowId = findElbowForLine(material, diameter, angleDeg);
-                        if (elbowId) {
-                            newComponents.push({ type: elbowId, tag: elbowId + '-' + Date.now().toString().slice(-6), param: 0.0 });
-                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) al inicio de ${newTag}`, false);
-                        }
-                    }
-                }
+            // Ahora usamos el router para crear la línea con codos
+            const nuevaLinea = SmartFlowRouter.routeBetweenPorts(
+                fromEquip, fromNozzle,
+                toEquip, puertoId,
+                diameter, material, spec
+            );
+            if (nuevaLinea) {
+                notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} (punto más cercano)`, false);
+            } else {
+                notifyWithVoice("Error al crear la ruta automática", true);
             }
-
-            const nuevaLinea = {
-                tag: newTag, diameter, material, spec,
-                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
-                waypoints: [], _cachedPoints: [startPos, endPos], components: newComponents
-            };
-            _core.addLine(nuevaLinea);
-            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (nzFrom) nzFrom.connectedLine = newTag;
-            const toObjUpd = db.lines.find(l => l.tag === toEquip);
-            if (toObjUpd?.puertos) { const p = toObjUpd.puertos.find(p => p.id === puertoId); if (p) p.connectedLine = newTag; }
-            _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} (punto más cercano)`, false);
             return true;
         }
 
+        // Caso 2: destino con puerto concreto (número de puerto, 0, 1, o pos. relativa extrema)
         const numPos = parseFloat(toNozzleRaw);
         const isNumeric = !isNaN(numPos) && isFinite(numPos);
         let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
@@ -608,97 +538,59 @@ const SmartFlowCommands = (function() {
             posRelativa = null;
         }
 
-        routingData.diameter = diameter;
-        routingData.material = material;
-        routingData.spec = spec;
-
-        const newTag = `L-${(db.lines?.length || 0) + 1}`;
-        let endPos = null;
-        let newComponents = [];
-        let nzTo = null;
-
-        let toDiameter = diameter;
-        if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) toDiameter = toObj.diameter || 4;
-        else if (toObj.puertos) { const port = toObj.puertos.find(p => p.id === toNozzleRaw); if (port) toDiameter = port.diametro || 4; }
-
         if (isLine && posRelativa !== null) {
-            if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
-                notifyWithVoice("Router no disponible", true); return true;
-            }
+            // Punto intermedio: insertar tee + router
             const pts = toObj._cachedPoints || toObj.points3D;
             if (!pts || pts.length < 2) { notifyWithVoice("Geometría inválida", true); return true; }
             let totalLen = 0, lengths = [];
-            for (let i = 0; i < pts.length - 1; i++) { const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z); lengths.push(d); totalLen += d; }
+            for (let i = 0; i < pts.length - 1; i++) { 
+                const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+                lengths.push(d); totalLen += d; 
+            }
             const targetLen = totalLen * posRelativa;
             let accum = 0, segIdx = 0, t = 0;
-            for (let i = 0; i < lengths.length; i++) { if (accum + lengths[i] >= targetLen || i === lengths.length - 1) { segIdx = i; t = (targetLen - accum) / (lengths[i] || 1); break; } accum += lengths[i]; }
+            for (let i = 0; i < lengths.length; i++) { 
+                if (accum + lengths[i] >= targetLen || i === lengths.length - 1) { 
+                    segIdx = i; t = (targetLen - accum) / (lengths[i] || 1); break; 
+                } 
+                accum += lengths[i]; 
+            }
             const pA = pts[segIdx], pB = pts[segIdx + 1];
             const punto = { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t, z: pA.z + (pB.z - pA.z) * t };
+            
             const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, punto, diameter, true);
             if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
-            endPos = punto;
-            const toObjUpd = db.lines.find(l => l.tag === toEquip);
-            if (toObjUpd?.puertos) nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
-
-            const segDir = { dx: pB.x - pA.x, dy: pB.y - pA.y, dz: pB.z - pA.z };
-            const segLen = Math.hypot(segDir.dx, segDir.dy, segDir.dz) || 1;
-            toDir = { dx: segDir.dx/segLen, dy: segDir.dy/segLen, dz: segDir.dz/segLen };
-            routingData.target = endPos;
-            routingData.targetDir = toDir;
-
-            const nuevaLinea = {
-                tag: newTag, diameter, material, spec,
-                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
-                waypoints: [], _cachedPoints: [startPos, endPos], components: newComponents
-            };
-            _core.addLine(nuevaLinea);
-            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (nzFrom) nzFrom.connectedLine = newTag;
-            if (nzTo) nzTo.connectedLine = newTag;
-            _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
+            
+            const nuevaLinea = SmartFlowRouter.routeBetweenPorts(
+                fromEquip, fromNozzle,
+                toEquip, puertoId,
+                diameter, material, spec
+            );
+            if (nuevaLinea) {
+                notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
+            }
             return true;
         } else {
+            // Destino con puerto concreto (incluye extremos 0/1 y puertos de equipo)
             if (isLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
-                const pts = toObj._cachedPoints || toObj.points3D;
-                if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
-                endPos = toNozzleRaw === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
-                toDir = getPortDirectionLocal(toObj, toNozzleRaw);
-            } else {
-                if (!toObj.puertos) toObj.puertos = [];
-                nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
-                if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
-                toDir = getPortDirectionLocal(toObj, toNozzleRaw);
-                if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
-                    endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
-                } else {
-                    const basePos = getBasePosition(toObj);
-                    endPos = { x: basePos.x + (nzTo.relX || 0), y: basePos.y + (nzTo.relY || 0), z: basePos.z + (nzTo.relZ || 0) };
-                }
+                // extremo de línea, es un puerto válido
+            } else if (!toObj.puertos?.find(n => n.id === toNozzleRaw)) {
+                notifyWithVoice("Puerto destino no encontrado", true); return true;
             }
-            routingData.target = endPos;
-            routingData.targetDir = toDir;
-
-            const nuevaLinea = {
-                tag: newTag, diameter, material, spec,
-                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: isLine ? 'line' : 'equipment', equipTag: toEquip, portId: toNozzleRaw },
-                waypoints: [], _cachedPoints: [startPos, endPos], components: newComponents
-            };
-            _core.addLine(nuevaLinea);
-            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (nzFrom) nzFrom.connectedLine = newTag;
-            if (nzTo) nzTo.connectedLine = newTag;
-            _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${toNozzleRaw}`, false);
+            
+            const nuevaLinea = SmartFlowRouter.routeBetweenPorts(
+                fromEquip, fromNozzle,
+                toEquip, toNozzleRaw,
+                diameter, material, spec
+            );
+            if (nuevaLinea) {
+                notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${toNozzleRaw}`, false);
+            }
             return true;
         }
     }
 
-    // --- ROUTE ---
+    // --- ROUTE (también delegamos completamente al router) ---
     function parseRoute(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'route' && parts[0] !== 'ruta') return false;
@@ -715,26 +607,11 @@ const SmartFlowCommands = (function() {
             else if (parts[i] === 'spec') spec = parts[++i];
         }
 
-        // ===== CAPTURA DE DIRECCIONES PARA ROUTE (v5.5) =====
-        const db = _core.getDb();
-        const fromObj = db.equipos.find(e => e.tag === fromEquip) || db.lines.find(l => l.tag === fromEquip);
-        const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
-        let fromDir = fromObj ? getPortDirectionLocal(fromObj, fromNozzle) : { dx: 1, dy: 0, dz: 0 };
-        let toDir = toObj ? (toNozzle ? getPortDirectionLocal(toObj, toNozzle) : { dx: 0, dy: 0, dz: 1 }) : { dx: 0, dy: 0, dz: 1 };
-
-        const routingData = {
-            origin: null,
-            originDir: fromDir,
-            target: null,
-            targetDir: toDir,
-            diameter: diameter,
-            material: material,
-            spec: spec,
-            autoElbow: true
-        };
-
         if (typeof SmartFlowRouter !== 'undefined') {
-            SmartFlowRouter.routeBetweenPorts(fromEquip, fromNozzle, toEquip, toNozzle, diameter, material, spec);
+            const nuevaLinea = SmartFlowRouter.routeBetweenPorts(fromEquip, fromNozzle, toEquip, toNozzle, diameter, material, spec);
+            if (nuevaLinea) {
+                notifyWithVoice(`✅ Ruta ${nuevaLinea.tag} creada`, false);
+            }
         } else { notifyWithVoice("Módulo Router no disponible.", true); }
         return true;
     }
@@ -870,7 +747,7 @@ const SmartFlowCommands = (function() {
         notifyWithVoice(ayuda, false); return true;
     }
 
-    // --- TAP ---
+    // --- TAP (corrección final para codos) ---
     function parseTap(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'tap') return false;
@@ -886,44 +763,25 @@ const SmartFlowCommands = (function() {
         }
         if (!_core) { notifyWithVoice("Core no inicializado", true); return true; }
         const db = _core.getDb();
-        const fromObj = db.equipos.find(e => e.tag === fromEquip);
-        if (!fromObj) { notifyWithVoice(`Equipo "${fromEquip}" no encontrado`, true); return true; }
-        const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-        if (!nzFrom) { notifyWithVoice(`Puerto "${fromNozzle}" no encontrado`, true); return true; }
-        let startPos = null;
-        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) startPos = SmartFlowRouter.getPortPosition(fromObj, fromNozzle);
-        else startPos = { x: (fromObj.posX||0) + (nzFrom.relX||0), y: (fromObj.posY||0) + (nzFrom.relY||0), z: (fromObj.posZ||0) + (nzFrom.relZ||0) };
-        if (!startPos) { notifyWithVoice("No se pudo obtener posición origen", true); return true; }
         const toObj = db.lines.find(l => l.tag === toLine);
         if (!toObj || !getPoints(toObj).length) { notifyWithVoice(`Línea "${toLine}" no encontrada`, true); return true; }
         if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') { notifyWithVoice("Router no disponible", true); return true; }
+        
         const resultado = calcularPuntoParametrico(toObj, pos);
         if (!resultado) { notifyWithVoice("No se pudo calcular punto de conexión", true); return true; }
         const puntoConexion = { x: resultado.x, y: resultado.y, z: resultado.z };
         const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toLine, puntoConexion, diameter, true);
         if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
-        const newTag = `L-${(db.lines?.length || 0) + 1}`;
-        // Capturar direcciones para tap también (v5.5)
-        const fromDirTap = getPortDirectionLocal(fromObj, fromNozzle);
-        const toDirTap = getPortDirectionLocal(toObj, '0');
-        const nuevaLinea = { 
-            tag: newTag, diameter, material, spec, 
-            origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle }, 
-            destination: { objType: 'line', equipTag: toLine, portId: puertoId }, 
-            waypoints: [], _cachedPoints: [startPos, puntoConexion],
-            _routingData: {
-                originDir: fromDirTap,
-                targetDir: toDirTap,
-                autoElbow: true
-            }
-        };
-        _core.addLine(nuevaLinea);
-        if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-        nzFrom.connectedLine = newTag;
-        const toObjUpd = db.lines.find(l => l.tag === toLine);
-        if (toObjUpd?.puertos) { const p = toObjUpd.puertos.find(p => p.id === puertoId); if (p) p.connectedLine = newTag; }
-        _core.syncPhysicalData(); _core._saveState(); _renderUI();
-        notifyWithVoice(`✅ Derivación: ${newTag} (${fromEquip}.${fromNozzle} → ${toLine} @${pos.toFixed(2)})`, false);
+
+        // Usar el router para crear la línea con codos
+        const nuevaLinea = SmartFlowRouter.routeBetweenPorts(
+            fromEquip, fromNozzle,
+            toLine, puertoId,
+            diameter, material, spec
+        );
+        if (nuevaLinea) {
+            notifyWithVoice(`✅ Derivación: ${nuevaLinea.tag} (${fromEquip}.${fromNozzle} → ${toLine} @${pos.toFixed(2)})`, false);
+        }
         return true;
     }
 
@@ -1135,7 +993,7 @@ const SmartFlowCommands = (function() {
     function init(coreInstance, catalogInstance, rendererInstance, notifyFn, renderFn) {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
-        console.log('✅ SmartFlow Commands v5.5 (captura de dirección + routingData listo)');
+        console.log('✅ SmartFlow Commands v5.6 (delegación a router para codos)');
     }
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
