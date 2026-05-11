@@ -1,6 +1,6 @@
 
 // ============================================================
-// SMARTFLOW CATALOG v3.2 (Completo: equipos, componentes, materiales, transiciones)
+// SMARTFLOW CATALOG v3.3 (Completo + componentes faltantes recuperados)
 // Archivo: js/catalog.js
 // ============================================================
 
@@ -164,9 +164,9 @@ const SmartFlowCatalog = (function() {
         }
     };
 
-    // -------------------- 3. COMPONENTES DE TUBERÍA (v3.2 ampliado) --------------------
+    // -------------------- 3. COMPONENTES DE TUBERÍA (v3.3 ampliado con componentes faltantes) --------------------
     const components = {
-        // Tees y cruces
+        // Tees y cruces (existentes)
         TEE_EQUAL_CS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta Acero', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB', material: 'Acero al Carbono' },
         TEE_REDUCING_CS: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora Acero', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
         TEE_EQUAL_PPR: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR' },
@@ -174,18 +174,12 @@ const SmartFlowCatalog = (function() {
         TEE_EQUAL_HDPE: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', material: 'HDPE' },
         TEE_EQUAL_PVC: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta PVC', spec: 'PVC_SCH80', conexion: 'CEMENTADO', material: 'PVC' },
         CROSS_CS: { tipo: 'CROSS', nombre: 'Cruz Acero', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
-        
-        // --- NUEVOS: ACERO INOXIDABLE (SS) ---
         TEE_EQUAL_SS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta Inoxidable', spec: 'SS_150_RF', material: 'Acero Inoxidable' },
         TEE_REDUCING_SS: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora Inoxidable', spec: 'SS_150_RF', material: 'Acero Inoxidable' },
-        
-        // --- NUEVOS: PVC ---
         TEE_REDUCING_PVC: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora PVC', spec: 'PVC_SCH80', conexion: 'CEMENTADO', material: 'PVC' },
-        
-        // --- NUEVOS: HDPE ---
         TEE_REDUCING_HDPE: { tipo: 'TEE_REDUCING', nombre: 'Tee Reductora HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', material: 'HDPE' },
         
-        // Tuberías (PIPE)
+        // Tuberías
         PIPE_PPR_PN12_5: { tipo: 'PIPE', nombre: 'Tubo PPR PN12.5', spec: 'PPR_PN12_5' },
         PIPE_CS_SCH80: { tipo: 'PIPE', nombre: 'Tubo Acero SCH80', spec: 'ACERO_SCH80' },
         PIPE_SS_SANITARY: { tipo: 'PIPE', nombre: 'Tubo Sanitario Acero Inox', spec: 'SS_SANITARY' },
@@ -247,27 +241,88 @@ const SmartFlowCatalog = (function() {
         CAP_CS: { tipo: 'CAP', nombre: 'Tapón Acero', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
         CAP_PPR: { tipo: 'CAP', nombre: 'Tapón PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR' },
         
-        // Uniones y transiciones
+        // Uniones y transiciones (existentes)
         UNION_CS_3000: { tipo: 'UNION', nombre: 'Unión Universal Acero 3000', spec: 'ACERO_SCH80', material: 'Acero al Carbono' },
         UNION_PPR: { tipo: 'UNION', nombre: 'Unión Universal PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR' },
         UNION_HDPE: { tipo: 'UNION', nombre: 'Unión Universal HDPE', spec: 'HDPE_PE100', conexion: 'ELECTROFUSION', material: 'HDPE' },
-        ADAPTADOR_MACHO_PPR_3IN: { tipo: 'TRANSITION', nombre: 'Adaptador Macho PPR x NPT 3"', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', material: 'PPR/Acero' },
-        ADAPTADOR_HEMBRA_PPR_3IN: { tipo: 'TRANSITION', nombre: 'Adaptador Hembra PPR x NPT 3"', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', material: 'PPR/Acero' },
-        TRANSITION_HDPE_STEEL: { tipo: 'TRANSITION', nombre: 'Transición HDPE x Acero', spec_origen: 'HDPE_PE100', spec_destino: 'ACERO_150_RF', material: 'HDPE/Acero' },
         
-        // Instrumentos
-        PRESSURE_GAUGE: { tipo: 'PRESSURE_GAUGE', nombre: 'Manómetro', material: 'Acero Inoxidable' },
-        TEMPERATURE_GAUGE: { tipo: 'TEMPERATURE_GAUGE', nombre: 'Termómetro', material: 'Acero Inoxidable' },
-        FLOW_METER_MAG: { tipo: 'FLOW_METER', nombre: 'Caudalímetro Magnético', material: 'Acero Inoxidable' },
-        LEVEL_SWITCH_RANA: { tipo: 'LEVEL_SWITCH_RANA', nombre: 'Switch de Nivel Tipo Rana', material: 'Polipropileno' },
+        // ==================== COMPONENTES ADICIONALES RECUPERADOS ====================
         
-        // Filtros
-        Y_STRAINER_CS: { tipo: 'Y_STRAINER', nombre: 'Filtro Tipo Y Acero', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
-        Y_STRAINER_PPR: { tipo: 'Y_STRAINER', nombre: 'Filtro Tipo Y PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR' },
+        // Pasamuros (Bulkhead)
+        BULKHEAD_PE_3IN: { tipo: 'BULKHEAD', nombre: 'Pasamuros Heavy Duty 3 pulgadas', material: 'PP_EPDM', conexion: 'NPT_HEMBRA', diametro: 3 },
+        BULKHEAD_PE_4IN: { tipo: 'BULKHEAD', nombre: 'Pasamuros Heavy Duty 4 pulgadas', material: 'PP_EPDM', conexion: 'NPT_HEMBRA', diametro: 4 },
+        BULKHEAD: { tipo: 'BULKHEAD', nombre: 'Pasamuros Heavy Duty', material: 'PP_EPDM', conexion: 'NPT_HEMBRA' },
         
-        // Soportes (simbólicos)
+        // Adaptadores y transiciones (faltantes)
+        ADAPTADOR_MACHO_PPR_3IN: { tipo: 'TRANSITION', nombre: 'Adaptador Macho PPR 90mm x 3 NPT', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', conexion_origen: 'TERMOFUSION', conexion_destino: 'NPT_MACHO' },
+        ADAPTADOR_HEMBRA_PPR_3IN: { tipo: 'TRANSITION', nombre: 'Adaptador Hembra PPR 90mm x 3 NPT', spec_origen: 'PPR_PN12_5', spec_destino: 'ACERO_SCH80', conexion_origen: 'TERMOFUSION', conexion_destino: 'NPT_HEMBRA' },
+        TRANSITION_HDPE_STEEL: { tipo: 'TRANSITION', nombre: 'Transición HDPE x Acero', spec_origen: 'HDPE_PE100', spec_destino: 'ACERO_150_RF', conexion_origen: 'ELECTROFUSION', conexion_destino: 'BRIDADA' },
+        
+        // Unión universal adicional
+        UNION_UNIVERSAL_ACERO_3IN: { tipo: 'UNION_ACERO', nombre: 'Unión Universal Acero 3 pulgadas', spec: 'ACERO_SCH80', conexion: 'NPT_HEMBRA', material: 'Acero Galvanizado' },
+        
+        // Nipales
+        NIPLE_ACERO_3IN_150MM: { tipo: 'NIPPLE', nombre: 'Niple Acero 3 x 150 mm', spec: 'ACERO_SCH80', conexion: 'NPT_MACHO', material: 'Acero al Carbono', longitud_total: 150 },
+        NIPLE_ACERO_3IN_100MM: { tipo: 'NIPPLE', nombre: 'Niple Acero 3 x 100 mm', spec: 'ACERO_SCH80', conexion: 'NPT_MACHO', material: 'Acero al Carbono', longitud_total: 100 },
+        
+        // Juntas de expansión
+        EXPANSION_JOINT_PPR: { tipo: 'EXPANSION_JOINT', nombre: 'Junta de Expansión PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', material: 'PPR_EPDM' },
+        EXPANSION_JOINT_CS: { tipo: 'EXPANSION_JOINT', nombre: 'Junta de Expansión Acero', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
+        
+        // Filtros (Y, T, canasta)
+        Y_STRAINER_CS: { tipo: 'Y_STRAINER', nombre: 'Filtro Tipo Y Acero', spec: 'ACERO_150_RF', clase: '150', malla: '40 Mesh' },
+        Y_STRAINER_PPR: { tipo: 'Y_STRAINER', nombre: 'Filtro Tipo Y PPR', spec: 'PPR_PN12_5', conexion: 'TERMOFUSION', malla: '40 Mesh' },
+        T_STRAINER: { tipo: 'T_STRAINER', nombre: 'Filtro Tipo T', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
+        BASKET_STRAINER: { tipo: 'BASKET_STRAINER', nombre: 'Filtro Canasta', spec: 'ACERO_150_RF', clase: '150', material: 'Acero al Carbono' },
+        
+        // Trampas de vapor
+        STEAM_TRAP_THERMODYNAMIC: { tipo: 'STEAM_TRAP', subtipo: 'THERMODYNAMIC', nombre: 'Trampa de Vapor Termodinámica', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
+        STEAM_TRAP_FLOAT: { tipo: 'STEAM_TRAP', subtipo: 'FLOAT', nombre: 'Trampa de Vapor de Flotador', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
+        STEAM_TRAP_BUCKET: { tipo: 'STEAM_TRAP', subtipo: 'BUCKET', nombre: 'Trampa de Vapor de Cubeta', spec: 'ACERO_150_RF', material: 'Acero al Carbono' },
+        
+        // Instrumentos (adicionales)
+        PRESSURE_GAUGE: { tipo: 'PRESSURE_GAUGE', nombre: 'Manómetro', rango: '0-100 psi', conexion: '1/2 NPT' },
+        TEMPERATURE_GAUGE: { tipo: 'TEMPERATURE_GAUGE', nombre: 'Termómetro', rango: '0-150 °C' },
+        FLOW_METER_MAG: { tipo: 'FLOW_METER', subtipo: 'MAGNETICO', nombre: 'Caudalímetro Magnético', conexion: 'BRIDADA' },
+        PRESSURE_TRANSMITTER: { tipo: 'INSTRUMENT', nombre: 'Transmisor de Presión', señal: '4-20 mA' },
+        LEVEL_TRANSMITTER: { tipo: 'INSTRUMENT', nombre: 'Transmisor de Nivel', señal: '4-20 mA' },
+        TEMPERATURE_TRANSMITTER: { tipo: 'INSTRUMENT', nombre: 'Transmisor de Temperatura', señal: '4-20 mA' },
+        ROTAMETER: { tipo: 'INSTRUMENT', nombre: 'Rotámetro', conexion: 'ROSCADO' },
+        SIGHT_GLASS: { tipo: 'INSTRUMENT', nombre: 'Visor de Flujo', conexion: 'ROSCADO' },
+        LEVEL_SWITCH_RANA: { tipo: 'LEVEL_SWITCH_RANA', nombre: 'Switch de Nivel Tipo Rana', conexion: '1/2 NPT' },
+        
+        // Soportes y anclajes
         PIPE_SHOE: { tipo: 'PIPE_SHOE', nombre: 'Zapata', material: 'Acero al Carbono' },
-        U_BOLT: { tipo: 'U_BOLT', nombre: 'Abrazadera U-Bolt', material: 'Acero Galvanizado' }
+        U_BOLT: { tipo: 'U_BOLT', nombre: 'Abrazadera U-Bolt', material: 'Acero Galvanizado' },
+        GUIDE: { tipo: 'GUIDE', nombre: 'Guía', material: 'Acero al Carbono' },
+        ANCHOR: { tipo: 'ANCHOR', nombre: 'Anclaje Fijo', material: 'Acero al Carbono' },
+        HANGER: { tipo: 'HANGER', nombre: 'Colgador', material: 'Acero al Carbono' },
+        SPRING_HANGER: { tipo: 'SPRING_HANGER', nombre: 'Colgador de Resorte', material: 'Acero al Carbono' },
+        PIPE_CLAMP: { tipo: 'PIPE_CLAMP', nombre: 'Abrazadera', material: 'Acero al Carbono' },
+        
+        // Acoples rápidos (Camlock y Quick Connect)
+        CAMLOCK_MALE: { tipo: 'CAMLOCK', subtipo: 'MALE', nombre: 'Acople Camlock Macho', material: 'Acero Inoxidable' },
+        CAMLOCK_FEMALE: { tipo: 'CAMLOCK', subtipo: 'FEMALE', nombre: 'Acople Camlock Hembra', material: 'Acero Inoxidable' },
+        QUICK_CONNECT: { tipo: 'QUICK_CONNECT', nombre: 'Conexión Rápida', material: 'Acero Inoxidable' },
+        
+        // Mangueras flexibles y metálicas
+        FLEXIBLE_HOSE: { tipo: 'HOSE', nombre: 'Manguera Flexible', material: 'EPDM' },
+        METALLIC_HOSE: { tipo: 'HOSE', subtipo: 'METALLIC', nombre: 'Manguera Metálica', material: 'Acero Inoxidable' },
+        PTFE_HOSE: { tipo: 'HOSE', subtipo: 'PTFE', nombre: 'Manguera PTFE', material: 'PTFE' },
+        
+        // Silenciadores y arrestadores de llama
+        SILENCER: { tipo: 'SILENCER', nombre: 'Silenciador', material: 'Acero al Carbono' },
+        VENT_SILENCER: { tipo: 'SILENCER', subtipo: 'VENT', nombre: 'Silenciador de Venteo', material: 'Acero Inoxidable' },
+        FLAME_ARRESTER: { tipo: 'FLAME_ARRESTER', nombre: 'Arrestador de Llama', material: 'Acero Inoxidable' },
+        VACUUM_BREAKER: { tipo: 'VACUUM_BREAKER', nombre: 'Rompedor de Vacío', material: 'Acero Inoxidable' },
+        
+        // Válvulas auxiliares
+        DRAIN_VALVE: { tipo: 'DRAIN_VALVE', nombre: 'Válvula de Purga', spec: 'ACERO_SCH80', conexion: 'NPT', material: 'Acero al Carbono' },
+        AIR_RELEASE_VALVE: { tipo: 'AIR_RELEASE', nombre: 'Válvula de Liberación de Aire', material: 'Acero Inoxidable' },
+        
+        // Enfriadores de muestra
+        SAMPLE_COOLER: { tipo: 'SAMPLE_COOLER', nombre: 'Enfriador de Muestra', material: 'Acero Inoxidable' },
+        SAMPLE_VALVE: { tipo: 'SAMPLE_VALVE', nombre: 'Válvula de Muestreo', material: 'Acero Inoxidable' }
     };
 
     // ==================== 4. GENERADORES DE PUERTOS PARA ACCESORIOS ====================
