@@ -1,25 +1,52 @@
 
 // ============================================================
-// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v4.5
+// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v5.1
 // Archivo: js/core.js
 // ============================================================
 
 const SmartFlowCore = (function() {
     
-    let _db = { 
-        equipos: [], 
-        lines: [], 
+    let _db = {
+        equipos: [],
+        lines: [],
         specs: {
-            "A1A": { mat: "Acero al Carbono", rating: 150, sch: "STD" },
-            "A3B": { mat: "Acero Inoxidable", rating: 300, sch: "40S" },
-            "PPR_PN12_5": { mat: "PPR", norma: "IRAM 13471", presion: "PN 12.5" },
-            "ACERO_SCH80": { mat: "Acero al Carbono", schedule: "SCH 80" }
-        } 
+            "PPR_PN12_5": {
+                mat: "PPR",
+                norma: "IRAM 13471",
+                presion: "PN 12.5",
+                connectionType: "THERMOFUSION",
+                fittingNorm: "DIN 16962"
+            },
+            "A1A": {
+                mat: "Acero al Carbono",
+                rating: 150,
+                sch: "STD",
+                connectionType: "BUTT_WELD",
+                fittingNorm: "ASME B16.9"
+            },
+            "A3B": {
+                mat: "Acero Inoxidable",
+                rating: 300,
+                sch: "40S",
+                connectionType: "BUTT_WELD",
+                fittingNorm: "ASME B16.9"
+            },
+            "ACERO_SCH80": {
+                mat: "Acero al Carbono",
+                schedule: "SCH 80",
+                connectionType: "BUTT_WELD",
+                fittingNorm: "ASME B16.9"
+            }
+        }
     };
-    
+
+    let _datumElevation = 0;
+    let _datumNorth = 0;
+    let _datumEast = 0;
+
     let _selectedElement = null;
     let _history = { past: [], future: [], maxSize: 50 };
-    
+
     let _voiceEnabled = true;
     let _currentElevation = 0;
 
@@ -29,9 +56,18 @@ const SmartFlowCore = (function() {
 
     const _exists = (tag, type) => _db[type].some(item => item.tag === tag);
     const _deepClone = (obj) => {
-        try { return structuredClone(obj); } 
+        try { return structuredClone(obj); }
         catch (e) { return JSON.parse(JSON.stringify(obj)); }
     };
+
+    function getAbsolutePosition(obj) {
+        const pos = getObjectPosition(obj);
+        return {
+            east: pos.x + _datumEast,
+            north: pos.z + _datumNorth,
+            elevation: pos.y + _datumElevation
+        };
+    }
 
     function syncPhysicalData() {
         _db.lines.forEach(line => {
@@ -115,6 +151,52 @@ const SmartFlowCore = (function() {
         const segMax = { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y), z: Math.max(p1.z, p2.z) };
         return !(segMax.x < box.xMin || segMin.x > box.xMax || segMax.y < box.yMin || segMin.y > box.yMax || segMax.z < box.zMin || segMin.z > box.zMax);
     }
+
+    function _splitLineSegment(lineTag, param) {
+        const line = _db.lines.find(l => l.tag === lineTag);
+        if (!line) return null;
+        const pts = line._cachedPoints || line.points3D;
+        if (!pts || pts.length < 2) return null;
+        let totalLen = 0, lengths = [];
+        for (let i = 0; i < pts.length-1; i++) { const d = Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z); lengths.push(d); totalLen += d; }
+        const targetLen = totalLen*param; let accum = 0, segIdx = 0, t = 0;
+        for (let i = 0; i < lengths.length; i++) { if (accum+lengths[i] >= targetLen || i === lengths.length-1) { segIdx = i; t = (targetLen-accum)/(lengths[i]||1); break; } accum += lengths[i]; }
+        const pA = pts[segIdx], pB = pts[segIdx+1];
+        const punto = { x: pA.x+(pB.x-pA.x)*t, y: pA.y+(pB.y-pA.y)*t, z: pA.z+(pB.z-pA.z)*t };
+        return { punto, segIdx, t };
+    }
+
+    function _getPerpendicular(dir) {
+        let perp = { dx: -dir.dy, dy: dir.dx, dz: 0 };
+        const len = Math.hypot(perp.dx, perp.dy, perp.dz);
+        if (len < 0.1) perp = { dx: 1, dy: 0, dz: 0 };
+        else { perp.dx /= len; perp.dy /= len; perp.dz /= len; }
+        return perp;
+    }
+
+    function _countAutoElbows(points) {
+        if (!points || points.length < 3) return 0;
+        let count = 0;
+        for (let i = 1; i < points.length - 1; i++) {
+            const v1 = {
+                x: points[i].x - points[i-1].x,
+                y: points[i].y - points[i-1].y,
+                z: points[i].z - points[i-1].z
+            };
+            const v2 = {
+                x: points[i+1].x - points[i].x,
+                y: points[i+1].y - points[i].y,
+                z: points[i+1].z - points[i].z
+            };
+            const len1 = Math.hypot(v1.x, v1.y, v1.z) || 1;
+            const len2 = Math.hypot(v2.x, v2.y, v2.z) || 1;
+            const dot = (v1.x*v2.x + v1.y*v2.y + v1.z*v2.z) / (len1 * len2);
+            const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+            if (angle > 30) count++;
+        }
+        return count;
+    }
+
     function auditCollisions() {
         const collisions = [];
         _db.lines.forEach(line => {
@@ -154,6 +236,36 @@ const SmartFlowCore = (function() {
         }
         return collisions;
     }
+
+    function auditJointSpacing(minDistance = 50) {
+        const issues = [];
+        _db.lines.forEach(line => {
+            const pts = line._cachedPoints || line.points3D;
+            if (!pts || pts.length < 2) return;
+            const joints = [];
+            if (line.components) {
+                line.components.forEach(comp => {
+                    if (comp.param !== undefined && comp.param >= 0 && comp.param <= 1) {
+                        joints.push(comp.param);
+                    }
+                });
+            }
+            if (line.origin) joints.push(0);
+            if (line.destination) joints.push(1);
+            joints.sort((a,b) => a - b);
+            for (let i = 1; i < joints.length; i++) {
+                const prev = joints[i-1], curr = joints[i];
+                let totalLen = 0;
+                for (let k = 0; k < pts.length-1; k++) totalLen += Math.hypot(pts[k+1].x-pts[k].x, pts[k+1].y-pts[k].y, pts[k+1].z-pts[k].z);
+                const dist = totalLen * (curr - prev);
+                if (dist < minDistance) {
+                    issues.push({ line: line.tag, joint1: prev.toFixed(2), joint2: curr.toFixed(2), distance: dist.toFixed(1) });
+                }
+            }
+        });
+        return issues;
+    }
+
     function getSpoolReport(lineTag) {
         const line = _db.lines.find(l => l.tag === lineTag);
         if (!line) return null;
@@ -161,31 +273,41 @@ const SmartFlowCore = (function() {
         if (!pts || pts.length < 2) return null;
         let totalLen = 0;
         for (let i = 0; i < pts.length-1; i++) totalLen += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z);
-        const codos = pts.filter(p => p.isControlPoint).length;
-        const comps = line.components?.length || 0;
-        const juntas = codos*2 + comps*2 + (line.origin?1:0) + (line.destination?1:0);
-        return { tag: line.tag, longitudTotal: totalLen, longitudTotalM: (totalLen/1000).toFixed(2)+' m', codos, componentes: comps, juntasEstimadas: juntas };
+        const manualElbows = line.components?.filter(c => c.type?.includes('ELBOW'))?.length || 0;
+        const autoElbows = _countAutoElbows(pts);
+        const codos = manualElbows + autoElbows;
+        const tees = line.components?.filter(c => c.type?.includes('TEE'))?.length || 0;
+        const reducers = line.components?.filter(c => c.type?.includes('REDUCER'))?.length || 0;
+        const flanges = line.components?.filter(c => c.type?.includes('FLANGE'))?.length || 0;
+        const valves = line.components?.filter(c => c.type?.includes('VALVE'))?.length || 0;
+        const otros = (line.components?.length || 0) - manualElbows - tees - reducers - flanges - valves;
+        const connectionType = _db.specs[line.spec]?.connectionType || 'BUTT_WELD';
+        const fittingNorm = _db.specs[line.spec]?.fittingNorm || 'ASME B16.9';
+        const bomItems = [];
+        let itemNum = 1;
+        bomItems.push({ item: itemNum++, qty: (totalLen/1000).toFixed(2), unit: "m", desc: `Tubería ${line.material||'N/D'} ${line.diameter||'?'}" ${line.spec||'STD'}` });
+        if (codos > 0) bomItems.push({ item: itemNum++, qty: codos, unit: "und", desc: `Codo 90° ${line.material||'N/D'} ${connectionType}` });
+        if (tees > 0) bomItems.push({ item: itemNum++, qty: tees, unit: "und", desc: `Tee ${line.material||'N/D'} ${connectionType}` });
+        if (reducers > 0) bomItems.push({ item: itemNum++, qty: reducers, unit: "und", desc: `Reductor ${line.material||'N/D'} ${connectionType}` });
+        if (flanges > 0) bomItems.push({ item: itemNum++, qty: flanges, unit: "und", desc: `Brida ${line.material||'N/D'}` });
+        if (valves > 0) bomItems.push({ item: itemNum++, qty: valves, unit: "und", desc: `Válvula ${line.material||'N/D'}` });
+        if (otros > 0) bomItems.push({ item: itemNum++, qty: otros, unit: "und", desc: `Otros ${line.material||'N/D'}` });
+        const juntas = codos*2 + tees*3 + reducers*2 + flanges*2 + valves*2 + (line.origin?1:0) + (line.destination?1:0);
+        return {
+            tag: lineTag,
+            longitudTotalM: (totalLen/1000).toFixed(2),
+            bomItems,
+            juntasEstimadas: juntas,
+            connectionType,
+            fittingNorm
+        };
     }
 
-    function _splitLineSegment(lineTag, param) {
-        const line = _db.lines.find(l => l.tag === lineTag);
-        if (!line) return null;
-        const pts = line._cachedPoints || line.points3D;
-        if (!pts || pts.length < 2) return null;
-        let totalLen = 0, lengths = [];
-        for (let i = 0; i < pts.length-1; i++) { const d = Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z); lengths.push(d); totalLen += d; }
-        const targetLen = totalLen*param; let accum = 0, segIdx = 0, t = 0;
-        for (let i = 0; i < lengths.length; i++) { if (accum+lengths[i] >= targetLen || i === lengths.length-1) { segIdx = i; t = (targetLen-accum)/(lengths[i]||1); break; } accum += lengths[i]; }
-        const pA = pts[segIdx], pB = pts[segIdx+1];
-        const punto = { x: pA.x+(pB.x-pA.x)*t, y: pA.y+(pB.y-pA.y)*t, z: pA.z+(pB.z-pA.z)*t };
-        return { punto, segIdx, t };
-    }
-    function _getPerpendicular(dir) {
-        let perp = { dx: -dir.dy, dy: dir.dx, dz: 0 };
-        const len = Math.hypot(perp.dx, perp.dy, perp.dz);
-        if (len < 0.1) perp = { dx: 1, dy: 0, dz: 0 };
-        else { perp.dx /= len; perp.dy /= len; perp.dz /= len; }
-        return perp;
+    function setDatum(elevation, north, east) {
+        _datumElevation = elevation || 0;
+        _datumNorth = north || 0;
+        _datumEast = east || 0;
+        _notifyUI(`Datum actualizado: EL=${_datumElevation}m, N=${_datumNorth}, E=${_datumEast}`, false);
     }
 
     return {
@@ -249,7 +371,6 @@ const SmartFlowCore = (function() {
             this._saveState(); _renderUI(); _notifyUI("Nuevo proyecto creado.", false);
         },
         importState: function(state) {
-            // 🔄 ADAPTADOR: Convierte datos 3D a formato 2D antes de importar
             const cleanData = SmartFlowAdapter.ensure2DReady(state);
             if (cleanData && cleanData.equipos && cleanData.lines) {
                 _db.equipos = _deepClone(cleanData.equipos); _db.lines = _deepClone(cleanData.lines);
@@ -258,7 +379,7 @@ const SmartFlowCore = (function() {
             }
             _notifyUI("Error: Formato de proyecto inválido.", true); return false;
         },
-        exportProject: function() { return JSON.stringify({ version: "4.5", date: new Date().toISOString(), data: _db }); },
+        exportProject: function() { return JSON.stringify({ version: "5.1", date: new Date().toISOString(), data: _db }); },
         _saveState: function() {
             const state = _deepClone({ equipos: _db.equipos, lines: _db.lines });
             _history.past.push(state); if (_history.past.length > _history.maxSize) _history.past.shift();
@@ -287,7 +408,9 @@ const SmartFlowCore = (function() {
             });
             const collisions = auditCollisions();
             collisions.forEach(c => { if (c.type === 'LINE_EQUIPMENT') report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con equipo ${c.equipment}\n`; else report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con línea ${c.line2}\n`; warnings++; });
-            if (errors === 0 && warnings === 0) report += "✅ Modelo íntegro. Sin discrepancias de diámetro o colisiones."; else report += `Se encontraron ${errors} errores y ${warnings} advertencias.`;
+            const jointIssues = auditJointSpacing(50);
+            jointIssues.forEach(j => { report += `⚠️ JUNTAS CERCANAS [${j.line}]: ${j.joint1} y ${j.joint2} a ${j.distance}mm (mínimo 50mm)\n`; warnings++; });
+            if (errors === 0 && warnings === 0) report += "✅ Modelo íntegro. Sin discrepancias de diámetro, colisiones o juntas cercanas."; else report += `Se encontraron ${errors} errores y ${warnings} advertencias.`;
             _notifyUI(report, errors > 0); return report;
         },
         recalculateAll: function() { syncPhysicalData(); const collisions = auditCollisions(); if (collisions.length > 0) _notifyUI(`Recálculo completado. ${collisions.length} posibles interferencias.`, true); else _notifyUI("Recálculo completado. Sin interferencias.", false); _renderUI(); },
@@ -333,6 +456,7 @@ const SmartFlowCore = (function() {
                 diametro: line.diameter,
                 material: line.material,
                 spec: line.spec,
+                branchDirection: perp,
                 puertos: [
                     { id: 'P1', relX: -dirUnit.dx*100, relY: -dirUnit.dy*100, relZ: -dirUnit.dz*100, orientacion: { dx: -dirUnit.dx, dy: -dirUnit.dy, dz: -dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S1' }, diametro: line.diameter, flow: 'in', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
                     { id: 'P2', relX: dirUnit.dx*100, relY: dirUnit.dy*100, relZ: dirUnit.dz*100, orientacion: { dx: dirUnit.dx, dy: dirUnit.dy, dz: dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S2' }, diametro: line.diameter, flow: 'out', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
@@ -426,7 +550,11 @@ const SmartFlowCore = (function() {
             return true;
         },
 
-        auditCollisions, getSpoolReport,
+        auditCollisions,
+        auditJointSpacing,
+        getSpoolReport,
+        setDatum,
+        getAbsolutePosition,
         getDb: function() { return _db; },
         getEquipos: function() { return _db.equipos; },
         getLines: function() { return _db.lines; },
