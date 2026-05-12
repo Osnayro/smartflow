@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v18.6
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v19.0
 // Archivo: js/renderer.js
 // ============================================================
 
@@ -14,17 +14,28 @@ const SmartFlowRenderer = (function() {
     let _currentElevation = 0;
     let _notifyUI = (msg, isErr) => console.log(msg);
 
-    // -------------------- ESTILOS DE INGENIERÍA --------------------
-    const STYLE_DIM = { color: '#ef4444', font: 'bold 10px Inter, Arial', lineDash: [2, 2] };
-    const STYLE_PORT = { open: '#10b981', closed: '#64748b', size: 4 };
-    const STYLE_FITTING = { color: '#f59e0b', width: 3 };
+    const ISO_CONFIG = {
+        MATERIALS: {
+            'PPR': 'PP',
+            'CARBON_STEEL': 'CS',
+            'STAINLESS_STEEL': 'SS',
+            'POLIETILENO': 'PE',
+            'PVC': 'PV'
+        },
+        COLORS: {
+            'PP': '#10b981',
+            'CS': '#475569',
+            'SS': '#94a3b8',
+            'PE': '#1e293b',
+            'PV': '#7c3aed'
+        }
+    };
 
-    // -------------------- SNAP A PUERTOS --------------------
     const SNAP_THRESHOLD = 15;
     let _activeSnap = null;
     let _hoveredItem = null;
+    let _bomItems = [];
 
-    // -------------------- 1. PROYECCIÓN ISOMÉTRICA --------------------
     const COS30 = 0.86602540378;
     const SIN30 = 0.5;
     
@@ -43,7 +54,69 @@ const SmartFlowRenderer = (function() {
         return { x: (A + B) / 2, y: _currentElevation, z: (B - A) / 2 };
     }
 
-    // -------------------- 2. DIBUJO DE REJILLA Y ORIGEN --------------------
+    function adjustColor(color, percent) {
+        const num = parseInt(color.replace("#",""), 16),
+        amt = Math.round(2.55 * percent),
+        R = (num >> 16) + amt,
+        G = (num >> 8 & 0x00FF) + amt,
+        B = (num & 0x0000FF) + amt;
+        return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1);
+    }
+
+    function getMaterialGradient(ctx, p1, p2, material, diameter) {
+        const proj1 = project(p1), proj2 = project(p2);
+        const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x) + Math.PI/2;
+        const w = diameter * _cam.scale;
+        const grad = ctx.createLinearGradient(
+            proj1.x + Math.cos(angle)*w/2, proj1.y + Math.sin(angle)*w/2,
+            proj1.x - Math.cos(angle)*w/2, proj1.y - Math.sin(angle)*w/2
+        );
+        const baseColor = ISO_CONFIG.COLORS[material] || '#94a3b8';
+        if (material === 'PP') {
+            grad.addColorStop(0, adjustColor(baseColor, -30));
+            grad.addColorStop(0.4, baseColor);
+            grad.addColorStop(1, adjustColor(baseColor, 20));
+        } else {
+            grad.addColorStop(0, '#1a1a1a');
+            grad.addColorStop(0.5, '#ffffffaa');
+            grad.addColorStop(0.6, baseColor);
+            grad.addColorStop(1, '#000000');
+        }
+        return grad;
+    }
+
+    function getShortMaterial(materialName) {
+        const name = materialName ? materialName.toUpperCase() : '';
+        return ISO_CONFIG.MATERIALS[name] || name.substring(0,2) || 'UN';
+    }
+
+    function formatDimensionText(dist) {
+        if (dist < 1000) return Math.round(dist).toString();
+        return (dist / 1000).toFixed(2) + "m";
+    }
+
+    function drawBalloon(ctx, x, y, index) {
+        ctx.save();
+        ctx.setTransform(1, -0.5, 0, 1, x, y - 25);
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fillStyle = "white";
+        ctx.fill();
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 10px Inter, Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(index, 0, 0);
+        ctx.beginPath();
+        ctx.moveTo(0, 10);
+        ctx.lineTo(0, 25);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     function drawGrid(elevation = 0) {
         const step = 1000;
         const minX = -10000, maxX = 20000, minZ = -10000, maxZ = 20000;
@@ -75,7 +148,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fillText(`ORIGEN (0,${_currentElevation/1000}m,0)`, o.x + 15, o.y - 8);
     }
 
-    // -------------------- 3. DIBUJO DE EQUIPOS --------------------
     function drawTank(eq) {
         const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
         const w = (eq.diametro / 2) * _cam.scale;
@@ -158,7 +230,6 @@ const SmartFlowRenderer = (function() {
         });
     }
 
-    // -------------------- 4. TEXTO ISOMÉTRICO --------------------
     function drawIsoText(text, x, y, plane = 'XY') {
         if (!text) return;
         _ctx.save();
@@ -176,7 +247,6 @@ const SmartFlowRenderer = (function() {
         _ctx.restore(); _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    // -------------------- 5. FLECHA DE DIRECCIÓN DE FLUJO --------------------
     function drawFlowArrow(p1, p2, diameter) {
         const proj1 = project(p1), proj2 = project(p2);
         const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x);
@@ -189,7 +259,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fill(); _ctx.shadowBlur = 0; _ctx.restore();
     }
 
-    // -------------------- 6. DIBUJO DE TUBERÍAS CON VOLUMEN --------------------
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -250,14 +319,14 @@ const SmartFlowRenderer = (function() {
         _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = 1.5; _ctx.stroke();
         const angle = Math.atan2(prD2.y - prD1.y, prD2.x - prD1.x);
         drawDimensionTick(prD1.x, prD1.y, angle); drawDimensionTick(prD2.x, prD2.y, angle);
-        const realDistMeters = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z) / 1000;
+        const realDist = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+        const textStr = formatDimensionText(realDist);
         const midX = (prD1.x + prD2.x) / 2, midY = (prD1.y + prD2.y) / 2;
         _ctx.save(); _ctx.translate(midX, midY);
         let textAngle = angle;
         if (textAngle > Math.PI/2) textAngle -= Math.PI;
         if (textAngle < -Math.PI/2) textAngle += Math.PI;
         _ctx.rotate(textAngle);
-        const textStr = `${realDistMeters.toFixed(3)} m`;
         _ctx.font = `bold ${Math.max(10, 12 * _cam.scale)}px monospace`;
         const textWidth = _ctx.measureText(textStr).width;
         _ctx.fillStyle = 'rgba(10, 14, 23, 0.8)';
@@ -321,6 +390,14 @@ const SmartFlowRenderer = (function() {
         const isPPR = line.material === 'PPR' || (line.spec && line.spec.includes('PPR'));
         const radioBase = isPPR ? (line.diameter * 25.4 * 0.8) : (line.diameter * 25.4 * 1.5);
         const radio = Math.min(radioBase, 350);
+        const baseWidth = (line.diameter || 4) * _cam.scale;
+        const mainWidth = Math.max(6, baseWidth);
+        _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
+        const hasAuditError = lineHasAuditError(line);
+
+        const matShort = getShortMaterial(line.material);
+        const lineLabel = line.service ? `${line.diameter}"-${line.service}` : `${line.diameter}"-${matShort}`;
+
         const drawPath = () => {
             _ctx.beginPath();
             let first = project(pts[0]); _ctx.moveTo(first.x, first.y);
@@ -337,38 +414,19 @@ const SmartFlowRenderer = (function() {
             }
             const last = project(pts[pts.length-1]); _ctx.lineTo(last.x, last.y);
         };
-        const baseWidth = (line.diameter || 4) * _cam.scale;
-        const mainWidth = Math.max(6, baseWidth);
-        _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
-        const hasAuditError = lineHasAuditError(line);
+
         _ctx.save(); drawPath();
+        const grad = getMaterialGradient(_ctx, pts[0], pts[pts.length-1], matShort, mainWidth*2);
         _ctx.shadowColor = hasAuditError ? '#ef4444' : '#000000';
         _ctx.shadowBlur = hasAuditError ? 15 * _cam.scale : 10 * _cam.scale;
         _ctx.shadowOffsetX = 2 * _cam.scale; _ctx.shadowOffsetY = 2 * _cam.scale;
         _ctx.strokeStyle = '#000000'; _ctx.lineWidth = mainWidth + 6; _ctx.stroke(); _ctx.restore();
         drawPath(); _ctx.strokeStyle = '#0a0e17'; _ctx.lineWidth = mainWidth + 4; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = '#1e293b'; _ctx.lineWidth = mainWidth + 2; _ctx.stroke();
-        drawPath();
-        const spec = line.spec && window.SmartFlowCatalog ? SmartFlowCatalog.getSpec(line.spec) : null;
-        let mainColor;
-        if (hasAuditError) mainColor = '#ef4444';
-        else if (hasClash) mainColor = '#ff00ff';
-        else mainColor = spec?.color || '#facc15';
-        _ctx.strokeStyle = mainColor; _ctx.lineWidth = mainWidth; _ctx.stroke();
-        
-        if (hasClash) {
-            _ctx.save();
-            _ctx.shadowColor = '#ff00ff';
-            _ctx.shadowBlur = 20;
-            drawPath();
-            _ctx.strokeStyle = '#ff00ff';
-            _ctx.lineWidth = mainWidth * 0.5;
-            _ctx.stroke();
-            _ctx.restore();
-        }
-
+        drawPath(); _ctx.strokeStyle = grad; _ctx.lineWidth = mainWidth; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(2, mainWidth * 0.25); _ctx.globalAlpha = 0.7; _ctx.stroke(); _ctx.globalAlpha = 1.0;
         drawPath(); _ctx.strokeStyle = '#fef08a'; _ctx.lineWidth = Math.max(1, mainWidth * 0.1); _ctx.globalAlpha = 0.9; _ctx.stroke(); _ctx.globalAlpha = 1.0;
+
         if (hasAuditError && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x - pts[0].x, pts[pts.length-1].y - pts[0].y, pts[pts.length-1].z - pts[0].z) / 2);
             const projMid = project(midPt);
@@ -377,6 +435,7 @@ const SmartFlowRenderer = (function() {
             _ctx.shadowColor = '#ef4444'; _ctx.shadowBlur = 10; _ctx.fillStyle = '#ef4444';
             _ctx.fillText('⚠', 0, 0); _ctx.shadowBlur = 0; _ctx.restore();
         }
+
         const isSelected = _core && _core.getSelected() && _core.getSelected().obj === line;
         if (line.showDimensions !== false && !isSelected) {
             const puntosReales = pts.filter(p => !p.isControlPoint);
@@ -386,14 +445,16 @@ const SmartFlowRenderer = (function() {
                 if (dist > 100) drawIsometricDimension(p1, p2, 1200);
             }
         }
+
         if (pts.length >= 2) drawFlowArrow(pts[0], pts[pts.length-1], line.diameter);
-        if (line.tag && pts.length >= 2) {
+        if (lineLabel && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x - pts[0].x, pts[pts.length-1].y - pts[0].y, pts[pts.length-1].z - pts[0].z) / 2);
             const projMid = project(midPt);
             const dx = pts[1].x - pts[0].x, dz = pts[1].z - pts[0].z;
             const plane = Math.abs(dx) > Math.abs(dz) ? 'XY' : 'ZY';
-            drawIsoText(line.tag, projMid.x, projMid.y - 25 * _cam.scale, plane);
+            drawIsoText(lineLabel, projMid.x, projMid.y - 25 * _cam.scale, plane);
         }
+
         if (line.puertos) drawPuertos(line);
     }
 
@@ -406,7 +467,7 @@ const SmartFlowRenderer = (function() {
             lengths.push(d); totalLen += d;
         }
         if (totalLen === 0) return;
-        line.components.forEach(comp => {
+        line.components.forEach((comp, idx) => {
             let targetLen = totalLen * Math.min(1, Math.max(0, comp.param || 0.5));
             let currentAccum = 0, p1, p2, t = 0;
             for (let i = 0; i < lengths.length; i++) {
@@ -422,7 +483,13 @@ const SmartFlowRenderer = (function() {
             const proj = project(pos3D), projP1 = project(p1), projP2 = project(p2);
             const angle = Math.atan2(projP2.y - projP1.y, projP2.x - projP1.x);
             drawSymbol(proj.x, proj.y, angle, comp);
-            if (comp.tag) drawIsoText(comp.tag, proj.x, proj.y - 20 * _cam.scale, 'XY');
+            const globalIndex = _bomItems.length + 1;
+            drawBalloon(_ctx, proj.x, proj.y, globalIndex);
+            _bomItems.push({
+                index: globalIndex,
+                desc: comp.type || 'Componente',
+                mat: getShortMaterial(line.material)
+            });
         });
     }
 
@@ -459,7 +526,6 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    // -------------------- 7. DETECCIÓN VOLUMÉTRICA DE CLICS --------------------
     function isPointInCylinder(p, eq) { const dx = p.x - eq.posX, dz = p.z - eq.posZ; const radius = eq.diametro / 2; if (dx*dx + dz*dz > radius*radius) return false; const halfH = eq.altura / 2; if (p.y < eq.posY - halfH || p.y > eq.posY + halfH) return false; return true; }
     function isPointInHorizontalCylinder(p, eq) { const dx = p.x - eq.posX; const halfL = eq.largo / 2; if (Math.abs(dx) > halfL) return false; const dy = p.y - eq.posY, dz = p.z - eq.posZ; const radius = eq.diametro / 2; if (dy*dy + dz*dz > radius*radius) return false; return true; }
     function isPointInBox(p, eq) { const halfL = (eq.largo || 1000) / 2, halfW = (eq.ancho || eq.diametro || 1000) / 2, halfH = (eq.altura || 1000) / 2; return Math.abs(p.x - eq.posX) <= halfL && Math.abs(p.y - eq.posY) <= halfH && Math.abs(p.z - eq.posZ) <= halfW; }
@@ -487,7 +553,6 @@ const SmartFlowRenderer = (function() {
     }
     function pointToSegmentDistance(p, a, b) { const ax = p.x - a.x, ay = p.y - a.y; const bx = b.x - a.x, by = b.y - a.y; const dot = ax * bx + ay * by; const len2 = bx * bx + by * by; if (len2 === 0) return Math.hypot(ax, ay); let t = dot / len2; t = Math.max(0, Math.min(1, t)); const projX = a.x + t * bx, projY = a.y + t * by; return Math.hypot(p.x - projX, p.y - projY); }
 
-    // -------------------- 8. DIBUJO DE SELECCIÓN --------------------
     function drawSelection(element) {
         if (!element) return;
         _ctx.save();
@@ -528,13 +593,12 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    // -------------------- 9. DIBUJO DE ACCESORIOS (FITTINGS) --------------------
     function drawFitting(fitting) {
         if (!fitting || !fitting.puertos) return;
         const center = project({ x: fitting.posX, y: fitting.posY, z: fitting.posZ });
         _ctx.save(); _ctx.beginPath();
-        _ctx.strokeStyle = STYLE_FITTING.color;
-        _ctx.lineWidth = STYLE_FITTING.width * _cam.scale;
+        _ctx.strokeStyle = '#f59e0b';
+        _ctx.lineWidth = 3 * _cam.scale;
         _ctx.lineCap = 'round';
         fitting.puertos.forEach(p => {
             const pProj = project({ x: fitting.posX + (p.relX || 0), y: fitting.posY + (p.relY || 0), z: fitting.posZ + (p.relZ || 0) });
@@ -542,39 +606,36 @@ const SmartFlowRenderer = (function() {
             _ctx.strokeRect(pProj.x - 2, pProj.y - 2, 4, 4);
         });
         _ctx.stroke();
-        _ctx.fillStyle = STYLE_FITTING.color;
+        _ctx.fillStyle = '#f59e0b';
         _ctx.font = `bold ${10 * _cam.scale}px Arial`;
         _ctx.fillText(fitting.tipo || fitting.tag || '', center.x + 10, center.y - 10);
         _ctx.restore();
     }
 
-    // -------------------- 10. COTAS INTELIGENTES --------------------
     function drawSmartDimension(p1, p2) {
         const proj1 = project(p1), proj2 = project(p2);
         const dist = Math.sqrt(Math.pow(p2.x-p1.x,2) + Math.pow(p2.y-p1.y,2) + Math.pow(p2.z-p1.z,2));
         if (dist < 10) return;
-        _ctx.save(); _ctx.setLineDash(STYLE_DIM.lineDash); _ctx.strokeStyle = STYLE_DIM.color;
+        _ctx.save(); _ctx.setLineDash([2, 2]); _ctx.strokeStyle = '#ef4444';
         _ctx.beginPath(); _ctx.moveTo(proj1.x, proj1.y); _ctx.lineTo(proj2.x, proj2.y); _ctx.stroke();
-        _ctx.setLineDash([]); _ctx.fillStyle = STYLE_DIM.color;
+        _ctx.setLineDash([]); _ctx.fillStyle = '#ef4444';
         _ctx.font = `${10 * _cam.scale}px monospace`;
-        _ctx.fillText(`${dist.toFixed(0)}mm`, (proj1.x + proj2.x) / 2, (proj1.y + proj2.y) / 2 - 10);
+        _ctx.fillText(formatDimensionText(dist), (proj1.x + proj2.x) / 2, (proj1.y + proj2.y) / 2 - 10);
         _ctx.restore();
     }
 
-    // -------------------- 11. VISUALIZACIÓN DE PUERTOS DE CONEXIÓN --------------------
     function drawPortMarkers(item) {
         if (!item || !item.puertos) return;
         const basePos = item.posX !== undefined ? { x: item.posX, y: item.posY, z: item.posZ } : (item._cachedPoints?.[0] || { x: 0, y: 0, z: 0 });
         item.puertos.forEach(p => {
             const pProj = project({ x: basePos.x + (p.relX || 0), y: basePos.y + (p.relY || 0), z: basePos.z + (p.relZ || 0) });
             _ctx.beginPath();
-            _ctx.fillStyle = (p.status === 'open') ? STYLE_PORT.open : STYLE_PORT.closed;
-            _ctx.arc(pProj.x, pProj.y, STYLE_PORT.size * _cam.scale, 0, Math.PI * 2);
+            _ctx.fillStyle = (p.status === 'open') ? '#10b981' : '#64748b';
+            _ctx.arc(pProj.x, pProj.y, 4 * _cam.scale, 0, Math.PI * 2);
             _ctx.fill();
         });
     }
 
-    // -------------------- 12. DETECCIÓN DE PUERTOS (SNAP) --------------------
     function pickPort(mouseX, mouseY) {
         const db = _core.getDb();
         const allItems = [...(db.equipos || []), ...(db.lines || [])];
@@ -594,7 +655,6 @@ const SmartFlowRenderer = (function() {
         return null;
     }
 
-    // -------------------- 13. AUTO-CENTER --------------------
     function autoCenter() {
         if (!_canvas || !_core) return;
         const db = _core.getDb(); const equipos = db?.equipos || []; const lines = db?.lines || [];
@@ -629,9 +689,6 @@ const SmartFlowRenderer = (function() {
         _notifyUI("PDF generado correctamente.", false);
     }
 
-    // ============================================================
-    // EXPORTACIÓN PCF
-    // ============================================================
     const skeyMap = {
         'GATE_VALVE': 'VAGF', 'GLOBE_VALVE': 'VGLF', 'BUTTERFLY_VALVE': 'VBAF', 'BALL_VALVE': 'VBAL',
         'VALVE_BALL': 'VBAL', 'CHECK_VALVE': 'VCFF', 'DIAPHRAGM_VALVE': 'VDIA', 'CONTROL_VALVE': 'VCON',
@@ -687,9 +744,23 @@ const SmartFlowRenderer = (function() {
         _notifyUI("Archivo PCF exportado correctamente con vectores de orientación.", false);
     }
 
-    // ============================================================
-    // FUNCIÓN PRINCIPAL DE RENDERIZADO
-    // ============================================================
+    function renderBOM() {
+        if (_bomItems.length === 0) return;
+        const x = 20;
+        const y = _canvas.height - 150;
+        _ctx.fillStyle = "rgba(255,255,255,0.8)";
+        _ctx.fillRect(x, y, 200, 130);
+        _ctx.strokeStyle = "#334155";
+        _ctx.strokeRect(x, y, 200, 130);
+        _ctx.fillStyle = "#1e293b";
+        _ctx.font = "bold 10px sans-serif";
+        _ctx.fillText("BOM - LISTADO DE PARTES", x + 10, y + 20);
+        _bomItems.forEach((item, i) => {
+            _ctx.font = "9px sans-serif";
+            _ctx.fillText(`${item.index}. ${item.desc} (${item.mat})`, x + 10, y + 40 + (i * 15));
+        });
+    }
+
     function render() {
         if (!_ctx || !_canvas) return;
         _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
@@ -700,6 +771,8 @@ const SmartFlowRenderer = (function() {
         if (!_core) return;
         const db = _core.getDb();
         if (!db) return;
+
+        _bomItems = [];
 
         let renderQueue = [];
         (db.equipos || []).forEach(eq => {
@@ -758,9 +831,10 @@ const SmartFlowRenderer = (function() {
             );
             _ctx.restore();
         }
+
+        renderBOM();
     }
 
-    // ==================== INICIALIZACIÓN ====================
     function init(canvasElement, coreInstance, notifyFn) {
         _canvas = canvasElement;
         _ctx = _canvas.getContext('2d');
