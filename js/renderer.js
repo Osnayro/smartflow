@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v19.0
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v19.1
 // Archivo: js/renderer.js
 // ============================================================
 
@@ -33,8 +33,8 @@ const SmartFlowRenderer = (function() {
 
     const SNAP_THRESHOLD = 15;
     let _activeSnap = null;
-    let _hoveredItem = null;
     let _bomItems = [];
+    let _allLinePoints = [];
 
     const COS30 = 0.86602540378;
     const SIN30 = 0.5;
@@ -73,9 +73,10 @@ const SmartFlowRenderer = (function() {
         );
         const baseColor = ISO_CONFIG.COLORS[material] || '#94a3b8';
         if (material === 'PP') {
-            grad.addColorStop(0, adjustColor(baseColor, -30));
-            grad.addColorStop(0.4, baseColor);
-            grad.addColorStop(1, adjustColor(baseColor, 20));
+            grad.addColorStop(0, '#064e3b');
+            grad.addColorStop(0.25, '#6ee7b7');
+            grad.addColorStop(0.5, baseColor);
+            grad.addColorStop(1, '#065f46');
         } else {
             grad.addColorStop(0, '#1a1a1a');
             grad.addColorStop(0.5, '#ffffffaa');
@@ -160,6 +161,11 @@ const SmartFlowRenderer = (function() {
         _ctx.beginPath(); _ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = '#60a5fa'; _ctx.fill(); _ctx.stroke();
         drawIsoText(eq.tag, p.x, topY - 10, 'XY');
         drawPuertos(eq);
+        if (eq.accessories) {
+            eq.accessories.forEach(acc => {
+                drawAccessory(acc, eq);
+            });
+        }
     }
 
     function drawBomba(eq) {
@@ -201,6 +207,25 @@ const SmartFlowRenderer = (function() {
         _ctx.beginPath(); _ctx.ellipse(p.x+w, p.y, h, h*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = color; _ctx.fill(); _ctx.stroke();
         drawIsoText(eq.tag, p.x, p.y - h - 5, 'XY');
         drawPuertos(eq);
+    }
+
+    function drawAccessory(acc, parentEq) {
+        const pos = {
+            x: parentEq.posX + (acc.relX || 0),
+            y: parentEq.posY + (acc.relY || 0),
+            z: parentEq.posZ + (acc.relZ || 0)
+        };
+        const proj = project(pos);
+        _ctx.strokeStyle = '#64748b';
+        _ctx.lineWidth = 1;
+        _ctx.setLineDash([4, 4]);
+        _ctx.beginPath();
+        if (acc.type === 'CAGED_LADDER') {
+            _ctx.moveTo(proj.x, proj.y);
+            _ctx.lineTo(proj.x, proj.y - 40 * _cam.scale);
+        }
+        _ctx.stroke();
+        _ctx.setLineDash([]);
     }
 
     function drawPuertos(obj) {
@@ -299,18 +324,89 @@ const SmartFlowRenderer = (function() {
         });
     }
 
+    function checkLineCrossings(currentLinePts) {
+        if (!_core) return [];
+        const crossings = [];
+        const db = _core.getDb();
+        const otherLines = db.lines.filter(l => {
+            const pts = l._cachedPoints || l.points3D;
+            return pts && pts !== currentLinePts;
+        });
+        
+        if (otherLines.length === 0 || currentLinePts.length < 2) return [];
+        
+        for (let i = 0; i < currentLinePts.length - 1; i++) {
+            const a1 = project(currentLinePts[i]);
+            const a2 = project(currentLinePts[i+1]);
+            
+            for (const otherLine of otherLines) {
+                const otherPts = otherLine._cachedPoints || otherLine.points3D;
+                if (!otherPts || otherPts.length < 2) continue;
+                
+                for (let j = 0; j < otherPts.length - 1; j++) {
+                    const b1 = project(otherPts[j]);
+                    const b2 = project(otherPts[j+1]);
+                    
+                    const dist1 = pointToSegmentDistance(a1, b1, b2);
+                    const dist2 = pointToSegmentDistance(a2, b1, b2);
+                    const dist3 = pointToSegmentDistance(b1, a1, a2);
+                    const dist4 = pointToSegmentDistance(b2, a1, a2);
+                    
+                    const minDist = Math.min(dist1, dist2, dist3, dist4);
+                    
+                    if (minDist < 8 && _cam.scale > 0.15) {
+                        const midX = (a1.x + a2.x) / 2;
+                        const midY = (a1.y + a2.y) / 2;
+                        crossings.push({ x: midX, y: midY, segmentIndex: i });
+                        break;
+                    }
+                }
+            }
+        }
+        return crossings;
+    }
+
+    function drawPipeGap(screenP1, screenP2, segmentIndex, existingGaps) {
+        const midX = (screenP1.x + screenP2.x) / 2;
+        const midY = (screenP1.y + screenP2.y) / 2;
+        
+        const gapSize = 18;
+        const angle = Math.atan2(screenP2.y - screenP1.y, screenP2.x - screenP1.x);
+        const perpAngle = angle + Math.PI/2;
+        
+        const gapStart = {
+            x: midX - Math.cos(angle) * gapSize/2,
+            y: midY - Math.sin(angle) * gapSize/2
+        };
+        const gapEnd = {
+            x: midX + Math.cos(angle) * gapSize/2,
+            y: midY + Math.sin(angle) * gapSize/2
+        };
+        const arcPeak = {
+            x: midX + Math.cos(perpAngle) * gapSize * 0.8,
+            y: midY + Math.sin(perpAngle) * gapSize * 0.8
+        };
+        
+        _ctx.moveTo(gapStart.x, gapStart.y);
+        _ctx.quadraticCurveTo(arcPeak.x, arcPeak.y, gapEnd.x, gapEnd.y);
+    }
+
     function drawIsometricDimension(p1, p2, offset = 1200) {
+        const realDist = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+        const dynamicOffset = Math.max(600, Math.min(3000, realDist * 0.4));
+        const finalOffset = offset || dynamicOffset;
+        
         const orientation = getPipeOrientation(p1, p2);
         let candA, candB;
-        if (orientation === 'horizontal') { candA = { dx: 0, dy: -offset, dz: 0 }; candB = { dx: 0, dy: offset, dz: 0 }; }
-        else { candA = { dx: offset, dy: 0, dz: 0 }; candB = { dx: -offset, dy: 0, dz: 0 }; }
+        if (orientation === 'horizontal') { candA = { dx: 0, dy: -finalOffset, dz: 0 }; candB = { dx: 0, dy: finalOffset, dz: 0 }; }
+        else { candA = { dx: finalOffset, dy: 0, dz: 0 }; candB = { dx: -finalOffset, dy: 0, dz: 0 }; }
         const checkCollision = (offsetV) => {
             const midPoint = { x: (p1.x + p2.x) / 2 + offsetV.dx, y: (p1.y + p2.y) / 2 + offsetV.dy, z: (p1.z + p2.z) / 2 + offsetV.dz };
             return isPointCollidingWithEquipment(midPoint, 1200);
         };
-        const finalOffset = checkCollision(candA) ? candB : candA;
-        const dp1 = { x: p1.x + finalOffset.dx, y: p1.y + finalOffset.dy, z: p1.z + finalOffset.dz };
-        const dp2 = { x: p2.x + finalOffset.dx, y: p2.y + finalOffset.dy, z: p2.z + finalOffset.dz };
+        const finalOffsetVec = checkCollision(candA) ? candB : candA;
+        const dp1 = { x: p1.x + finalOffsetVec.dx, y: p1.y + finalOffsetVec.dy, z: p1.z + finalOffsetVec.dz };
+        const dp2 = { x: p2.x + finalOffsetVec.dx, y: p2.y + finalOffsetVec.dy, z: p2.z + finalOffsetVec.dz };
         const pr1 = project(p1), pr2 = project(p2), prD1 = project(dp1), prD2 = project(dp2);
         _ctx.beginPath(); _ctx.setLineDash([4, 4]); _ctx.strokeStyle = '#64748b'; _ctx.lineWidth = 1;
         _ctx.moveTo(pr1.x, pr1.y); _ctx.lineTo(prD1.x, prD1.y);
@@ -319,7 +415,6 @@ const SmartFlowRenderer = (function() {
         _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = 1.5; _ctx.stroke();
         const angle = Math.atan2(prD2.y - prD1.y, prD2.x - prD1.x);
         drawDimensionTick(prD1.x, prD1.y, angle); drawDimensionTick(prD2.x, prD2.y, angle);
-        const realDist = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
         const textStr = formatDimensionText(realDist);
         const midX = (prD1.x + prD2.x) / 2, midY = (prD1.y + prD2.y) / 2;
         _ctx.save(); _ctx.translate(midX, midY);
@@ -379,6 +474,8 @@ const SmartFlowRenderer = (function() {
             }
         }
 
+        const crossings = checkLineCrossings(pts);
+
         let hasClash = false;
         for (let p of pts) {
             if (isPointCollidingWithEquipment(p, 100)) {
@@ -415,6 +512,28 @@ const SmartFlowRenderer = (function() {
             const last = project(pts[pts.length-1]); _ctx.lineTo(last.x, last.y);
         };
 
+        const drawPathWithGaps = () => {
+            _ctx.beginPath();
+            let first = project(pts[0]); _ctx.moveTo(first.x, first.y);
+            
+            const allScreenPts = pts.map(p => project(p));
+            
+            for (let i = 0; i < allScreenPts.length - 1; i++) {
+                const scrP1 = allScreenPts[i];
+                const scrP2 = allScreenPts[i + 1];
+                const hasGap = crossings.some(c => Math.abs(c.segmentIndex - i) < 1);
+                
+                if (hasGap) {
+                    drawPipeGap(scrP1, scrP2, i, crossings);
+                } else {
+                    _ctx.lineTo(scrP2.x, scrP2.y);
+                }
+            }
+            
+            const last = project(pts[pts.length-1]); 
+            if (crossings.length === 0) _ctx.lineTo(last.x, last.y);
+        };
+
         _ctx.save(); drawPath();
         const grad = getMaterialGradient(_ctx, pts[0], pts[pts.length-1], matShort, mainWidth*2);
         _ctx.shadowColor = hasAuditError ? '#ef4444' : '#000000';
@@ -424,8 +543,22 @@ const SmartFlowRenderer = (function() {
         drawPath(); _ctx.strokeStyle = '#0a0e17'; _ctx.lineWidth = mainWidth + 4; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = '#1e293b'; _ctx.lineWidth = mainWidth + 2; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = grad; _ctx.lineWidth = mainWidth; _ctx.stroke();
-        drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(2, mainWidth * 0.25); _ctx.globalAlpha = 0.7; _ctx.stroke(); _ctx.globalAlpha = 1.0;
-        drawPath(); _ctx.strokeStyle = '#fef08a'; _ctx.lineWidth = Math.max(1, mainWidth * 0.1); _ctx.globalAlpha = 0.9; _ctx.stroke(); _ctx.globalAlpha = 1.0;
+        drawPath(); _ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; _ctx.lineWidth = mainWidth * 0.4; _ctx.stroke();
+        drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(1, mainWidth * 0.1); _ctx.globalAlpha = 0.8; _ctx.stroke(); _ctx.globalAlpha = 1.0;
+
+        if (crossings.length > 0 && _cam.scale > 0.15) {
+            _ctx.save();
+            _ctx.strokeStyle = '#0a0e17';
+            _ctx.lineWidth = mainWidth + 8;
+            _ctx.globalAlpha = 0.9;
+            drawPathWithGaps();
+            _ctx.strokeStyle = grad;
+            _ctx.lineWidth = mainWidth;
+            _ctx.globalAlpha = 1.0;
+            drawPathWithGaps();
+            _ctx.stroke();
+            _ctx.restore();
+        }
 
         if (hasAuditError && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x - pts[0].x, pts[pts.length-1].y - pts[0].y, pts[pts.length-1].z - pts[0].z) / 2);
@@ -496,15 +629,46 @@ const SmartFlowRenderer = (function() {
     function drawSymbol(x, y, angle, comp) {
         _ctx.save(); _ctx.translate(x, y); _ctx.rotate(angle);
         const sizeBase = 12; const s = Math.max(8, sizeBase * _cam.scale);
-        _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.fillStyle = '#0f172a';
+        _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.fillStyle = '#1e293b';
         switch (comp.type) {
-            case 'GATE_VALVE': _ctx.beginPath(); _ctx.moveTo(-s, -s/2); _ctx.lineTo(s, s/2); _ctx.lineTo(s, -s/2); _ctx.lineTo(-s, s/2); _ctx.closePath(); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.moveTo(0, 0); _ctx.lineTo(0, -s); _ctx.moveTo(-s/2, -s); _ctx.lineTo(s/2, -s); _ctx.stroke(); break;
+            case 'BUTTERFLY_VALVE':
+                _ctx.beginPath();
+                _ctx.ellipse(0, 0, s * 0.8, s * 0.3, 0, 0, Math.PI * 2);
+                _ctx.fill(); _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(0, 0); _ctx.lineTo(0, -s * 1.5);
+                _ctx.strokeStyle = '#ef4444'; _ctx.lineWidth = 2; _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(0, -s * 1.5); _ctx.lineTo(s, -s * 1.8); _ctx.stroke();
+                break;
+            case 'BALL_VALVE': case 'VALVE_BALL':
+                _ctx.beginPath();
+                _ctx.arc(0, 0, s * 0.6, 0, Math.PI * 2);
+                _ctx.fill(); _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(-s, -s * 0.5); _ctx.lineTo(-s, s * 0.5); _ctx.lineTo(0, 0); _ctx.closePath();
+                _ctx.moveTo(s, -s * 0.5); _ctx.lineTo(s, s * 0.5); _ctx.lineTo(0, 0); _ctx.closePath();
+                _ctx.fill(); _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(0, -s * 0.3); _ctx.lineTo(0, -s * 1.2); _ctx.lineTo(s, -s * 1.2);
+                _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1.5; _ctx.stroke();
+                break;
+            case 'CHECK_VALVE':
+                _ctx.strokeRect(-s, -s * 0.4, s * 2, s * 0.8);
+                _ctx.beginPath();
+                _ctx.moveTo(-s * 0.4, 0); _ctx.lineTo(s * 0.2, 0);
+                _ctx.lineTo(0, -s * 0.2);
+                _ctx.strokeStyle = '#4ade80'; _ctx.stroke();
+                break;
+            case 'GATE_VALVE': 
+                _ctx.beginPath(); _ctx.moveTo(-s, -s/2); _ctx.lineTo(s, s/2); _ctx.lineTo(s, -s/2); _ctx.lineTo(-s, s/2); _ctx.closePath(); 
+                _ctx.fill(); _ctx.stroke(); 
+                _ctx.beginPath(); _ctx.moveTo(0, 0); _ctx.lineTo(0, -s * 1.2); 
+                _ctx.moveTo(-s/2, -s * 1.2); _ctx.lineTo(s/2, -s * 1.2); _ctx.stroke(); 
+                break;
             case 'GLOBE_VALVE': _ctx.beginPath(); _ctx.ellipse(0, 0, s*0.8, s*0.5, 0, 0, Math.PI*2); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.moveTo(0, -s*0.5); _ctx.lineTo(0, s*0.5); _ctx.stroke(); _ctx.fillRect(-s*0.3, -s*1.1, s*0.6, s*0.5); break;
-            case 'BUTTERFLY_VALVE': _ctx.beginPath(); _ctx.arc(0, 0, s*0.8, 0, Math.PI*2); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.moveTo(-s*0.6, -s*0.4); _ctx.lineTo(s*0.6, s*0.4); _ctx.lineWidth = 3; _ctx.stroke(); _ctx.fillRect(-s*0.3, -s*1.2, s*0.6, s*0.5); _ctx.lineWidth = 1.5; break;
             case 'DIAPHRAGM_VALVE': _ctx.beginPath(); _ctx.rect(-s, -s*0.3, s*2, s*0.6); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.arc(0, -s*0.5, s*0.6, 0, Math.PI, true); _ctx.fill(); _ctx.stroke(); _ctx.fillRect(-s*0.4, -s*1.0, s*0.8, s*0.4); break;
-            case 'CHECK_VALVE': _ctx.strokeRect(-s, -s*0.4, s*2, s*0.8); _ctx.beginPath(); _ctx.moveTo(-s*0.5, 0); _ctx.lineTo(s*0.5, -s*0.3); _ctx.lineTo(s*0.5, s*0.3); _ctx.closePath(); _ctx.fillStyle = '#fff'; _ctx.fill(); _ctx.stroke(); _ctx.fillStyle = '#0f172a'; if (comp.subtype === 'SWING') { _ctx.beginPath(); _ctx.arc(s*0.5, 0, s*0.2, 0, Math.PI*2); _ctx.fill(); _ctx.stroke(); } break;
             case 'CONTROL_VALVE': _ctx.beginPath(); _ctx.ellipse(0, 0, s*0.8, s*0.5, 0, 0, Math.PI*2); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.arc(0, -s*0.7, s*0.6, 0, Math.PI*2); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.moveTo(0, -s*1.3); _ctx.lineTo(0, -s*0.7); _ctx.stroke(); _ctx.beginPath(); _ctx.moveTo(-s*0.4, -s*1.1); _ctx.lineTo(s*0.4, -s*1.1); _ctx.stroke(); break;
-            case 'BALL_VALVE': case 'VALVE_BALL': _ctx.beginPath(); _ctx.moveTo(-s, -s*0.6); _ctx.lineTo(s, s*0.6); _ctx.lineTo(s, -s*0.6); _ctx.lineTo(-s, s*0.6); _ctx.closePath(); _ctx.fill(); _ctx.stroke(); _ctx.beginPath(); _ctx.arc(0, 0, s*0.3, 0, Math.PI*2); _ctx.fillStyle = '#fff'; _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.stroke(); _ctx.fillRect(-s*0.2, -s*1.1, s*0.4, s*0.5); break;
             case 'CONCENTRIC_REDUCER': case 'ECCENTRIC_REDUCER': _ctx.beginPath(); _ctx.moveTo(-s, -s*0.4); _ctx.lineTo(s, -s*0.7); _ctx.lineTo(s, s*0.7); _ctx.lineTo(-s, s*0.4); _ctx.closePath(); _ctx.fill(); _ctx.stroke(); if (comp.type === 'ECCENTRIC_REDUCER') { _ctx.beginPath(); _ctx.moveTo(-s, -s*0.4); _ctx.lineTo(-s*0.5, -s*0.4); _ctx.strokeStyle = '#facc15'; _ctx.stroke(); } break;
             case 'WELD_NECK_FLANGE': _ctx.fillRect(-s/4, -s, s/2, s*2); _ctx.strokeRect(-s/4, -s, s/2, s*2); break;
             case 'SLIP_ON_FLANGE': case 'BLIND_FLANGE': case 'LAP_JOINT_FLANGE': _ctx.beginPath(); _ctx.moveTo(-s*0.3, -s); _ctx.lineTo(-s*0.3, s); _ctx.moveTo(s*0.3, -s); _ctx.lineTo(s*0.3, s); _ctx.stroke(); _ctx.fillRect(-s*0.6, -s*0.8, s*1.2, s*1.6); _ctx.strokeRect(-s*0.6, -s*0.8, s*1.2, s*1.6); if (comp.type === 'BLIND_FLANGE') { _ctx.beginPath(); _ctx.moveTo(-s*0.4, -s*0.6); _ctx.lineTo(s*0.4, s*0.6); _ctx.moveTo(s*0.4, -s*0.6); _ctx.lineTo(-s*0.4, s*0.6); _ctx.stroke(); } break;
@@ -747,18 +911,47 @@ const SmartFlowRenderer = (function() {
     function renderBOM() {
         if (_bomItems.length === 0) return;
         const x = 20;
-        const y = _canvas.height - 150;
-        _ctx.fillStyle = "rgba(255,255,255,0.8)";
-        _ctx.fillRect(x, y, 200, 130);
-        _ctx.strokeStyle = "#334155";
-        _ctx.strokeRect(x, y, 200, 130);
-        _ctx.fillStyle = "#1e293b";
-        _ctx.font = "bold 10px sans-serif";
-        _ctx.fillText("BOM - LISTADO DE PARTES", x + 10, y + 20);
+        const padding = 15;
+        const rowHeight = 18;
+        const headerHeight = 25;
+        const tableWidth = 240;
+        const tableHeight = headerHeight + (_bomItems.length * rowHeight) + padding;
+        const y = _canvas.height - tableHeight - 20;
+        _ctx.save();
+        _ctx.setTransform(1, 0, 0, 1, 0, 0);
+        _ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+        _ctx.beginPath();
+        _ctx.roundRect(x, y, tableWidth, tableHeight, 8);
+        _ctx.fill();
+        _ctx.strokeStyle = "#0ea5e9";
+        _ctx.lineWidth = 1;
+        _ctx.stroke();
+        _ctx.fillStyle = "#0ea5e9";
+        _ctx.font = "bold 10px 'Segoe UI', sans-serif";
+        _ctx.fillText("ITEM", x + 12, y + 17);
+        _ctx.fillText("DESCRIPCIÓN COMPONENTE", x + 45, y + 17);
+        _ctx.fillText("MAT", x + 205, y + 17);
+        _ctx.beginPath();
+        _ctx.moveTo(x + 10, y + 22);
+        _ctx.lineTo(x + tableWidth - 10, y + 22);
+        _ctx.strokeStyle = "rgba(14, 165, 233, 0.3)";
+        _ctx.stroke();
         _bomItems.forEach((item, i) => {
-            _ctx.font = "9px sans-serif";
-            _ctx.fillText(`${item.index}. ${item.desc} (${item.mat})`, x + 10, y + 40 + (i * 15));
+            const rowY = y + headerHeight + (i * rowHeight) + 12;
+            _ctx.fillStyle = "rgba(14, 165, 233, 0.1)";
+            _ctx.beginPath();
+            _ctx.arc(x + 20, rowY - 3, 7, 0, Math.PI * 2);
+            _ctx.fill();
+            _ctx.fillStyle = "#f8fafc";
+            _ctx.font = "9px 'Roboto Mono', monospace";
+            _ctx.textAlign = "center";
+            _ctx.fillText(item.index, x + 20, rowY);
+            _ctx.textAlign = "left";
+            _ctx.fillText(item.desc.replace('_', ' ').substring(0, 24), x + 45, rowY);
+            _ctx.fillStyle = "#94a3b8";
+            _ctx.fillText(item.mat, x + 205, rowY);
         });
+        _ctx.restore();
     }
 
     function render() {
@@ -773,6 +966,7 @@ const SmartFlowRenderer = (function() {
         if (!db) return;
 
         _bomItems = [];
+        _allLinePoints = [];
 
         let renderQueue = [];
         (db.equipos || []).forEach(eq => {
@@ -783,6 +977,7 @@ const SmartFlowRenderer = (function() {
             if (pts && pts.length >= 2) {
                 const avgDepth = pts.reduce((acc, p) => acc + (p.x + p.z), 0) / pts.length;
                 renderQueue.push({ type: 'LINE', depth: avgDepth, data: line });
+                _allLinePoints.push({ tag: line.tag, pts: pts });
             }
         });
         renderQueue.sort((a, b) => a.depth - b.depth);
@@ -855,9 +1050,7 @@ const SmartFlowRenderer = (function() {
                 _canvas.style.cursor = 'crosshair';
             } else {
                 _activeSnap = null;
-                const item = pickElement({ x: mX, y: mY });
-                _hoveredItem = item;
-                _canvas.style.cursor = item ? 'pointer' : 'default';
+                _canvas.style.cursor = pickElement({ x: mX, y: mY }) ? 'pointer' : 'default';
             }
             render();
         });
