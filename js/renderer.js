@@ -268,7 +268,18 @@ const SmartFlowRenderer = (function() {
         _ctx.fillRect(-tw/2 - 6, -16, tw + 12, 20); _ctx.shadowBlur = 0;
         _ctx.strokeStyle = '#334155'; _ctx.lineWidth = 1;
         _ctx.strokeRect(-tw/2 - 6, -16, tw + 12, 20);
-        _ctx.fillStyle = '#ffffff'; _ctx.fillText(text, 0, 0);
+        
+        if (_cam.scale < 0.3) {
+            _ctx.globalAlpha = 0.15;
+        } else if (_cam.scale < 0.7) {
+            _ctx.globalAlpha = 0.2 + (_cam.scale - 0.3) * 1.5;
+        } else {
+            _ctx.globalAlpha = 1.0;
+        }
+        _ctx.fillStyle = '#ffffff';
+        _ctx.fillText(text, 0, 0);
+        _ctx.globalAlpha = 1.0;
+        
         _ctx.restore(); _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
@@ -512,28 +523,6 @@ const SmartFlowRenderer = (function() {
             const last = project(pts[pts.length-1]); _ctx.lineTo(last.x, last.y);
         };
 
-        const drawPathWithGaps = () => {
-            _ctx.beginPath();
-            let first = project(pts[0]); _ctx.moveTo(first.x, first.y);
-            
-            const allScreenPts = pts.map(p => project(p));
-            
-            for (let i = 0; i < allScreenPts.length - 1; i++) {
-                const scrP1 = allScreenPts[i];
-                const scrP2 = allScreenPts[i + 1];
-                const hasGap = crossings.some(c => Math.abs(c.segmentIndex - i) < 1);
-                
-                if (hasGap) {
-                    drawPipeGap(scrP1, scrP2, i, crossings);
-                } else {
-                    _ctx.lineTo(scrP2.x, scrP2.y);
-                }
-            }
-            
-            const last = project(pts[pts.length-1]); 
-            if (crossings.length === 0) _ctx.lineTo(last.x, last.y);
-        };
-
         _ctx.save(); drawPath();
         const grad = getMaterialGradient(_ctx, pts[0], pts[pts.length-1], matShort, mainWidth*2);
         _ctx.shadowColor = hasAuditError ? '#ef4444' : '#000000';
@@ -545,20 +534,6 @@ const SmartFlowRenderer = (function() {
         drawPath(); _ctx.strokeStyle = grad; _ctx.lineWidth = mainWidth; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; _ctx.lineWidth = mainWidth * 0.4; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(1, mainWidth * 0.1); _ctx.globalAlpha = 0.8; _ctx.stroke(); _ctx.globalAlpha = 1.0;
-
-        if (crossings.length > 0 && _cam.scale > 0.15) {
-            _ctx.save();
-            _ctx.strokeStyle = '#0a0e17';
-            _ctx.lineWidth = mainWidth + 8;
-            _ctx.globalAlpha = 0.9;
-            drawPathWithGaps();
-            _ctx.strokeStyle = grad;
-            _ctx.lineWidth = mainWidth;
-            _ctx.globalAlpha = 1.0;
-            drawPathWithGaps();
-            _ctx.stroke();
-            _ctx.restore();
-        }
 
         if (hasAuditError && pts.length >= 2) {
             const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x - pts[0].x, pts[pts.length-1].y - pts[0].y, pts[pts.length-1].z - pts[0].z) / 2);
@@ -817,6 +792,53 @@ const SmartFlowRenderer = (function() {
             }
         }
         return null;
+    }
+
+    function centerProject() {
+        if (!_core) return;
+        const db = _core.getDb();
+        const allPoints = [];
+
+        (db.equipos || []).forEach(eq => {
+            allPoints.push({ x: eq.posX, y: eq.posY, z: eq.posZ });
+            if (eq.puertos) {
+                eq.puertos.forEach(p => {
+                    allPoints.push({
+                        x: eq.posX + (p.relX || 0),
+                        y: eq.posY + (p.relY || 0),
+                        z: eq.posZ + (p.relZ || 0)
+                    });
+                });
+            }
+        });
+
+        (db.lines || []).forEach(line => {
+            const pts = line._cachedPoints || line.points3D;
+            if (pts) pts.forEach(p => allPoints.push(p));
+        });
+
+        if (allPoints.length === 0) return;
+
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        allPoints.forEach(p => {
+            const proj = project(p);
+            if (proj.x < minX) minX = proj.x;
+            if (proj.x > maxX) maxX = proj.x;
+            if (proj.y < minY) minY = proj.y;
+            if (proj.y > maxY) maxY = proj.y;
+        });
+
+        const padding = 80;
+        const worldW = maxX - minX + padding * 2;
+        const worldH = maxY - minY + padding * 2;
+        const scaleX = _canvas.width / worldW;
+        const scaleY = _canvas.height / worldH;
+        _cam.scale = Math.min(scaleX, scaleY, 0.8);
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        _cam.panX = _canvas.width / 2 - centerX * _cam.scale;
+        _cam.panY = _canvas.height / 2 - centerY * _cam.scale;
+        render();
     }
 
     function autoCenter() {
@@ -1083,7 +1105,7 @@ const SmartFlowRenderer = (function() {
     function setElevation(level) { _currentElevation = level; render(); }
 
     window.SmartFlowRenderer = {
-        init, render, autoCenter, pan, zoom,
+        init, render, autoCenter, pan, zoom, centerProject,
         project, inverseProject,
         setElevation, resizeCanvas,
         exportPDF, exportPCF,
