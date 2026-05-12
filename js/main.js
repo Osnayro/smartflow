@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.2
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.3
 // Archivo: js/main.js
 // ============================================================
 
@@ -83,7 +83,7 @@
     
     function autoCenter() {
         if (SmartFlowRenderer) {
-            SmartFlowRenderer.autoCenter();
+            SmartFlowRenderer.centerProject();
             notify("Vista centrada correctamente.", false);
         }
     }
@@ -269,7 +269,7 @@
         if (btnVoice) btnVoice.textContent = voiceEnabled ? "Voz ON" : "Voz OFF";
     }
     
-    // -------------------- ATJOS DE TECLADO --------------------
+    // -------------------- ATAJOS DE TECLADO --------------------
     function setupKeyboardShortcuts() {
         document.addEventListener('keydown', function(e) {
             const activeEl = document.activeElement;
@@ -288,7 +288,7 @@
                         break;
                     case 'V':
                         e.preventDefault();
-                        autoCenter();
+                        if (SmartFlowRenderer) SmartFlowRenderer.centerProject();
                         break;
                     case 'U':
                         e.preventDefault();
