@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.0
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.1
 // Archivo: js/renderer.js
 // ============================================================
 
@@ -261,6 +261,551 @@ const SmartFlowRenderer = (function() {
         });
     }
 
+    function drawIsoText(text, x, y, plane = 'XY') {
+        if (!text) return;
+        _ctx.save();
+        _ctx.font = `bold ${Math.max(12, 14 * _cam.scale)}px 'Segoe UI', monospace`;
+        _ctx.textAlign = 'center'; _ctx.textBaseline = 'bottom';
+        if (plane === 'XY') { _ctx.setTransform(1, 0.5, 0, 1, x, y); }
+        else if (plane === 'ZY') { _ctx.setTransform(1, -0.5, 0, 1, x, y); }
+        else { _ctx.setTransform(1, -0.5, 1, 0.5, x, y); }
+        const tw = _ctx.measureText(text).width;
+        _ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+        _ctx.fillRect(-tw/2 - 6, -16, tw + 12, 20);
+        _ctx.strokeStyle = 'rgba(51, 65, 85, 0.5)'; _ctx.lineWidth = 1;
+        _ctx.strokeRect(-tw/2 - 6, -16, tw + 12, 20);
+        if (_cam.scale < 0.3) { _ctx.globalAlpha = 0.12; }
+        else if (_cam.scale < 0.7) { _ctx.globalAlpha = 0.18 + (_cam.scale - 0.3) * 1.3; }
+        else { _ctx.globalAlpha = 0.65; }
+        _ctx.fillStyle = '#ffffff';
+        _ctx.fillText(text, 0, 0);
+        _ctx.globalAlpha = 1.0;
+        _ctx.restore(); _ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    function drawFlowArrow(p1, p2, diameter) {
+        const proj1 = project(p1), proj2 = project(p2);
+        const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x);
+        const midX = (proj1.x + proj2.x) / 2, midY = (proj1.y + proj2.y) / 2;
+        _ctx.save(); _ctx.translate(midX, midY); _ctx.rotate(angle);
+        const arrowSize = 12 * _cam.scale;
+        _ctx.beginPath();
+        _ctx.moveTo(-arrowSize, -arrowSize/2); _ctx.lineTo(0, 0); _ctx.lineTo(-arrowSize, arrowSize/2);
+        _ctx.fillStyle = '#00f2ff'; _ctx.shadowColor = '#00f2ff'; _ctx.shadowBlur = 8;
+        _ctx.fill(); _ctx.shadowBlur = 0; _ctx.restore();
+    }
+
+    function getPointAtDistance(from, to, dist) { 
+        const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
+        if (d === 0) return { ...from };
+        const t = Math.min(dist/d, 0.5); 
+        return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t, z: from.z + (to.z - from.z) * t }; 
+    }
+
+    function drawDimensionTick(x, y, angle) {
+        const tickSize = 8 * _cam.scale;
+        _ctx.save(); _ctx.translate(x, y); _ctx.rotate(angle + Math.PI / 4);
+        _ctx.beginPath(); _ctx.moveTo(0, -tickSize); _ctx.lineTo(0, tickSize);
+        _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = 1.5; _ctx.stroke(); _ctx.restore();
+    }
+
+    function getPipeOrientation(p1, p2) {
+        const dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y), dz = Math.abs(p2.z - p1.z);
+        return (dy > dx && dy > dz) ? 'vertical' : 'horizontal';
+    }
+
+    function isPointCollidingWithEquipment(point, margin = 1500) {
+        if (!_core) return false;
+        const db = _core.getDb(); if (!db || !db.equipos) return false;
+        return db.equipos.some(eq => {
+            if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
+                const dx = Math.abs(point.x - eq.posX), dz = Math.abs(point.z - eq.posZ);
+                const radius = (eq.diametro / 2) + margin;
+                return (dx <= radius && dz <= radius);
+            } else if (eq.tipo === 'tanque_h') {
+                const halfL = (eq.largo / 2) + margin, halfD = (eq.diametro / 2) + margin;
+                const dx = Math.abs(point.x - eq.posX), dz = Math.abs(point.z - eq.posZ);
+                return (dx <= halfL && dz <= halfD);
+            } else if (eq.tipo === 'bomba' || eq.tipo === 'intercambiador' || eq.tipo === 'colector') {
+                const halfL = ((eq.largo || 1000) / 2) + margin, halfW = ((eq.ancho || eq.diametro || 1000) / 2) + margin;
+                const dx = Math.abs(point.x - eq.posX), dz = Math.abs(point.z - eq.posZ);
+                return (dx <= halfL && dz <= halfW);
+            }
+            return false;
+        });
+    }
+
+    function checkLineCrossings(currentLinePts) {
+        if (!_core) return [];
+        const crossings = [];
+        const db = _core.getDb();
+        const otherLines = db.lines.filter(l => {
+            const pts = l._cachedPoints || l.points3D;
+            return pts && pts !== currentLinePts;
+        });
+        if (otherLines.length === 0 || currentLinePts.length < 2) return [];
+        for (let i = 0; i < currentLinePts.length - 1; i++) {
+            const a1 = project(currentLinePts[i]), a2 = project(currentLinePts[i+1]);
+            for (const otherLine of otherLines) {
+                const otherPts = otherLine._cachedPoints || otherLine.points3D;
+                if (!otherPts || otherPts.length < 2) continue;
+                for (let j = 0; j < otherPts.length - 1; j++) {
+                    const b1 = project(otherPts[j]), b2 = project(otherPts[j+1]);
+                    const dist1 = pointToSegmentDistance(a1, b1, b2), dist2 = pointToSegmentDistance(a2, b1, b2);
+                    const dist3 = pointToSegmentDistance(b1, a1, a2), dist4 = pointToSegmentDistance(b2, a1, a2);
+                    if (Math.min(dist1, dist2, dist3, dist4) < 8 && _cam.scale > 0.15) {
+                        crossings.push({ x: (a1.x+a2.x)/2, y: (a1.y+a2.y)/2, segmentIndex: i });
+                        break;
+                    }
+                }
+            }
+        }
+        return crossings;
+    }
+
+    function drawPipeGap(screenP1, screenP2, segmentIndex, existingGaps) {
+        const midX = (screenP1.x + screenP2.x) / 2, midY = (screenP1.y + screenP2.y) / 2;
+        const gapSize = 18;
+        const angle = Math.atan2(screenP2.y - screenP1.y, screenP2.x - screenP1.x);
+        const perpAngle = angle + Math.PI/2;
+        _ctx.moveTo(midX - Math.cos(angle)*gapSize/2, midY - Math.sin(angle)*gapSize/2);
+        _ctx.quadraticCurveTo(midX + Math.cos(perpAngle)*gapSize*0.8, midY + Math.sin(perpAngle)*gapSize*0.8,
+                              midX + Math.cos(angle)*gapSize/2, midY + Math.sin(angle)*gapSize/2);
+    }
+
+    function drawIsometricDimension(p1, p2, offset = 1200) {
+        const realDist = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+        const dynamicOffset = Math.max(600, Math.min(3000, realDist * 0.4));
+        const finalOffset = offset || dynamicOffset;
+        const orientation = getPipeOrientation(p1, p2);
+        let candA, candB;
+        if (orientation === 'horizontal') { candA = { dx: 0, dy: -finalOffset, dz: 0 }; candB = { dx: 0, dy: finalOffset, dz: 0 }; }
+        else { candA = { dx: finalOffset, dy: 0, dz: 0 }; candB = { dx: -finalOffset, dy: 0, dz: 0 }; }
+        const checkCollision = (offsetV) => {
+            const midPoint = { x: (p1.x+p2.x)/2+offsetV.dx, y: (p1.y+p2.y)/2+offsetV.dy, z: (p1.z+p2.z)/2+offsetV.dz };
+            return isPointCollidingWithEquipment(midPoint, 1200);
+        };
+        const finalOffsetVec = checkCollision(candA) ? candB : candA;
+        const dp1 = { x: p1.x+finalOffsetVec.dx, y: p1.y+finalOffsetVec.dy, z: p1.z+finalOffsetVec.dz };
+        const dp2 = { x: p2.x+finalOffsetVec.dx, y: p2.y+finalOffsetVec.dy, z: p2.z+finalOffsetVec.dz };
+        const pr1 = project(p1), pr2 = project(p2), prD1 = project(dp1), prD2 = project(dp2);
+        _ctx.beginPath(); _ctx.setLineDash([4,4]); _ctx.strokeStyle = '#64748b'; _ctx.lineWidth = 1;
+        _ctx.moveTo(pr1.x, pr1.y); _ctx.lineTo(prD1.x, prD1.y);
+        _ctx.moveTo(pr2.x, pr2.y); _ctx.lineTo(prD2.x, prD2.y); _ctx.stroke(); _ctx.setLineDash([]);
+        _ctx.beginPath(); _ctx.moveTo(prD1.x, prD1.y); _ctx.lineTo(prD2.x, prD2.y);
+        _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = 1.5; _ctx.stroke();
+        const angle = Math.atan2(prD2.y-prD1.y, prD2.x-prD1.x);
+        drawDimensionTick(prD1.x, prD1.y, angle); drawDimensionTick(prD2.x, prD2.y, angle);
+        const textStr = formatDimensionText(realDist);
+        const midX = (prD1.x+prD2.x)/2, midY = (prD1.y+prD2.y)/2;
+        _ctx.save(); _ctx.translate(midX, midY);
+        let textAngle = angle;
+        if (textAngle > Math.PI/2) textAngle -= Math.PI;
+        if (textAngle < -Math.PI/2) textAngle += Math.PI;
+        _ctx.rotate(textAngle);
+        _ctx.font = `bold ${Math.max(10,12*_cam.scale)}px monospace`;
+        _ctx.fillStyle = '#ffffff';
+        _ctx.shadowColor = '#000000';
+        _ctx.shadowBlur = 6;
+        _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+        _ctx.fillText(textStr, 0, -2);
+        _ctx.shadowBlur = 0;
+        _ctx.restore();
+    }
+
+    function lineHasAuditError(line) {
+        if (!_core) return false;
+        const db = _core.getDb();
+        if (line.origin && line.origin.objTag) {
+            const obj = db.equipos.find(e => e.tag === line.origin.objTag) || db.lines.find(l => l.tag === line.origin.objTag);
+            const nz = obj?.puertos?.find(p => p.id === line.origin.portId);
+            if (nz && nz.diametro !== line.diameter) return true;
+        }
+        if (line.destination && line.destination.objTag) {
+            const obj = db.equipos.find(e => e.tag === line.destination.objTag) || db.lines.find(l => l.tag === line.destination.objTag);
+            const nz = obj?.puertos?.find(p => p.id === line.destination.portId);
+            if (nz && nz.diametro !== line.diameter) return true;
+        }
+        return false;
+    }
+
+    function drawPipeWithElbows(line) {
+        const pts = line._cachedPoints || line.points3D;
+        if (!pts || pts.length < 2) return;
+        if (line.origin) {
+            const db = _core.getDb();
+            const obj = db.equipos.find(e => e.tag === line.origin.objTag) || db.lines.find(l => l.tag === line.origin.objTag);
+            if (obj) {
+                const puerto = obj.puertos?.find(p => p.id === line.origin.portId);
+                if (puerto) {
+                    const posBase = obj.posX !== undefined ? { x: obj.posX, y: obj.posY, z: obj.posZ } : (obj._cachedPoints && obj._cachedPoints.length > 0 ? obj._cachedPoints[0] : { x: 0, y: 0, z: 0 });
+                    pts[0] = { x: posBase.x + (puerto.relX || puerto.relPos?.x || 0), y: posBase.y + (puerto.relY || puerto.relPos?.y || 0), z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0) };
+                }
+            }
+        }
+        if (line.destination) {
+            const db = _core.getDb();
+            const obj = db.equipos.find(e => e.tag === line.destination.objTag) || db.lines.find(l => l.tag === line.destination.objTag);
+            if (obj) {
+                const puerto = obj.puertos?.find(p => p.id === line.destination.portId);
+                if (puerto) {
+                    const posBase = obj.posX !== undefined ? { x: obj.posX, y: obj.posY, z: obj.posZ } : (obj._cachedPoints && obj._cachedPoints.length > 0 ? obj._cachedPoints[0] : { x: 0, y: 0, z: 0 });
+                    pts[pts.length - 1] = { x: posBase.x + (puerto.relX || puerto.relPos?.x || 0), y: posBase.y + (puerto.relY || puerto.relPos?.y || 0), z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0) };
+                }
+            }
+        }
+
+        const crossings = checkLineCrossings(pts);
+        let hasClash = pts.some(p => isPointCollidingWithEquipment(p, 100));
+        const isPPR = line.material === 'PPR' || (line.spec && line.spec.includes('PPR'));
+        const radioBase = isPPR ? (line.diameter * 25.4 * 0.8) : (line.diameter * 25.4 * 1.5);
+        const radio = Math.min(radioBase, 350);
+        const baseWidth = (line.diameter || 4) * _cam.scale;
+        const mainWidth = Math.max(6, baseWidth);
+        _ctx.lineCap = 'round'; _ctx.lineJoin = 'round';
+        const hasAuditError = lineHasAuditError(line);
+        const matShort = getShortMaterial(line.material);
+        const lineLabel = line.service ? `${line.diameter}"-${line.service}` : `${line.diameter}"-${matShort}`;
+
+        const drawPath = () => {
+            _ctx.beginPath();
+            let first = project(pts[0]); _ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < pts.length - 1; i++) {
+                const pPrev = pts[i-1], pCurr = pts[i], pNext = pts[i+1];
+                if (pCurr.isControlPoint && i + 1 < pts.length) {
+                    const cp = project(pCurr), nextP = project(pts[i+1]);
+                    _ctx.quadraticCurveTo(cp.x, cp.y, nextP.x, nextP.y); i++;
+                } else {
+                    const pIn = getPointAtDistance(pCurr, pPrev, radio), pOut = getPointAtDistance(pCurr, pNext, radio);
+                    const projIn = project(pIn), projOut = project(pOut), projCurr = project(pCurr);
+                    _ctx.lineTo(projIn.x, projIn.y); _ctx.quadraticCurveTo(projCurr.x, projCurr.y, projOut.x, projOut.y);
+                }
+            }
+            _ctx.lineTo(project(pts[pts.length-1]).x, project(pts[pts.length-1]).y);
+        };
+
+        const grad = getMaterialGradient(_ctx, pts[0], pts[pts.length-1], matShort, mainWidth*2);
+
+        _ctx.save(); drawPath();
+        _ctx.shadowColor = '#00000066'; _ctx.shadowBlur = 14 * _cam.scale;
+        _ctx.shadowOffsetX = 0; _ctx.shadowOffsetY = 8 * _cam.scale;
+        _ctx.strokeStyle = '#00000044'; _ctx.lineWidth = mainWidth + 10; _ctx.stroke(); _ctx.restore();
+
+        drawPath(); _ctx.strokeStyle = '#0a0e17'; _ctx.lineWidth = mainWidth + 4; _ctx.stroke();
+        drawPath(); _ctx.strokeStyle = '#1e293b'; _ctx.lineWidth = mainWidth + 2; _ctx.stroke();
+        drawPath(); _ctx.strokeStyle = grad; _ctx.lineWidth = mainWidth; _ctx.stroke();
+        drawPath(); _ctx.strokeStyle = 'rgba(255,255,255,0.25)'; _ctx.lineWidth = mainWidth * 0.45; _ctx.stroke();
+        drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(1.2, mainWidth * 0.12); _ctx.globalAlpha = 0.85; _ctx.stroke(); _ctx.globalAlpha = 1.0;
+
+        if (isPPR && line.components && line.components.length > 0) {
+            line.components.forEach(comp => {
+                if (comp.param === undefined) return;
+                let targetLen = 0;
+                for (let i = 0; i < pts.length - 1; i++) targetLen += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z);
+                const compPos = getPointAtDistance(pts[0], pts[pts.length-1], targetLen * comp.param);
+                const projComp = project(compPos);
+                _ctx.beginPath();
+                _ctx.arc(projComp.x, projComp.y, mainWidth * 0.9, 0, Math.PI*2);
+                _ctx.fillStyle = '#065f46'; _ctx.fill();
+                _ctx.strokeStyle = '#034028'; _ctx.lineWidth = 1.5; _ctx.stroke();
+            });
+        }
+
+        if (hasAuditError && pts.length >= 2) {
+            const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x-pts[0].x, pts[pts.length-1].y-pts[0].y, pts[pts.length-1].z-pts[0].z)/2);
+            const projMid = project(midPt);
+            _ctx.save(); _ctx.translate(projMid.x, projMid.y - 30*_cam.scale);
+            _ctx.font = `bold ${Math.max(16,20*_cam.scale)}px "Segoe UI"`; _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+            _ctx.shadowColor = '#ef4444'; _ctx.shadowBlur = 10; _ctx.fillStyle = '#ef4444';
+            _ctx.fillText('⚠', 0, 0); _ctx.shadowBlur = 0; _ctx.restore();
+        }
+
+        const isSelected = _core && _core.getSelected() && _core.getSelected().obj === line;
+        if (line.showDimensions !== false && !isSelected) {
+            const puntosReales = pts.filter(p => !p.isControlPoint);
+            for (let i = 0; i < puntosReales.length - 1; i++) {
+                const p1 = puntosReales[i], p2 = puntosReales[i+1];
+                if (Math.hypot(p2.x-p1.x, p2.y-p1.y, p2.z-p1.z) > 100) drawIsometricDimension(p1, p2, 1200);
+            }
+        }
+
+        if (pts.length >= 2) drawFlowArrow(pts[0], pts[pts.length-1], line.diameter);
+        if (lineLabel && pts.length >= 2) {
+            const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x-pts[0].x, pts[pts.length-1].y-pts[0].y, pts[pts.length-1].z-pts[0].z)/2);
+            const projMid = project(midPt);
+            const plane = Math.abs(pts[1].x-pts[0].x) > Math.abs(pts[1].z-pts[0].z) ? 'XY' : 'ZY';
+            drawIsoText(lineLabel, projMid.x, projMid.y - 25*_cam.scale, plane);
+        }
+        if (line.puertos) drawPuertos(line);
+    }
+```
+
+Esta primera parte incluye todo el sistema de proyección, gradientes, dibujo de equipos, puertos, cotas optimizadas (sin fondo, texto blanco con sombra), detección de cruces, dibujo de tuberías con anillos PPR y sombras proyectadas. Espero tu confirmación para la segunda parte.Perfecto. Aplico la Opción A: cotas sin rectángulo de fondo, texto blanco con sombra negra sutil, para no interferir con la geometría de tuberías y equipos.
+
+Aquí tienes la primera parte del renderer v20.1 (hasta drawPipeWithElbows), unificado y con las cotas optimizadas.
+
+```javascript
+// ============================================================
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.1
+// Archivo: js/renderer.js
+// ============================================================
+
+const SmartFlowRenderer = (function() {
+    
+    let _canvas = null;
+    let _ctx = null;
+    let _core = null;
+    
+    let _cam = { scale: 0.5, panX: 0, panY: 0 };
+    let _currentElevation = 0;
+    let _notifyUI = (msg, isErr) => console.log(msg);
+
+    const ISO_CONFIG = {
+        MATERIALS: {
+            'PPR': 'PP', 'CARBON_STEEL': 'CS', 'STAINLESS_STEEL': 'SS',
+            'POLIETILENO': 'PE', 'PVC': 'PV'
+        },
+        COLORS: {
+            'PP': '#10b981', 'CS': '#475569', 'SS': '#94a3b8',
+            'PE': '#1e293b', 'PV': '#7c3aed'
+        }
+    };
+
+    const SNAP_THRESHOLD = 15;
+    let _activeSnap = null;
+    let _hoveredComponent = null;
+    let _hoveredComponentScreenPos = null;
+    let _bomItems = [];
+    let _allLinePoints = [];
+
+    const COS30 = 0.86602540378;
+    const SIN30 = 0.5;
+    
+    function project(p) {
+        const x = (p.x - p.z) * COS30;
+        const y = (p.x + p.z) * SIN30 - p.y;
+        return { x: x * _cam.scale + _cam.panX, y: y * _cam.scale + _cam.panY };
+    }
+
+    function inverseProject(screenX, screenY) {
+        const X = (screenX - _cam.panX) / _cam.scale;
+        const Y = (screenY - _cam.panY) / _cam.scale;
+        const adjY = Y + (_currentElevation * 0.5);
+        const A = X / COS30;
+        const B = adjY / SIN30;
+        return { x: (A + B) / 2, y: _currentElevation, z: (B - A) / 2 };
+    }
+
+    function adjustColor(color, percent) {
+        const num = parseInt(color.replace("#",""), 16),
+        amt = Math.round(2.55 * percent),
+        R = (num >> 16) + amt, G = (num >> 8 & 0x00FF) + amt, B = (num & 0x0000FF) + amt;
+        return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1);
+    }
+
+    function getMaterialGradient(ctx, p1, p2, material, diameter) {
+        const proj1 = project(p1), proj2 = project(p2);
+        const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x) + Math.PI/2;
+        const w = diameter * _cam.scale;
+        const grad = ctx.createLinearGradient(
+            proj1.x + Math.cos(angle)*w/2, proj1.y + Math.sin(angle)*w/2,
+            proj1.x - Math.cos(angle)*w/2, proj1.y - Math.sin(angle)*w/2
+        );
+        const baseColor = ISO_CONFIG.COLORS[material] || '#94a3b8';
+        if (material === 'PP') {
+            grad.addColorStop(0, '#064e3b');
+            grad.addColorStop(0.25, '#6ee7b7');
+            grad.addColorStop(0.5, baseColor);
+            grad.addColorStop(1, '#065f46');
+        } else {
+            grad.addColorStop(0, '#1a1a1a');
+            grad.addColorStop(0.4, baseColor);
+            grad.addColorStop(0.5, '#ffffffcc');
+            grad.addColorStop(0.6, baseColor);
+            grad.addColorStop(1, '#000000');
+        }
+        return grad;
+    }
+
+    function getShortMaterial(materialName) {
+        const name = materialName ? materialName.toUpperCase() : '';
+        return ISO_CONFIG.MATERIALS[name] || name.substring(0,2) || 'UN';
+    }
+
+    function formatDimensionText(dist) {
+        if (dist < 1000) return Math.round(dist).toString();
+        return (dist / 1000).toFixed(2) + "m";
+    }
+
+    function getComponentLabel(compType) {
+        if (typeof SmartFlowCatalog !== 'undefined') {
+            const catComp = SmartFlowCatalog.getComponent(compType);
+            if (catComp && catComp.abbr) return catComp.abbr;
+        }
+        const fallback = {
+            'GATE_VALVE':'GV','GLOBE_VALVE':'GL','BUTTERFLY_VALVE':'VB','BALL_VALVE':'BA',
+            'CHECK_VALVE':'CK','DIAPHRAGM_VALVE':'DV','CONTROL_VALVE':'CV',
+            'CONCENTRIC_REDUCER':'RC','ECCENTRIC_REDUCER':'RE',
+            'WELD_NECK_FLANGE':'FL','SLIP_ON_FLANGE':'FL','BLIND_FLANGE':'FB','LAP_JOINT_FLANGE':'FL',
+            'PRESSURE_GAUGE':'PG','TEMPERATURE_GAUGE':'TG','FLOW_METER':'FM',
+            'TEE_EQUAL':'TE','TEE_REDUCING':'TR','CROSS':'CR','CAP':'CA',
+            'ELBOW_90_LR':'EL','ELBOW_90_SR':'EL','ELBOW_45':'E4',
+            'TRANSITION':'TR','UNION':'UN','BULKHEAD':'BH','Y_STRAINER':'YS',
+            'LEVEL_SWITCH_RANA':'LS','PIPE_SHOE':'SH','U_BOLT':'UB','GUIDE':'GD','ANCHOR':'AN',
+            'HANGER':'HG','PIPE_CLAMP':'PC','EXPANSION_JOINT':'EJ','FLEXIBLE_HOSE':'HO',
+            'NIPPLE':'NI','STUB_END':'SE','CAMLOCK':'CM','QUICK_CONNECT':'QC',
+            'STEAM_TRAP':'ST','SILENCER':'SI','FLAME_ARRESTER':'FA','VACUUM_BREAKER':'VB',
+            'DRAIN_VALVE':'DV','AIR_RELEASE':'AR','SAMPLE_COOLER':'SC','SAMPLE_VALVE':'SV'
+        };
+        return fallback[compType] || compType?.substring(0,2) || '??';
+    }
+
+    function drawBalloon(ctx, x, y, index) {
+        ctx.save();
+        ctx.setTransform(1, -0.5, 0, 1, x, y - 25);
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fillStyle = "white";
+        ctx.fill();
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 10px Inter, Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(index, 0, 0);
+        ctx.beginPath();
+        ctx.moveTo(0, 10);
+        ctx.lineTo(0, 25);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+        ctx.restore();
+    }
+
+    function drawGrid(elevation = 0) {
+        const step = 1000;
+        const minX = -10000, maxX = 20000, minZ = -10000, maxZ = 20000;
+        _ctx.beginPath();
+        _ctx.strokeStyle = '#1e293b';
+        _ctx.lineWidth = 1;
+        _ctx.globalAlpha = 0.15;
+        for (let x = minX; x <= maxX; x += step) {
+            const p1 = project({ x, y: elevation, z: minZ });
+            const p2 = project({ x, y: elevation, z: maxZ });
+            _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
+        }
+        for (let z = minZ; z <= maxZ; z += step) {
+            const p1 = project({ x: minX, y: elevation, z });
+            const p2 = project({ x: maxX, y: elevation, z });
+            _ctx.moveTo(p1.x, p1.y); _ctx.lineTo(p2.x, p2.y);
+        }
+        _ctx.stroke();
+        _ctx.globalAlpha = 1.0;
+    }
+
+    function drawOrigin() {
+        const o = project({ x: 0, y: _currentElevation, z: 0 });
+        _ctx.beginPath();
+        _ctx.moveTo(o.x - 20, o.y); _ctx.lineTo(o.x + 20, o.y);
+        _ctx.moveTo(o.x, o.y - 20); _ctx.lineTo(o.x, o.y + 20);
+        _ctx.strokeStyle = '#ff8888'; _ctx.lineWidth = 2; _ctx.stroke();
+        _ctx.fillStyle = '#ff8888'; _ctx.font = '14px monospace';
+        _ctx.fillText(`ORIGEN (0,${_currentElevation/1000}m,0)`, o.x + 15, o.y - 8);
+    }
+
+    function drawTank(eq) {
+        const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+        const w = (eq.diametro / 2) * _cam.scale;
+        const h = eq.altura * _cam.scale;
+        const topY = p.y - h/2;
+        const bottomY = p.y + h/2;
+        _ctx.beginPath(); _ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = '#2563eb'; _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.stroke();
+        _ctx.fillStyle = '#1e40af'; _ctx.fillRect(p.x - w, topY, w, h);
+        _ctx.fillStyle = '#3b82f6'; _ctx.fillRect(p.x, topY, w, h);
+        _ctx.beginPath(); _ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = '#60a5fa'; _ctx.fill(); _ctx.stroke();
+        drawIsoText(eq.tag, p.x, topY - 10, 'XY');
+        drawPuertos(eq);
+        if (eq.accessories) eq.accessories.forEach(acc => drawAccessory(acc, eq));
+    }
+
+    function drawBomba(eq) {
+        const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+        const rad = 16 * _cam.scale;
+        const grad = _ctx.createRadialGradient(p.x-3, p.y-3, 2, p.x, p.y, rad);
+        grad.addColorStop(0, '#f39c12'); grad.addColorStop(1, '#b85c00');
+        _ctx.fillStyle = grad; _ctx.beginPath(); _ctx.arc(p.x, p.y, rad, 0, 2*Math.PI); _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.stroke();
+        _ctx.beginPath(); _ctx.moveTo(p.x-rad, p.y); _ctx.lineTo(p.x+rad, p.y); _ctx.stroke();
+        drawIsoText(eq.tag, p.x + 20, p.y - 5, 'XY');
+        drawPuertos(eq);
+    }
+
+    function drawColector(eq) {
+        const pIzq = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+        const pDer = project({ x: eq.posX + eq.largo, y: eq.posY, z: eq.posZ });
+        _ctx.beginPath(); _ctx.moveTo(pIzq.x, pIzq.y); _ctx.lineTo(pDer.x, pDer.y);
+        _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = Math.max(4, (eq.diametro || 4) * _cam.scale); _ctx.stroke();
+        drawIsoText(eq.tag, (pIzq.x + pDer.x)/2, pIzq.y - 15, 'ZY');
+        drawPuertos(eq);
+    }
+
+    function drawRectEquip(eq, color) {
+        const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+        const w = (eq.largo || eq.diametro || 1000) * _cam.scale / 2;
+        const h = (eq.altura || 1000) * _cam.scale / 2;
+        _ctx.fillStyle = color; _ctx.fillRect(p.x-w, p.y-h, w*2, h*2);
+        _ctx.strokeStyle = 'white'; _ctx.strokeRect(p.x-w, p.y-h, w*2, h*2);
+        drawIsoText(eq.tag, p.x, p.y - h - 5, 'XY');
+        drawPuertos(eq);
+    }
+
+    function drawCilindroHorizontal(eq, color) {
+        const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+        const w = (eq.largo || eq.diametro) * _cam.scale / 2;
+        const h = (eq.diametro / 2) * _cam.scale;
+        _ctx.fillStyle = color; _ctx.fillRect(p.x-w, p.y-h, w*2, h*2); _ctx.strokeStyle = 'white'; _ctx.strokeRect(p.x-w, p.y-h, w*2, h*2);
+        _ctx.beginPath(); _ctx.ellipse(p.x-w, p.y, h, h*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = color; _ctx.fill(); _ctx.stroke();
+        _ctx.beginPath(); _ctx.ellipse(p.x+w, p.y, h, h*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = color; _ctx.fill(); _ctx.stroke();
+        drawIsoText(eq.tag, p.x, p.y - h - 5, 'XY');
+        drawPuertos(eq);
+    }
+
+    function drawAccessory(acc, parentEq) {
+        const pos = { x: parentEq.posX + (acc.relX || 0), y: parentEq.posY + (acc.relY || 0), z: parentEq.posZ + (acc.relZ || 0) };
+        const proj = project(pos);
+        _ctx.strokeStyle = '#64748b'; _ctx.lineWidth = 1; _ctx.setLineDash([4, 4]);
+        _ctx.beginPath();
+        if (acc.type === 'CAGED_LADDER') { _ctx.moveTo(proj.x, proj.y); _ctx.lineTo(proj.x, proj.y - 40 * _cam.scale); }
+        _ctx.stroke(); _ctx.setLineDash([]);
+    }
+
+    function drawPuertos(obj) {
+        if (!obj.puertos) return;
+        const posBase = obj.posX !== undefined ? { x: obj.posX, y: obj.posY, z: obj.posZ } : (obj._cachedPoints && obj._cachedPoints.length > 0 ? obj._cachedPoints[0] : { x: 0, y: 0, z: 0 });
+        obj.puertos.forEach(nz => {
+            const pos = { x: posBase.x + (nz.relX || nz.relPos?.x || 0), y: posBase.y + (nz.relY || nz.relPos?.y || 0), z: posBase.z + (nz.relZ || nz.relPos?.z || 0) };
+            const proj = project(pos);
+            if (nz.orientacion) {
+                const dir = nz.orientacion;
+                const endPos = { x: pos.x + dir.dx * 250, y: pos.y + dir.dy * 250, z: pos.z + dir.dz * 250 };
+                const projEnd = project(endPos);
+                _ctx.beginPath(); _ctx.moveTo(proj.x, proj.y); _ctx.lineTo(projEnd.x, projEnd.y);
+                _ctx.strokeStyle = '#ffaa00'; _ctx.lineWidth = 2; _ctx.stroke();
+                const angle = Math.atan2(projEnd.y - proj.y, projEnd.x - proj.x);
+                const arrowSize = 8;
+                _ctx.beginPath();
+                _ctx.moveTo(projEnd.x, projEnd.y);
+                _ctx.lineTo(projEnd.x - arrowSize * Math.cos(angle - 0.5), projEnd.y - arrowSize * Math.sin(angle - 0.5));
+                _ctx.lineTo(projEnd.x - arrowSize * Math.cos(angle + 0.5), projEnd.y - arrowSize * Math.sin(angle + 0.5));
+                _ctx.closePath(); _ctx.fillStyle = '#ffaa00'; _ctx.fill();
+            }
+            _ctx.beginPath(); _ctx.arc(proj.x, proj.y, 6, 0, 2*Math.PI);
+            _ctx.fillStyle = nz.connectedLine ? '#4ade80' : '#ff8800'; _ctx.fill();
+            _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1; _ctx.stroke();
+            drawIsoText(`${nz.id} ${nz.diametro || obj.diameter || 3}"`, proj.x - 12, proj.y - 6, 'XY');
+        });
+    }
 
     function drawIsoText(text, x, y, plane = 'XY') {
         if (!text) return;
@@ -405,10 +950,13 @@ const SmartFlowRenderer = (function() {
         if (textAngle < -Math.PI/2) textAngle += Math.PI;
         _ctx.rotate(textAngle);
         _ctx.font = `bold ${Math.max(10,12*_cam.scale)}px monospace`;
-        const textWidth = _ctx.measureText(textStr).width;
-        _ctx.fillStyle = 'rgba(10,14,23,0.8)'; _ctx.fillRect(-textWidth/2-4, -14, textWidth+8, 16);
-        _ctx.fillStyle = '#facc15'; _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
-        _ctx.fillText(textStr, 0, -4); _ctx.restore();
+        _ctx.fillStyle = '#ffffff';
+        _ctx.shadowColor = '#000000';
+        _ctx.shadowBlur = 6;
+        _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+        _ctx.fillText(textStr, 0, -2);
+        _ctx.shadowBlur = 0;
+        _ctx.restore();
     }
 
     function lineHasAuditError(line) {
@@ -536,6 +1084,15 @@ const SmartFlowRenderer = (function() {
         }
         if (line.puertos) drawPuertos(line);
     }
+```
+
+Esta primera parte incluye todo el sistema de proyección, gradientes, dibujo de equipos, puertos, cotas optimizadas (sin fondo, texto blanco con sombra), detección de cruces, dibujo de tuberías con anillos PPR y sombras proyectadas.
+
+La segunda parte contendrá: drawPipeComponents, drawSymbol (completo, con todos los símbolos realistas), drawTechnicalTooltip, pickComponent, drawSelection, drawFitting, drawSmartDimension, drawPortMarkers, pickPort, centerProject, autoCenter, pan, zoom, exportPDF, exportPCF, renderBOM, render, init (con hover y touch), resizeCanvas, setElevation y el objeto de retorno.
+
+Espero tu confirmación para la segunda parte.Recibido. Aquí tienes la segunda parte y final del renderer v20.1, con el 100% de las mejoras integradas: símbolos realistas, tooltip, BOM, hover, cotas limpias y toda la funcionalidad de exportación e interacción.
+
+```javascript
 
     function drawPipeComponents(line) {
         const pts = line._cachedPoints || line.points3D;
