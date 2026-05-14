@@ -364,6 +364,23 @@
         }
         .elevation-panel input:focus { border-color: var(--accent-cyan); }
 
+        /* ========== MODO PANTALLA COMPLETA ========== */
+        body.fullscreen-mode .toolbar,
+        body.fullscreen-mode .property-panel,
+        body.fullscreen-mode .command-panel,
+        body.fullscreen-mode .status-bar,
+        body.fullscreen-mode .tools-panel,
+        body.fullscreen-mode .elevation-panel,
+        body.fullscreen-mode #notification {
+            display: none !important;
+        }
+        body.fullscreen-mode .canvas-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
+        }
+        body.fullscreen-mode #fullscreen-controls {
+            display: flex !important;
+        }
+
         @media (max-width: 768px) {
             .toolbar button { font-size: 10px; padding: 6px 8px; }
             .property-panel { width: 260px; right: 10px; }
@@ -432,6 +449,7 @@
         <button id="btnExportProject" aria-label="Exportar proyecto">📤 Exportar Proy</button>
         <button id="btnImportProject" aria-label="Importar proyecto">📥 Importar Proy</button>
         <button id="btnReset" aria-label="Centrar vista">🔄 Centrar</button>
+        <button id="btnFullscreen" aria-label="Modo pantalla completa">⛶ Full</button>
         <button id="btnCommand" class="btn-primary" aria-label="Abrir panel de comandos">🤖 Comandos</button>
         <button id="btnAddTank" aria-label="Añadir tanque">🏭 Tanque</button>
         <button id="btnAddPump" aria-label="Añadir bomba">⚙️ Bomba</button>
@@ -499,8 +517,13 @@
         <button id="btnSetElev" style="padding:2px 8px;" aria-label="Establecer elevación">Set</button>
     </div>
 
+    <!-- Controles flotantes para modo fullscreen (móvil) -->
+    <div id="fullscreen-controls" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:9999; gap:12px;">
+        <button id="btnFullscreenCenter" style="padding:12px 20px; border-radius:30px; background:var(--accent-cyan); color:#000; font-weight:bold; border:none; box-shadow:0 4px 15px rgba(0,242,255,0.5);">🔄 Centrar</button>
+        <button id="btnFullscreenExit" style="padding:12px 20px; border-radius:30px; background:#ef4444; color:white; font-weight:bold; border:none; box-shadow:0 4px 15px rgba(239,68,68,0.5);">✕ Salir</button>
+    </div>
+
     <!-- ========== MÓDULOS (Orden según dependencias) ========== -->
-    <!-- ADAPTADOR: Debe cargar ANTES del core para traducir formatos 2D/3D -->
     <script src="js/smartflow-adapter.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/core.js"></script>
@@ -510,11 +533,9 @@
     <script src="js/main.js"></script>
 
     <script>
-        // Variables globales y funciones auxiliares utilizadas por el HTML
         window.voiceEnabled = true;
         window.currentProjectName = "Proyecto_SmartEngp";
 
-        // Stub de accesibilidad requerido por commands.js y main.js
         window.SmartFlowAccessibility = { 
             isVoiceEnabled: function() { return window.voiceEnabled; }, 
             speak: function(m) { console.log("IA Voice:", m); },
@@ -553,7 +574,6 @@
             `;
         }
 
-        // Gestión del splash, welcome y modal (no toca inicialización de módulos)
         window.addEventListener('load', function() {
             const splash = document.getElementById('splash-screen');
             const welcome = document.getElementById('welcome-panel');
