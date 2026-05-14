@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.4
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.5
 // Archivo: js/main.js
 // ============================================================
 
@@ -107,7 +107,6 @@
         }
     }
 
-    // Funciones para el panel de propiedades
     function togglePanel(show) {
         const panel = document.getElementById('side-panel');
         if (panel) {
@@ -542,6 +541,22 @@
         setupKeyboardShortcuts();
         setTool('select');
         setElevation(0);
+
+        if (window.innerWidth < 768) {
+            togglePanel(false);
+            const floatBtn = document.createElement('button');
+            floatBtn.id = 'floatPanelToggle';
+            floatBtn.textContent = '📋';
+            floatBtn.style.cssText = 'position:fixed;top:10px;left:10px;z-index:1000;background:var(--accent-cyan);border:none;border-radius:50%;width:36px;height:36px;font-size:18px;';
+            floatBtn.onclick = () => {
+                const panel = document.getElementById('side-panel');
+                if (panel) {
+                    panel.classList.toggle('hidden');
+                }
+            };
+            document.body.appendChild(floatBtn);
+        }
+
         setTimeout(() => {
             if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
             autoCenter();
