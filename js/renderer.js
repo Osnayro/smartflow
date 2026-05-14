@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.1
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.2
 // Archivo: js/renderer.js
 // ============================================================
 
@@ -393,7 +393,7 @@ const SmartFlowRenderer = (function() {
         _ctx.moveTo(pr1.x, pr1.y); _ctx.lineTo(prD1.x, prD1.y);
         _ctx.moveTo(pr2.x, pr2.y); _ctx.lineTo(prD2.x, prD2.y); _ctx.stroke(); _ctx.setLineDash([]);
         _ctx.beginPath(); _ctx.moveTo(prD1.x, prD1.y); _ctx.lineTo(prD2.x, prD2.y);
-        _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = 1.5; _ctx.stroke();
+        _ctx.strokeStyle = '#facc15'; _ctx.lineWidth = 1.5; _ctx.globalAlpha = 0.35; _ctx.stroke(); _ctx.globalAlpha = 1.0;
         const angle = Math.atan2(prD2.y-prD1.y, prD2.x-prD1.x);
         drawDimensionTick(prD1.x, prD1.y, angle); drawDimensionTick(prD2.x, prD2.y, angle);
         const textStr = formatDimensionText(realDist);
@@ -407,9 +407,9 @@ const SmartFlowRenderer = (function() {
         _ctx.fillStyle = '#ffffff';
         _ctx.shadowColor = '#000000';
         _ctx.shadowBlur = 6;
-        _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
+        _ctx.globalAlpha = 0.35; _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
         _ctx.fillText(textStr, 0, -2);
-        _ctx.shadowBlur = 0;
+        _ctx.shadowBlur = 0; _ctx.globalAlpha = 1.0;
         _ctx.restore();
     }
 
@@ -497,7 +497,6 @@ const SmartFlowRenderer = (function() {
         drawPath(); _ctx.strokeStyle = 'rgba(255,255,255,0.25)'; _ctx.lineWidth = mainWidth * 0.45; _ctx.stroke();
         drawPath(); _ctx.strokeStyle = '#ffffff'; _ctx.lineWidth = Math.max(1.2, mainWidth * 0.12); _ctx.globalAlpha = 0.85; _ctx.stroke(); _ctx.globalAlpha = 1.0;
 
-        // Anillos de termofusión PPR (CORREGIDO)
         if (isPPR && line.components && line.components.length > 0) {
             line.components.forEach(comp => {
                 try {
@@ -589,7 +588,7 @@ const SmartFlowRenderer = (function() {
             comp._bomIndex = globalIndex;
             _bomItems.push({
                 index: globalIndex,
-                desc: comp.type || 'Componente',
+                desc: getComponentLabel(comp.type),
                 mat: getShortMaterial(line.material),
                 comp: comp
             });
