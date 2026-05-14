@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.3
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.4
 // Archivo: js/main.js
 // ============================================================
 
@@ -21,6 +21,9 @@
     const btnOpen = document.getElementById('btnOpen');
     const btnSave = document.getElementById('btnSave');
     const btnReset = document.getElementById('btnReset');
+    const btnFullscreen = document.getElementById('btnFullscreen');
+    const btnFullscreenCenter = document.getElementById('btnFullscreenCenter');
+    const btnFullscreenExit = document.getElementById('btnFullscreenExit');
     const btnCommand = document.getElementById('btnCommand');
     const btnCloseCommand = document.getElementById('closeCommand');
     const btnRunCommands = document.getElementById('runCommands');
@@ -85,6 +88,22 @@
         if (SmartFlowRenderer) {
             SmartFlowRenderer.centerProject();
             notify("Vista centrada correctamente.", false);
+        }
+    }
+
+    function toggleFullscreen() {
+        document.body.classList.add('fullscreen-mode');
+        if (SmartFlowRenderer) {
+            SmartFlowRenderer.resizeCanvas();
+            SmartFlowRenderer.centerProject();
+        }
+    }
+
+    function exitFullscreen() {
+        document.body.classList.remove('fullscreen-mode');
+        if (SmartFlowRenderer) {
+            SmartFlowRenderer.resizeCanvas();
+            SmartFlowRenderer.centerProject();
         }
     }
 
@@ -437,6 +456,9 @@
         vincular('btnExportProject', exportarProyectoArchivo);
         vincular('btnImportProject', importarProyectoArchivo);
         vincular('btnReset', autoCenter);
+        vincular('btnFullscreen', toggleFullscreen);
+        vincular('btnFullscreenCenter', autoCenter);
+        vincular('btnFullscreenExit', exitFullscreen);
         vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
         vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
         vincular('clearCommand', () => { if (commandText) commandText.value = ''; });
