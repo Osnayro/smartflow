@@ -155,32 +155,6 @@
         }
         button:hover { background: var(--accent-blue); border-color: var(--accent-cyan); }
 
-        /* Dropdowns */
-        .dropdown {
-            position: relative;
-            display: inline-block;
-        }
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            background: var(--panel-bg);
-            min-width: 160px;
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 1;
-            border: 1px solid var(--accent-cyan);
-            border-radius: 4px;
-            backdrop-filter: blur(8px);
-        }
-        .dropdown-content button {
-            width: 100%;
-            text-align: left;
-            border: none;
-            border-radius: 0;
-        }
-        .dropdown:hover .dropdown-content {
-            display: block;
-        }
-
         .canvas-container { flex: 1; background: #000; position: relative; overflow: hidden; }
         canvas { display: block; width: 100%; height: 100%; cursor: grab; }
         canvas:active { cursor: grabbing; }
@@ -314,40 +288,26 @@
             <img src="img/logo.PNG" alt="Logo" style="height: 28px;" onerror="this.style.display='none'">
             <span class="toolbar-title">SmartEngp</span>
         </div>
-        
-        <!-- Menú Archivo -->
-        <div class="dropdown">
-            <button>📂 Archivo</button>
-            <div class="dropdown-content">
-                <button id="btnOpen">📂 Abrir</button>
-                <button id="btnSave">💾 Guardar</button>
-                <button id="btnExportProject">📤 Exportar Proy</button>
-                <button id="btnImportProject">📥 Importar Proy</button>
-            </div>
-        </div>
-        
+        <button id="btnOpen">📂 Abrir</button>
+        <button id="btnSave">💾 Guardar</button>
+        <button id="btnExportProject">📤 Exportar Proy</button>
+        <button id="btnImportProject">📥 Importar Proy</button>
         <button id="btnReset">🔄 Centrar</button>
+        <button id="btnToggleView">🌐 3D</button>
         <button id="btnFullscreen">⛶ Full</button>
         <button id="btnCommand">🤖 Comandos</button>
         <button id="btnAddTank">🏭 Tanque</button>
         <button id="btnAddPump">⚙️ Bomba</button>
         <button id="btnMTO">📊 MTO</button>
         <button id="btnPDF">📄 PDF</button>
+        <button id="btnExportPCF">📦 Export PCF</button>
+        <button id="btnImportPCF">📂 Import PCF</button>
         <button id="btnUndo">↩️ Undo</button>
         <button id="btnRedo">↪️ Redo</button>
         <button id="btnVoice">🔊 Voz ON</button>
-        
-        <!-- Menú Más -->
-        <div class="dropdown">
-            <button>⚙️ Más</button>
-            <div class="dropdown-content">
-                <button id="btnExportPCF">📦 Export PCF</button>
-                <button id="btnImportPCF">📂 Import PCF</button>
-                <button id="btnApplyNorm">📐 Normas</button>
-                <button id="btnSpeakSummary">📢 Resumen</button>
-                <button id="btnRecalc">🔄 Recalcular</button>
-            </div>
-        </div>
+        <button id="btnApplyNorm">📐 Normas</button>
+        <button id="btnSpeakSummary">📢 Resumen</button>
+        <button id="btnRecalc">🔄 Recalcular</button>
     </div>
 
     <div class="canvas-container" id="canvas-container">
@@ -380,18 +340,11 @@
         <div>AcQuaBlue International Corp. | Ing. Osnay Romero</div>
     </div>
 
-    <!-- Barra de herramientas flotante con botón para ocultar -->
     <div class="tools-panel" id="toolsPanel">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <span style="font-size:10px; color:var(--accent-cyan);">HERRAMIENTAS</span>
-            <button id="toolToggleHide" style="padding:2px 6px; font-size:10px; background:none; border:1px solid #334155;">✖</button>
-        </div>
-        <div id="toolsButtons" style="display:flex; flex-direction:column; gap:8px;">
-            <button id="toolSelect" class="active">🔍 Seleccionar</button>
-            <button id="toolMoveEq">✋ Mover equipo</button>
-            <button id="toolEditPipe">✏️ Editar tubería</button>
-            <button id="toolAddPoint">➕ Añadir punto</button>
-        </div>
+        <button id="toolSelect" class="active">🔍 Seleccionar</button>
+        <button id="toolMoveEq">✋ Mover equipo</button>
+        <button id="toolEditPipe">✏️ Editar tubería</button>
+        <button id="toolAddPoint">➕ Añadir punto</button>
     </div>
 
     <div class="elevation-panel" id="elevationPanel">
@@ -413,6 +366,7 @@
     <script src="js/core.js"></script>
     <script src="js/router.js"></script>
     <script src="js/renderer.js"></script>
+    <script src="js/render.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/main.js"></script>
 
@@ -431,20 +385,6 @@
             const panel = document.getElementById('side-panel');
             if (panel) panel.classList[show ? 'remove' : 'add']('hidden');
         }
-
-        // Botón para ocultar/mostrar la barra de herramientas flotante
-        document.getElementById('toolToggleHide').addEventListener('click', function() {
-            const buttons = document.getElementById('toolsButtons');
-            if (buttons.style.display === 'none') {
-                buttons.style.display = 'flex';
-                buttons.style.flexDirection = 'column';
-                buttons.style.gap = '8px';
-                this.textContent = '✖';
-            } else {
-                buttons.style.display = 'none';
-                this.textContent = '+';
-            }
-        });
     </script>
 </body>
 </html>
