@@ -425,6 +425,7 @@
             if (panel) panel.classList[show ? 'remove' : 'add']('hidden');
         }
 
+        // Barra de herramientas flotante ocultable
         document.getElementById('toolToggleHide').addEventListener('click', function() {
             const buttons = document.getElementById('toolsButtons');
             if (buttons.style.display === 'none') {
@@ -436,6 +437,50 @@
                 buttons.style.display = 'none';
                 this.textContent = '+';
             }
+        });
+
+        // Eventos del panel de bienvenida
+        window.addEventListener('load', function() {
+            const splash = document.getElementById('splash-screen');
+            const welcome = document.getElementById('welcome-panel');
+            const modal = document.getElementById('project-name-modal');
+            const inputProject = document.getElementById('project-name-input');
+            const statusEl = document.getElementById('splash-status');
+            
+            const messages = [
+                "Cargando librerías de AcQuaBlue...",
+                "Sincronizando modelos de objetos inteligentes...",
+                "Optimizando motor gráfico isométrico...",
+                "Iniciando interfaz de Ing. Osnay Romero...",
+                "¡SmartEngp Activo!"
+            ];
+            
+            let i = 0;
+            const interval = setInterval(() => {
+                if(i < messages.length) { statusEl.innerText = messages[i]; i++; }
+            }, 800);
+
+            setTimeout(() => { splash.classList.add('splash-hidden'); clearInterval(interval); }, 4500);
+            setTimeout(() => { welcome.classList.remove('welcome-hidden'); }, 4800);
+
+            document.getElementById('welcome-new-project').onclick = () => { modal.style.display = 'flex'; };
+            document.getElementById('welcome-open-project').onclick = () => {
+                document.getElementById('btnOpen')?.click();
+                welcome.classList.add('welcome-hidden');
+            };
+            document.getElementById('modal-accept').onclick = () => {
+                const name = inputProject.value.trim();
+                if (name) window.currentProjectName = name;
+                modal.style.display = 'none';
+                welcome.classList.add('welcome-hidden');
+                if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) SmartFlowCore.nuevoProyecto();
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+            };
+            document.getElementById('modal-skip').onclick = () => {
+                modal.style.display = 'none';
+                welcome.classList.add('welcome-hidden');
+                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
+            };
         });
     </script>
 </body>
