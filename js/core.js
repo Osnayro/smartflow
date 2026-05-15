@@ -1,7 +1,8 @@
 
 // ============================================================
-// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v5.1
+// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v5.2
 // Archivo: js/core.js
+// Cambios: Formato de exportación/importación unificado 2D/3D
 // ============================================================
 
 const SmartFlowCore = (function() {
@@ -371,15 +372,32 @@ const SmartFlowCore = (function() {
             this._saveState(); _renderUI(); _notifyUI("Nuevo proyecto creado.", false);
         },
         importState: function(state) {
-            const cleanData = SmartFlowAdapter.ensure2DReady(state);
-            if (cleanData && cleanData.equipos && cleanData.lines) {
-                _db.equipos = _deepClone(cleanData.equipos); _db.lines = _deepClone(cleanData.lines);
-                _selectedElement = null; this._saveState(); syncPhysicalData(); _renderUI();
-                _notifyUI("Proyecto importado correctamente.", false); return true;
-            }
-            _notifyUI("Error: Formato de proyecto inválido.", true); return false;
+            // Acepta string JSON o objeto
+            const data = typeof state === 'string' ? JSON.parse(state) : state;
+            
+            // Soportar formato antiguo (con envoltura "data") y nuevo (plano)
+            let equipos = data.equipos || (data.data && data.data.equipos) || [];
+            let lines = data.lines || (data.data && data.data.lines) || [];
+            
+            // Normalización ligera
+            if (!Array.isArray(equipos)) equipos = [];
+            if (!Array.isArray(lines)) lines = [];
+            
+            _db.equipos = _deepClone(equipos);
+            _db.lines = _deepClone(lines);
+            _selectedElement = null;
+            this._saveState();
+            syncPhysicalData();
+            _renderUI();
+            _notifyUI("Proyecto importado correctamente.", false);
+            return true;
         },
-        exportProject: function() { return JSON.stringify({ version: "5.1", date: new Date().toISOString(), data: _db }); },
+        exportProject: function() {
+            return JSON.stringify({
+                equipos: _db.equipos,
+                lines: _db.lines
+            });
+        },
         _saveState: function() {
             const state = _deepClone({ equipos: _db.equipos, lines: _db.lines });
             _history.past.push(state); if (_history.past.length > _history.maxSize) _history.past.shift();
