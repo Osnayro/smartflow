@@ -150,7 +150,8 @@
             backdrop-filter: blur(8px); right: 0;
         }
         .dropdown-content button { width: 100%; text-align: left; border: none; border-radius: 0; }
-        .dropdown.open > .dropdown-content { display: block; }
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown.open .dropdown-content { display: block; }
 
         .canvas-container { flex: 1; background: #000; position: relative; overflow: hidden; }
         canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
@@ -292,8 +293,8 @@
             <span class="toolbar-title">SmartEngp</span>
         </div>
         
-        <div class="dropdown" id="dropdownFile">
-            <button id="btnFileMenu">📂 Archivo</button>
+        <div class="dropdown">
+            <button>📂 Archivo</button>
             <div class="dropdown-content">
                 <button id="btnOpen">📂 Abrir</button>
                 <button id="btnSave">💾 Guardar</button>
@@ -309,7 +310,7 @@
         <button id="btnPDF">📄 PDF</button>
         <button id="btnTogglePanels" title="Mostrar/ocultar paneles">👁️</button>
         
-        <div class="dropdown" id="dropdownMore">
+        <div class="dropdown">
             <button id="btnMoreMenu">⚙️ +</button>
             <div class="dropdown-content">
                 <button id="btnAddTank">🏭 Tanque</button>
@@ -386,35 +387,5 @@
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/main.js"></script>
-
-    <script>
-        // Activar dropdowns con toque en móviles
-        (function() {
-            const dropdowns = document.querySelectorAll('.dropdown');
-            
-            dropdowns.forEach(function(dropdown) {
-                const trigger = dropdown.querySelector('button:first-child');
-                if (!trigger) return;
-                
-                trigger.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // Cerrar otros dropdowns
-                    dropdowns.forEach(function(d) {
-                        if (d !== dropdown) d.classList.remove('open');
-                    });
-                    // Alternar el actual
-                    dropdown.classList.toggle('open');
-                });
-            });
-            
-            // Cerrar dropdowns al tocar fuera
-            document.addEventListener('click', function() {
-                dropdowns.forEach(function(d) {
-                    d.classList.remove('open');
-                });
-            });
-        })();
-    </script>
 </body>
 </html>
