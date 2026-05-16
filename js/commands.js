@@ -1,7 +1,11 @@
+
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.6
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.7
 // Archivo: js/commands.js
-// Cambios: Corrección de codos solo cuando son necesarios
+// Cambios: ensureFittings, notificaciones detalladas,
+//          uso de Core.findObjectByTag/getLinePoints,
+//          eliminación de saveState/renderUI manuales,
+//          BOM excluye "colector", delegación de voz externa
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -11,6 +15,7 @@ const SmartFlowCommands = (function() {
     let _renderer = null;
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
+    let _voiceFn = null; // función externa para hablar
 
     // -------------------- DICCIONARIO DE INTENCIONES --------------------
     const IntentDictionary = {
@@ -71,21 +76,21 @@ const SmartFlowCommands = (function() {
         if (!obj) return { x: 0, y: 0, z: 0 };
         if (obj.posX !== undefined) return { x: obj.posX || 0, y: obj.posY || 0, z: obj.posZ || 0 };
         if (obj.pos && obj.pos.x !== undefined) return { x: obj.pos.x || 0, y: obj.pos.y || 0, z: obj.pos.z || 0 };
-        const pts = obj._cachedPoints || obj.points3D || obj.points || [];
+        const pts = _core ? _core.getLinePoints(obj) : (obj._cachedPoints || obj.points3D || obj.points || []);
         return pts.length > 0 ? { x: pts[0].x, y: pts[0].y, z: pts[0].z } : { x: 0, y: 0, z: 0 };
     }
 
     function getPoints(obj) {
         if (!obj) return [];
+        if (_core) return _core.getLinePoints(obj) || [];
         return obj._cachedPoints || obj.points3D || obj.points || [];
     }
 
-    // ==================== NUEVO: Obtener dirección de puerto localmente ====================
     function getPortDirectionLocal(obj, portId) {
-        if (!obj) return { dx: 1, dy: 0, dz: 0 };
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortDirection) {
             return SmartFlowRouter.getPortDirection(obj, portId);
         }
+        if (!obj) return { dx: 1, dy: 0, dz: 0 };
         if (obj.posX !== undefined || (obj.pos && obj.pos.x !== undefined)) {
             const puerto = obj.puertos?.find(p => p.id === portId);
             if (puerto) {
@@ -95,7 +100,7 @@ const SmartFlowCommands = (function() {
             }
             return { dx: 1, dy: 0, dz: 0 };
         }
-        const pts = obj._cachedPoints || obj.points3D || obj.points;
+        const pts = getPoints(obj);
         if (pts && pts.length >= 2) {
             if (portId === '0') {
                 const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y, dz = pts[1].z - pts[0].z;
@@ -138,30 +143,109 @@ const SmartFlowCommands = (function() {
             statusEl.innerText = message;
             statusEl.style.color = isError ? '#ef4444' : '#00f2ff';
         }
-        if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
+        if (typeof _voiceFn === 'function') {
+            _voiceFn(message);
+        } else if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
             SmartFlowAccessibility.speak(message);
         }
+    }
+
+    function findElbowForLine(material, diameter, angleDeg) {
+        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.findElbowForLine) {
+            return SmartFlowRouter.findElbowForLine(material, diameter, angleDeg);
+        }
+        const catalog = _catalog || window.SmartFlowCatalog;
+        if (!catalog) return null;
+        const allTypes = catalog.listComponentTypes();
+        const elbowTypes = allTypes.filter(t => t.startsWith('ELBOW_'));
+        let bestMatch = null, bestDiff = Infinity;
+        for (const type of elbowTypes) {
+            const comp = catalog.getComponent(type);
+            if (!comp || !comp.angulo) continue;
+            const diff = Math.abs(comp.angulo - angleDeg);
+            if (diff < bestDiff && diff < 15) { bestDiff = diff; bestMatch = type; }
+        }
+        return bestMatch;
+    }
+
+    function getFittingLength(componentType, diameter) {
+        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getFittingLength) {
+            return SmartFlowRouter.getFittingLength(componentType, diameter);
+        }
+        return 50;
+    }
+
+    function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
+        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.ensureFittings) {
+            return SmartFlowRouter.ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material);
+        }
+        const pts = line._cachedPoints || line.points3D || [];
+        if (pts.length < 2) return { added: [], message: '' };
+        const added = [];
+        const startDir = getPortDirectionLocal(fromObj, fromPortId);
+        const toTarget = { x: pts[1].x - pts[0].x, y: pts[1].y - pts[0].y, z: pts[1].z - pts[0].z };
+        const toTargetLen = Math.hypot(toTarget.x, toTarget.y, toTarget.z) || 1;
+        const toTargetDir = { x: toTarget.x / toTargetLen, y: toTarget.y / toTargetLen, z: toTarget.z / toTargetLen };
+        const dotStart = Math.abs(startDir.dx * toTargetDir.x + startDir.dy * toTargetDir.y + startDir.dz * toTargetDir.z);
+        const angleStart = Math.acos(Math.min(1, dotStart)) * 180 / Math.PI;
+        if (angleStart > 3) {
+            const elbowType = findElbowForLine(material, diameter, angleStart);
+            if (elbowType) {
+                const fittingLen = getFittingLength(elbowType, diameter);
+                line.components = line.components || [];
+                line.components.push({ type: elbowType, tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, param: 0.0 });
+                added.push({ type: elbowType, position: 'inicio' });
+                if (fittingLen > 0 && pts.length >= 2) {
+                    pts[0] = { x: pts[0].x + toTargetDir.x * fittingLen, y: pts[0].y + toTargetDir.y * fittingLen, z: pts[0].z + toTargetDir.z * fittingLen };
+                }
+            }
+        }
+        const endIdx = pts.length - 1;
+        const endDir = getPortDirectionLocal(toObj, toPortId);
+        const fromTarget = { x: pts[endIdx - 1].x - pts[endIdx].x, y: pts[endIdx - 1].y - pts[endIdx].y, z: pts[endIdx - 1].z - pts[endIdx].z };
+        const fromTargetLen = Math.hypot(fromTarget.x, fromTarget.y, fromTarget.z) || 1;
+        const fromTargetDir = { x: fromTarget.x / fromTargetLen, y: fromTarget.y / fromTargetLen, z: fromTarget.z / fromTargetLen };
+        const dotEnd = Math.abs(endDir.dx * fromTargetDir.x + endDir.dy * fromTargetDir.y + endDir.dz * fromTargetDir.z);
+        const angleEnd = Math.acos(Math.min(1, dotEnd)) * 180 / Math.PI;
+        if (angleEnd > 3) {
+            const elbowType = findElbowForLine(material, diameter, angleEnd);
+            if (elbowType) {
+                const fittingLen = getFittingLength(elbowType, diameter);
+                line.components = line.components || [];
+                line.components.push({ type: elbowType, tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, param: 1.0 });
+                added.push({ type: elbowType, position: 'fin' });
+                if (fittingLen > 0 && pts.length >= 2) {
+                    pts[endIdx] = { x: pts[endIdx].x + fromTargetDir.x * fittingLen, y: pts[endIdx].y + fromTargetDir.y * fittingLen, z: pts[endIdx].z + fromTargetDir.z * fittingLen };
+                }
+            }
+        }
+        const fromDiam = fromObj.diameter || (fromObj.puertos?.find(p => p.id === fromPortId)?.diametro) || diameter;
+        const toDiam = toObj.diameter || (toObj.puertos?.find(p => p.id === toPortId)?.diametro) || diameter;
+        if (Math.abs(fromDiam - toDiam) > 0.5) {
+            const reducerType = 'CONCENTRIC_REDUCER';
+            line.components = line.components || [];
+            line.components.push({ type: reducerType, tag: `${reducerType}-${Date.now().toString(36).slice(-4)}`, param: 1.0 });
+            added.push({ type: reducerType, position: 'fin (reductor)' });
+        }
+        line._cachedPoints = pts;
+        line.points3D = pts;
+        const msg = added.length > 0 ? ' | Accesorios: ' + added.map(a => `${a.type} (${a.position})`).join(', ') : '';
+        return { added, message: msg };
     }
 
     // ==================== COMANDO COORDENADAS / PUNTO ====================
     function parsePoint(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'point' && parts[0] !== 'coordenadas') return false;
-        
         try {
             let tag = null, subCommand = null, subId = null;
-            
             if (parts.length >= 3 && parts[1]?.toLowerCase() === 'de') {
                 tag = parts[2];
-                if (parts.length >= 5) {
-                    subCommand = parts[3]?.toLowerCase();
-                    subId = parts[4];
-                }
+                if (parts.length >= 5) { subCommand = parts[3]?.toLowerCase(); subId = parts[4]; }
             } else if (parts.length >= 2) {
                 let ref = parts[1];
                 const dotIdx = ref.indexOf('.');
                 const atIdx = ref.indexOf('@');
-                
                 if (atIdx > 0) {
                     tag = ref.substring(0, atIdx);
                     subId = ref.substring(atIdx + 1);
@@ -174,25 +258,15 @@ const SmartFlowCommands = (function() {
                     tag = ref.substring(0, dotIdx);
                     subId = ref.substring(dotIdx + 1);
                     subCommand = 'puerto';
-                } else {
-                    tag = ref;
-                }
-            } else {
-                notifyWithVoice('Uso: coordenadas de TAG [puerto|punto ID]\n  coordenadas TAG.PUERTO\n  coordenadas LINEA@0.5', true);
-                return true;
-            }
-
+                } else { tag = ref; }
+            } else { notifyWithVoice('Uso: coordenadas de TAG [puerto|punto ID]', true); return true; }
             if (!tag) { notifyWithVoice('❌ Tag no especificado', true); return true; }
             if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
-
-            const db = _core.getDb();
-            const obj = db.equipos.find(e => e.tag === tag) || db.lines.find(l => l.tag === tag);
+            const obj = _core.findObjectByTag(tag);
             if (!obj) { notifyWithVoice(`❌ "${tag}" no encontrado`, true); return true; }
-
             const basePos = getBasePosition(obj);
             const isEq = obj.posX !== undefined || (obj.pos && obj.pos.x !== undefined);
             let response = `📍 ${tag}`;
-
             if (!subCommand) {
                 if (isEq) {
                     response += ` → (X=${basePos.x.toFixed(0)}, Y=${basePos.y.toFixed(0)}, Z=${basePos.z.toFixed(0)})`;
@@ -219,18 +293,14 @@ const SmartFlowCommands = (function() {
                 notifyWithVoice(response, false);
                 return true;
             }
-
             if (subCommand === 'puerto' && subId) {
                 const puerto = obj.puertos?.find(p => p.id === subId || p.id?.toUpperCase() === subId?.toUpperCase());
                 if (!puerto) { notifyWithVoice(`❌ Puerto "${subId}" no encontrado`, true); return true; }
-                const px = basePos.x + (puerto.relX || 0);
-                const py = basePos.y + (puerto.relY || 0);
-                const pz = basePos.z + (puerto.relZ || 0);
+                const px = basePos.x + (puerto.relX || 0), py = basePos.y + (puerto.relY || 0), pz = basePos.z + (puerto.relZ || 0);
                 response += ` → ${puerto.id} (${px.toFixed(0)},${py.toFixed(0)},${pz.toFixed(0)}) | ${puerto.diametro}" | ${puerto.status}`;
                 notifyWithVoice(response, false);
                 return true;
             }
-
             if (subCommand === 'punto' && subId !== undefined) {
                 const pts = getPoints(obj);
                 if (!pts.length) { notifyWithVoice(`⚠️ ${tag} sin geometría`, true); return true; }
@@ -240,7 +310,6 @@ const SmartFlowCommands = (function() {
                 notifyWithVoice(response, false);
                 return true;
             }
-
             if (subCommand === 'param' && subId !== undefined) {
                 const coords = calcularPuntoParametrico(obj, parseFloat(subId));
                 if (!coords) { notifyWithVoice(`⚠️ ${tag} sin geometría`, true); return true; }
@@ -248,13 +317,9 @@ const SmartFlowCommands = (function() {
                 notifyWithVoice(response, false);
                 return true;
             }
-
             notifyWithVoice('Comando no reconocido', true);
             return true;
-        } catch (e) {
-            notifyWithVoice('❌ Error: ' + e.message, true);
-            return true;
-        }
+        } catch (e) { notifyWithVoice('❌ Error: ' + e.message, true); return true; }
     }
 
     // ==================== COMANDO NODOS ====================
@@ -264,8 +329,7 @@ const SmartFlowCommands = (function() {
         if (parts.length < 2) { notifyWithVoice('Uso: nodos TAG', true); return true; }
         const tag = parts[1];
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
-        const db = _core.getDb();
-        const obj = db.equipos.find(e => e.tag === tag) || db.lines.find(l => l.tag === tag);
+        const obj = _core.findObjectByTag(tag);
         if (!obj) { notifyWithVoice(`${tag} no encontrado`, true); return true; }
         let nodes = [];
         if (obj.posX !== undefined || (obj.pos && obj.pos.x !== undefined)) {
@@ -282,10 +346,7 @@ const SmartFlowCommands = (function() {
     function parseInfo(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'info') return false;
-        if (parts.length < 2) {
-            notifyWithVoice("Uso: info line [TAG] | info equipment [TAG] | info component [TAG]", true);
-            return true;
-        }
+        if (parts.length < 2) { notifyWithVoice("Uso: info line [TAG] | info equipment [TAG] | info component [TAG]", true); return true; }
         const type = parts[1].toLowerCase();
         const tag = parts[2];
         if (!tag) { notifyWithVoice(`Especifique el tag del ${type}`, true); return true; }
@@ -298,18 +359,17 @@ const SmartFlowCommands = (function() {
 
     function infoLine(tag) {
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
-        const db = _core.getDb();
-        const line = db.lines.find(l => l.tag === tag);
-        if (!line) { notifyWithVoice(`Línea ${tag} no encontrada`, true); return true; }
+        const line = _core.findObjectByTag(tag);
+        if (!line || !_core.getLines().includes(line)) { notifyWithVoice(`Línea ${tag} no encontrada`, true); return true; }
         const pts = getPoints(line);
         const numPuntos = pts.length;
         let origen = "Ninguno", destino = "Ninguno";
         if (line.origin) {
-            const obj = db.equipos.find(e => e.tag === line.origin.equipTag) || db.lines.find(l => l.tag === line.origin.equipTag);
+            const obj = _core.findObjectByTag(line.origin.equipTag);
             origen = `${line.origin.equipTag}.${line.origin.portId} (${obj?.tipo || 'line'})`;
         }
         if (line.destination) {
-            const obj = db.equipos.find(e => e.tag === line.destination.equipTag) || db.lines.find(l => l.tag === line.destination.equipTag);
+            const obj = _core.findObjectByTag(line.destination.equipTag);
             destino = `${line.destination.equipTag}.${line.destination.portId} (${obj?.tipo || 'line'})`;
         }
         let totalLen = 0;
@@ -321,9 +381,8 @@ const SmartFlowCommands = (function() {
 
     function infoEquipment(tag) {
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
-        const db = _core.getDb();
-        const eq = db.equipos.find(e => e.tag === tag);
-        if (!eq) { notifyWithVoice(`Equipo ${tag} no encontrado`, true); return true; }
+        const eq = _core.findObjectByTag(tag);
+        if (!eq || !_core.getEquipos().includes(eq)) { notifyWithVoice(`Equipo ${tag} no encontrado`, true); return true; }
         const tipo = eq.tipo || 'Desconocido';
         const material = eq.material || 'N/D';
         const pos = getBasePosition(eq);
@@ -334,9 +393,8 @@ const SmartFlowCommands = (function() {
 
     function infoComponent(tag) {
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return true; }
-        const db = _core.getDb();
         let foundComp = null, foundLine = null;
-        for (let line of db.lines) {
+        for (let line of _core.getLines()) {
             if (line.components) {
                 const comp = line.components.find(c => c.tag === tag);
                 if (comp) { foundComp = comp; foundLine = line; break; }
@@ -409,25 +467,10 @@ const SmartFlowCommands = (function() {
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.procesarInterseccionesDeLinea) {
             SmartFlowRouter.procesarInterseccionesDeLinea(nuevaLinea);
         }
-        _renderUI();
         return true;
     }
 
-    // --- Helper codo (en commands.js se mantiene igual) ---
-    function findElbowForLine(material, diameter, angleDeg) {
-        const mat = material.toUpperCase();
-        const is90 = (Math.abs(angleDeg - 90) < 10);
-        const is45 = (Math.abs(angleDeg - 45) < 10);
-        if (!is90 && !is45) return null;
-        if (mat.includes('PPR')) return is90 ? 'ELBOW_90_PPR' : 'ELBOW_45_PPR';
-        if (mat.includes('HDPE')) return is90 ? 'ELBOW_90_HDPE' : null;
-        if (mat.includes('PVC')) return is90 ? 'ELBOW_90_PVC' : null;
-        if (mat.includes('ACERO')) return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
-        if (mat.includes('INOXIDABLE') || mat.includes('INOX')) return is90 ? 'ELBOW_90_SANITARY' : null;
-        return is90 ? 'ELBOW_90_LR_CS' : 'ELBOW_45_CS';
-    }
-
-    // --- CONNECT (línea recta, codo solo si origen es línea y ángulo > 15°) ---
+    // --- CONNECT (línea recta, ensureFittings para accesorios) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -445,14 +488,14 @@ const SmartFlowCommands = (function() {
             else if (parts[i] === 'spec') spec = parts[++i];
         }
 
-        const db = _core.getDb();
-        const fromObj = db.equipos.find(e => e.tag === fromEquip) || db.lines.find(l => l.tag === fromEquip);
-        const toObj = db.equipos.find(e => e.tag === toEquip) || db.lines.find(l => l.tag === toEquip);
+        if (!_core) { notifyWithVoice("Core no inicializado", true); return true; }
+        const fromObj = _core.findObjectByTag(fromEquip);
+        const toObj = _core.findObjectByTag(toEquip);
         if (!fromObj || !toObj) { notifyWithVoice("Objeto no encontrado", true); return true; }
 
         let startPos = null, fromDiameter = 4;
-        if (fromObj._cachedPoints && (fromNozzle === '0' || fromNozzle === '1')) {
-            const pts = fromObj._cachedPoints;
+        if (_core.getLinePoints(fromObj) && (fromNozzle === '0' || fromNozzle === '1')) {
+            const pts = _core.getLinePoints(fromObj);
             if (pts && pts.length >= 2) {
                 startPos = fromNozzle === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
                 fromDiameter = fromObj.diameter || 4;
@@ -470,12 +513,17 @@ const SmartFlowCommands = (function() {
         }
         if (!startPos) { notifyWithVoice("No se pudo obtener la posición del puerto origen", true); return true; }
 
-        const isFromLine = fromObj._cachedPoints || fromObj.points3D;
-        const isToLine = toObj._cachedPoints || toObj.points3D;
+        const isFromLine = _core.getLinePoints(fromObj) ? true : false;
+        const isToLine = _core.getLinePoints(toObj) ? true : false;
+        const db = _core.getDb();
+        const newTag = `L-${(db.lines?.length || 0) + 1}`;
+        let endPos = null, nuevoPuertoId = toNozzleRaw;
+        let nzTo = null;
+        const newComponents = [];
 
         // Línea destino sin puerto explícito → tee
         if (isToLine && (!toNozzleRaw || toNozzleRaw === '')) {
-            const pts = toObj._cachedPoints || toObj.points3D;
+            const pts = _core.getLinePoints(toObj);
             if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
             let minDist = Infinity, bestPoint = pts[0];
             for (let i = 0; i < pts.length - 1; i++) {
@@ -488,211 +536,78 @@ const SmartFlowCommands = (function() {
                 const dist = Math.hypot(startPos.x - proj.x, startPos.y - proj.y, startPos.z - proj.z);
                 if (dist < minDist) { minDist = dist; bestPoint = proj; }
             }
-
             if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
                 notifyWithVoice("Router no disponible", true); return true;
             }
             const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, bestPoint, diameter, true);
             if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio automáticamente", true); return true; }
-
-            const newComponents = [];
-            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
-                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
-                if (ptsFrom && ptsFrom.length >= 2) {
-                    let lineDir;
-                    if (fromNozzle === '0') {
-                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
-                    } else {
-                        const n = ptsFrom.length;
-                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
-                    }
-                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
-                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
-
-                    const newDir = { dx: bestPoint.x - startPos.x, dy: bestPoint.y - startPos.y, dz: bestPoint.z - startPos.z };
-                    const newLen = Math.hypot(newDir.dx, newDir.dy, newDir.dz) || 1;
-                    const newDirNorm = { dx: newDir.dx/newLen, dy: newDir.dy/newLen, dz: newDir.dz/newLen };
-
-                    const dot = Math.abs(lineDir.dx*newDirNorm.dx + lineDir.dy*newDirNorm.dy + lineDir.dz*newDirNorm.dz);
-                    const angleDeg = Math.acos(Math.min(1, dot)) * 180 / Math.PI;
-                    if (angleDeg > 15) {
-                        const elbowId = findElbowForLine(material, diameter, angleDeg);
-                        if (elbowId) {
-                            newComponents.push({ type: elbowId, tag: elbowId + '-' + Date.now().toString().slice(-6), param: 0.0 });
-                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) al inicio`, false);
-                        }
-                    }
-                }
-            }
-
-            const newTag = `L-${(db.lines?.length || 0) + 1}`;
-            const nuevaLinea = {
-                tag: newTag, diameter, material, spec,
-                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
-                waypoints: [], _cachedPoints: [startPos, bestPoint], components: newComponents
-            };
-            _core.addLine(nuevaLinea);
-            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (nzFrom) nzFrom.connectedLine = newTag;
-            const toObjUpd = db.lines.find(l => l.tag === toEquip);
-            if (toObjUpd?.puertos) { const p = toObjUpd.puertos.find(p => p.id === puertoId); if (p) p.connectedLine = newTag; }
-            _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} (punto más cercano)`, false);
-            return true;
-        }
-
-        const numPos = parseFloat(toNozzleRaw);
-        const isNumeric = !isNaN(numPos) && isFinite(numPos);
-        let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
-
-        if (isToLine && toObj.diameter && !parts.slice(6).some(p => p === 'diameter' || p === 'diametro')) diameter = toObj.diameter;
-        if (!parts.slice(6).some(p => p === 'material')) {
-            if (toObj.material) material = toObj.material;
-            if (toObj.spec) spec = toObj.spec;
-        }
-
-        if (isToLine && posRelativa !== null && (posRelativa <= 0.01 || posRelativa >= 0.99)) {
-            toNozzleRaw = posRelativa <= 0.01 ? '0' : '1';
-            posRelativa = null;
-        }
-
-        const newTag = `L-${(db.lines?.length || 0) + 1}`;
-        let endPos = null;
-        const newComponents = [];
-        let nzTo = null;
-
-        let toDiameter = diameter;
-        if (isToLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) toDiameter = toObj.diameter || 4;
-        else if (toObj.puertos) { const port = toObj.puertos.find(p => p.id === toNozzleRaw); if (port) toDiameter = port.diametro || 4; }
-
-        if (isToLine && posRelativa !== null) {
-            if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') {
-                notifyWithVoice("Router no disponible", true); return true;
-            }
-            const pts = toObj._cachedPoints || toObj.points3D;
-            if (!pts || pts.length < 2) { notifyWithVoice("Geometría inválida", true); return true; }
-            let totalLen = 0, lengths = [];
-            for (let i = 0; i < pts.length - 1; i++) { const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z); lengths.push(d); totalLen += d; }
-            const targetLen = totalLen * posRelativa;
-            let accum = 0, segIdx = 0, t = 0;
-            for (let i = 0; i < lengths.length; i++) { if (accum + lengths[i] >= targetLen || i === lengths.length - 1) { segIdx = i; t = (targetLen - accum) / (lengths[i] || 1); break; } accum += lengths[i]; }
-            const pA = pts[segIdx], pB = pts[segIdx + 1];
-            const punto = { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t, z: pA.z + (pB.z - pA.z) * t };
-            const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, punto, diameter, true);
-            if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
-            endPos = punto;
-            const toObjUpd = db.lines.find(l => l.tag === toEquip);
+            nuevoPuertoId = puertoId;
+            endPos = bestPoint;
+            const toObjUpd = _core.findObjectByTag(toEquip);
             if (toObjUpd?.puertos) nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
-
-            // Aplicar codo si origen es línea y ángulo > 15°
-            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
-                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
-                if (ptsFrom && ptsFrom.length >= 2) {
-                    let lineDir;
-                    if (fromNozzle === '0') {
-                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
-                    } else {
-                        const n = ptsFrom.length;
-                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
-                    }
-                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
-                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
-
-                    const newDir = { dx: endPos.x - startPos.x, dy: endPos.y - startPos.y, dz: endPos.z - startPos.z };
-                    const newLen = Math.hypot(newDir.dx, newDir.dy, newDir.dz) || 1;
-                    const newDirNorm = { dx: newDir.dx/newLen, dy: newDir.dy/newLen, dz: newDir.dz/newLen };
-
-                    const dot = Math.abs(lineDir.dx*newDirNorm.dx + lineDir.dy*newDirNorm.dy + lineDir.dz*newDirNorm.dz);
-                    const angleDeg = Math.acos(Math.min(1, dot)) * 180 / Math.PI;
-                    if (angleDeg > 15) {
-                        const elbowId = findElbowForLine(material, diameter, angleDeg);
-                        if (elbowId) {
-                            newComponents.push({ type: elbowId, tag: elbowId + '-' + Date.now().toString().slice(-6), param: 0.0 });
-                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) al inicio`, false);
-                        }
-                    }
-                }
-            }
-
-            const nuevaLinea = {
-                tag: newTag, diameter, material, spec,
-                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: 'line', equipTag: toEquip, portId: puertoId },
-                waypoints: [], _cachedPoints: [startPos, endPos], components: newComponents
-            };
-            _core.addLine(nuevaLinea);
-            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (nzFrom) nzFrom.connectedLine = newTag;
-            if (nzTo) nzTo.connectedLine = newTag;
-            _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip} en ${posRelativa.toFixed(2)}`, false);
-            return true;
         } else {
-            // Destino con puerto concreto
-            if (isToLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
-                const pts = toObj._cachedPoints || toObj.points3D;
-                if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
-                endPos = toNozzleRaw === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
+            // Destino con puerto concreto o numérico
+            const numPos = parseFloat(toNozzleRaw);
+            const isNumeric = !isNaN(numPos) && isFinite(numPos);
+            let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
+            if (isToLine && toObj.diameter && !parts.slice(6).some(p => p === 'diameter' || p === 'diametro')) diameter = toObj.diameter;
+            if (!parts.slice(6).some(p => p === 'material')) { if (toObj.material) material = toObj.material; if (toObj.spec) spec = toObj.spec; }
+            if (isToLine && posRelativa !== null && (posRelativa <= 0.01 || posRelativa >= 0.99)) { toNozzleRaw = posRelativa <= 0.01 ? '0' : '1'; posRelativa = null; }
+
+            if (isToLine && posRelativa !== null) {
+                const pts = _core.getLinePoints(toObj);
+                if (!pts || pts.length < 2) { notifyWithVoice("Geometría inválida", true); return true; }
+                let totalLen = 0, lengths = [];
+                for (let i = 0; i < pts.length - 1; i++) { const d = Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z); lengths.push(d); totalLen += d; }
+                const targetLen = totalLen * posRelativa;
+                let accum = 0, segIdx = 0, t = 0;
+                for (let i = 0; i < lengths.length; i++) { if (accum + lengths[i] >= targetLen || i === lengths.length - 1) { segIdx = i; t = (targetLen - accum) / (lengths[i] || 1); break; } accum += lengths[i]; }
+                const pA = pts[segIdx], pB = pts[segIdx + 1];
+                const punto = { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t, z: pA.z + (pB.z - pA.z) * t };
+                if (typeof SmartFlowRouter !== 'undefined') {
+                    const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toEquip, punto, diameter, true);
+                    if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
+                    nuevoPuertoId = puertoId;
+                    endPos = punto;
+                    const toObjUpd = _core.findObjectByTag(toEquip);
+                    if (toObjUpd?.puertos) nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
+                }
             } else {
-                if (!toObj.puertos) toObj.puertos = [];
-                nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
-                if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
-                if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
-                    endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
+                if (isToLine && (toNozzleRaw === '0' || toNozzleRaw === '1')) {
+                    const pts = _core.getLinePoints(toObj);
+                    if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
+                    endPos = toNozzleRaw === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
                 } else {
-                    const basePos = getBasePosition(toObj);
-                    endPos = { x: basePos.x + (nzTo.relX || 0), y: basePos.y + (nzTo.relY || 0), z: basePos.z + (nzTo.relZ || 0) };
-                }
-            }
-
-            // Aplicar codo si origen es línea y ángulo > 15°
-            if (isFromLine && (fromNozzle === '0' || fromNozzle === '1')) {
-                const ptsFrom = fromObj._cachedPoints || fromObj.points3D;
-                if (ptsFrom && ptsFrom.length >= 2) {
-                    let lineDir;
-                    if (fromNozzle === '0') {
-                        lineDir = { dx: ptsFrom[1].x - ptsFrom[0].x, dy: ptsFrom[1].y - ptsFrom[0].y, dz: ptsFrom[1].z - ptsFrom[0].z };
+                    if (!toObj.puertos) toObj.puertos = [];
+                    nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
+                    if (!nzTo) { notifyWithVoice("Puerto destino no encontrado", true); return true; }
+                    if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) {
+                        endPos = SmartFlowRouter.getPortPosition(toObj, toNozzleRaw);
                     } else {
-                        const n = ptsFrom.length;
-                        lineDir = { dx: ptsFrom[n-1].x - ptsFrom[n-2].x, dy: ptsFrom[n-1].y - ptsFrom[n-2].y, dz: ptsFrom[n-1].z - ptsFrom[n-2].z };
-                    }
-                    const len = Math.hypot(lineDir.dx, lineDir.dy, lineDir.dz) || 1;
-                    lineDir = { dx: lineDir.dx/len, dy: lineDir.dy/len, dz: lineDir.dz/len };
-
-                    const newDir = { dx: endPos.x - startPos.x, dy: endPos.y - startPos.y, dz: endPos.z - startPos.z };
-                    const newLen = Math.hypot(newDir.dx, newDir.dy, newDir.dz) || 1;
-                    const newDirNorm = { dx: newDir.dx/newLen, dy: newDir.dy/newLen, dz: newDir.dz/newLen };
-
-                    const dot = Math.abs(lineDir.dx*newDirNorm.dx + lineDir.dy*newDirNorm.dy + lineDir.dz*newDirNorm.dz);
-                    const angleDeg = Math.acos(Math.min(1, dot)) * 180 / Math.PI;
-                    if (angleDeg > 15) {
-                        const elbowId = findElbowForLine(material, diameter, angleDeg);
-                        if (elbowId) {
-                            newComponents.push({ type: elbowId, tag: elbowId + '-' + Date.now().toString().slice(-6), param: 0.0 });
-                            notifyWithVoice(`✅ Codo ${angleDeg.toFixed(0)}° (${elbowId}) al inicio`, false);
-                        }
+                        const basePos = getBasePosition(toObj);
+                        endPos = { x: basePos.x + (nzTo.relX || 0), y: basePos.y + (nzTo.relY || 0), z: basePos.z + (nzTo.relZ || 0) };
                     }
                 }
             }
-
-            const nuevaLinea = {
-                tag: newTag, diameter, material, spec,
-                origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
-                destination: { objType: isToLine ? 'line' : 'equipment', equipTag: toEquip, portId: toNozzleRaw },
-                waypoints: [], _cachedPoints: [startPos, endPos], components: newComponents
-            };
-            _core.addLine(nuevaLinea);
-            if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
-            const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
-            if (nzFrom) nzFrom.connectedLine = newTag;
-            if (nzTo) nzTo.connectedLine = newTag;
-            _core.syncPhysicalData(); _core._saveState(); _renderUI();
-            notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${toNozzleRaw}`, false);
-            return true;
         }
+
+        if (!endPos) { notifyWithVoice("No se pudo determinar el punto de destino", true); return true; }
+
+        const nuevaLinea = {
+            tag: newTag, diameter, material, spec,
+            origin: { objType: isFromLine ? 'line' : 'equipment', equipTag: fromEquip, portId: fromNozzle },
+            destination: { objType: isToLine ? 'line' : 'equipment', equipTag: toEquip, portId: nuevoPuertoId },
+            waypoints: [], _cachedPoints: [startPos, endPos], components: []
+        };
+
+        const fittingInfo = ensureFittings(nuevaLinea, fromObj, fromNozzle, toObj, nuevoPuertoId, diameter, material);
+        _core.addLine(nuevaLinea);
+        if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
+        const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
+        if (nzFrom) nzFrom.connectedLine = newTag;
+        if (nzTo) nzTo.connectedLine = newTag;
+        notifyWithVoice(`✅ Conectado ${fromEquip}.${fromNozzle} a ${toEquip}.${nuevoPuertoId}${fittingInfo.message}`, false);
+        return true;
     }
 
     // --- ROUTE (sí usa el router) ---
@@ -711,7 +626,6 @@ const SmartFlowCommands = (function() {
             else if (parts[i] === 'material') material = parts[++i].toUpperCase();
             else if (parts[i] === 'spec') spec = parts[++i];
         }
-
         if (typeof SmartFlowRouter !== 'undefined') {
             SmartFlowRouter.routeBetweenPorts(fromEquip, fromNozzle, toEquip, toNozzle, diameter, material, spec);
         } else { notifyWithVoice("Módulo Router no disponible.", true); }
@@ -729,7 +643,8 @@ const SmartFlowCommands = (function() {
             if (index === -1) { notifyWithVoice(`Equipo ${tag} no encontrado`, true); return true; }
             db.equipos.splice(index, 1);
             db.lines = db.lines.filter(line => !((line.origin && line.origin.equipTag === tag) || (line.destination && line.destination.equipTag === tag)));
-            _core._saveState(); notifyWithVoice(`Equipo ${tag} eliminado`, false); _renderUI(); return true;
+            notifyWithVoice(`Equipo ${tag} eliminado`, false);
+            return true;
         } else if (type === 'line' || type === 'línea') {
             const db = _core.getDb();
             const index = db.lines.findIndex(l => l.tag === tag);
@@ -737,7 +652,8 @@ const SmartFlowCommands = (function() {
             db.lines.splice(index, 1);
             db.equipos.forEach(eq => { if (eq.puertos) eq.puertos.forEach(p => { if (p.connectedLine === tag) delete p.connectedLine; }); });
             db.lines.forEach(l => { if (l.puertos) l.puertos.forEach(p => { if (p.connectedLine === tag) delete p.connectedLine; }); });
-            _core._saveState(); notifyWithVoice(`Línea ${tag} eliminada`, false); _renderUI(); return true;
+            notifyWithVoice(`Línea ${tag} eliminada`, false);
+            return true;
         }
         return false;
     }
@@ -772,8 +688,8 @@ const SmartFlowCommands = (function() {
                 const compType = parts[5];
                 let position = 0.5; const atIdx = parts.indexOf('at') !== -1 ? parts.indexOf('at') : parts.indexOf('en');
                 if (atIdx !== -1) position = parseFloat(parts[atIdx + 1]);
-                const db = _core.getDb(); const line = db.lines.find(l => l.tag === tag);
-                if (line) {
+                const line = _core.findObjectByTag(tag);
+                if (line && _core.getLines().includes(line)) {
                     const compDef = _catalog.getComponent(compType);
                     if (!compDef) { notifyWithVoice(`Componente desconocido: ${compType}`, true); return true; }
                     const comp = { type: compDef.tipo, tag: `${compType}-${Date.now().toString().slice(-6)}`, param: position };
@@ -786,7 +702,7 @@ const SmartFlowCommands = (function() {
                     }
                     _core.updateLine(tag, { components: line.components, puertos: line.puertos });
                     notifyWithVoice(`${compDef.nombre} añadido a ${tag}`, false);
-                    _renderUI(); return true;
+                    return true;
                 }
             }
         }
@@ -813,7 +729,7 @@ const SmartFlowCommands = (function() {
     function generateBOM() {
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return; }
         const db = _core.getDb(); const lines = db.lines || []; const equipos = db.equipos || []; let items = [];
-        equipos.forEach(eq => items.push({ tipo: 'EQUIPO', tag: eq.tag, descripcion: `${eq.tipo} ${eq.material || ''}`, cantidad: 1, unidad: 'Und' }));
+        equipos.forEach(eq => { if (eq.tipo !== 'colector') { items.push({ tipo: 'EQUIPO', tag: eq.tag, descripcion: `${eq.tipo} ${eq.material || ''}`, cantidad: 1, unidad: 'Und' }); } });
         const pipeMap = new Map();
         lines.forEach(line => {
             const pts = getPoints(line); if (!pts || pts.length < 2) return;
@@ -864,37 +780,36 @@ const SmartFlowCommands = (function() {
             else if (parts[i] === 'spec') spec = parts[++i];
         }
         if (!_core) { notifyWithVoice("Core no inicializado", true); return true; }
-        const db = _core.getDb();
-        const fromObj = db.equipos.find(e => e.tag === fromEquip);
-        if (!fromObj) { notifyWithVoice(`Equipo "${fromEquip}" no encontrado`, true); return true; }
+        const fromObj = _core.findObjectByTag(fromEquip);
+        if (!fromObj || !_core.getEquipos().includes(fromObj)) { notifyWithVoice(`Equipo "${fromEquip}" no encontrado`, true); return true; }
         const nzFrom = fromObj.puertos?.find(n => n.id === fromNozzle);
         if (!nzFrom) { notifyWithVoice(`Puerto "${fromNozzle}" no encontrado`, true); return true; }
         let startPos = null;
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortPosition) startPos = SmartFlowRouter.getPortPosition(fromObj, fromNozzle);
         else startPos = { x: (fromObj.posX||0) + (nzFrom.relX||0), y: (fromObj.posY||0) + (nzFrom.relY||0), z: (fromObj.posZ||0) + (nzFrom.relZ||0) };
         if (!startPos) { notifyWithVoice("No se pudo obtener posición origen", true); return true; }
-        const toObj = db.lines.find(l => l.tag === toLine);
-        if (!toObj || !getPoints(toObj).length) { notifyWithVoice(`Línea "${toLine}" no encontrada`, true); return true; }
+        const toObj = _core.findObjectByTag(toLine);
+        if (!toObj || !_core.getLines().includes(toObj) || !getPoints(toObj).length) { notifyWithVoice(`Línea "${toLine}" no encontrada`, true); return true; }
         if (typeof SmartFlowRouter === 'undefined' || typeof SmartFlowRouter.insertarAccesorioEnLinea !== 'function') { notifyWithVoice("Router no disponible", true); return true; }
         const resultado = calcularPuntoParametrico(toObj, pos);
         if (!resultado) { notifyWithVoice("No se pudo calcular punto de conexión", true); return true; }
         const puntoConexion = { x: resultado.x, y: resultado.y, z: resultado.z };
         const puertoId = SmartFlowRouter.insertarAccesorioEnLinea(toLine, puntoConexion, diameter, true);
         if (!puertoId) { notifyWithVoice("No se pudo insertar el accesorio", true); return true; }
-        const newTag = `L-${(db.lines?.length || 0) + 1}`;
+        const newTag = `L-${(_core.getDb().lines?.length || 0) + 1}`;
         const nuevaLinea = { 
             tag: newTag, diameter, material, spec, 
             origin: { objType: 'equipment', equipTag: fromEquip, portId: fromNozzle }, 
             destination: { objType: 'line', equipTag: toLine, portId: puertoId }, 
-            waypoints: [], _cachedPoints: [startPos, puntoConexion]
+            waypoints: [], _cachedPoints: [startPos, puntoConexion], components: []
         };
+        const fittingInfo = ensureFittings(nuevaLinea, fromObj, fromNozzle, toObj, puertoId, diameter, material);
         _core.addLine(nuevaLinea);
         if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
         nzFrom.connectedLine = newTag;
-        const toObjUpd = db.lines.find(l => l.tag === toLine);
+        const toObjUpd = _core.findObjectByTag(toLine);
         if (toObjUpd?.puertos) { const p = toObjUpd.puertos.find(p => p.id === puertoId); if (p) p.connectedLine = newTag; }
-        _core.syncPhysicalData(); _core._saveState(); _renderUI();
-        notifyWithVoice(`✅ Derivación: ${newTag} (${fromEquip}.${fromNozzle} → ${toLine} @${pos.toFixed(2)})`, false);
+        notifyWithVoice(`✅ Derivación: ${newTag} (${fromEquip}.${fromNozzle} → ${toLine} @${pos.toFixed(2)})${fittingInfo.message}`, false);
         return true;
     }
 
@@ -999,7 +914,6 @@ const SmartFlowCommands = (function() {
             if (line.startsWith('!') || line.length === 0) continue;
             const parts = line.split(/\s+/);
             const firstWord = parts[0];
-
             const newBlockWords = ['PIPE', 'VALVE', 'TEE', 'TANK', 'PUMP', 'INSTRUMENT', 'ELBOW', 'FLANGE', 'STRA'];
             if (newBlockWords.includes(firstWord)) {
                 processAccumulatedComponent();
@@ -1012,7 +926,6 @@ const SmartFlowCommands = (function() {
                 }
                 continue;
             }
-
             if (line.startsWith('END-POINT')) {
                 if (parts.length >= 7) {
                     const p1 = { x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) };
@@ -1052,13 +965,8 @@ const SmartFlowCommands = (function() {
                 if (currentLine) currentLine.spec = spec;
             }
         }
-
         processAccumulatedComponent();
         finalizeLine();
-
-        _core.syncPhysicalData();
-        _core._saveState();
-        _renderUI();
         notifyWithVoice(`✅ PCF importado: ${equiposMap.size} equipos, ${lineasMap.size} líneas.`, false);
         return true;
     }
@@ -1069,7 +977,6 @@ const SmartFlowCommands = (function() {
         const normalized = normalizeCommand(cmd);
         const trimmed = normalized.trim();
         if (parseCreateLine(trimmed)) return true;
-        // parseCreateManifold eliminado
         if (parseCreate(trimmed)) return true;
         if (parseConnect(trimmed)) return true;
         if (parseRoute(trimmed)) return true;
@@ -1084,8 +991,8 @@ const SmartFlowCommands = (function() {
         if (parseSplit(trimmed)) return true;
         if (parsePoint(trimmed)) return true;
         if (parseNodes(trimmed)) return true;
-        if (trimmed === 'undo' || trimmed === 'deshacer') { if (_core) _core.undo(); _renderUI(); return true; }
-        if (trimmed === 'redo' || trimmed === 'rehacer') { if (_core) _core.redo(); _renderUI(); return true; }
+        if (trimmed === 'undo' || trimmed === 'deshacer') { if (_core) _core.undo(); return true; }
+        if (trimmed === 'redo' || trimmed === 'rehacer') { if (_core) _core.redo(); return true; }
         return false;
     }
 
@@ -1098,15 +1005,15 @@ const SmartFlowCommands = (function() {
             if (executeCommand(trimmed)) executed++;
             else { failed++; notifyWithVoice(`No entendí: "${trimmed.substring(0, 50)}..."`, true); }
         }
-        _renderUI();
         if (executed + failed > 0) notifyWithVoice(`${executed} comandos ejecutados, ${failed} fallidos`, failed > 0);
         return executed;
     }
 
-    function init(coreInstance, catalogInstance, rendererInstance, notifyFn, renderFn) {
+    function init(coreInstance, catalogInstance, rendererInstance, notifyFn, renderFn, voiceFn) {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
-        console.log('✅ SmartFlow Commands v5.6 (conexión directa + codos solo cuando aplica)');
+        _voiceFn = voiceFn || null;
+        console.log('✅ SmartFlow Commands v5.7 (ensureFittings + notificaciones detalladas + BOM sin colector)');
     }
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
