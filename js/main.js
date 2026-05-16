@@ -1,7 +1,11 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.5
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.6
 // Archivo: js/main.js
+// Cambios: alineado con Core v5.3, Renderer v20.5, Commands v5.7,
+//          Router v3.3, Catalog v3.5; eliminadas dependencias
+//          obsoletas; historial de comandos integrado;
+//          interacciones del canvas delegadas al Renderer.
 // ============================================================
 
 (function() {
@@ -13,62 +17,74 @@
     const statusMsgEl = document.getElementById('statusMsg');
     const commandPanel = document.getElementById('commandPanel');
     const commandText = document.getElementById('commandText');
-    const catalogPanel = document.getElementById('catalogPanel');
-    const propertyPanel = document.getElementById('propertyPanel');
     const customElev = document.getElementById('customElev');
-    
-    const btnNew = document.getElementById('btnNew');
-    const btnOpen = document.getElementById('btnOpen');
-    const btnSave = document.getElementById('btnSave');
-    const btnReset = document.getElementById('btnReset');
-    const btnFullscreen = document.getElementById('btnFullscreen');
-    const btnFullscreenCenter = document.getElementById('btnFullscreenCenter');
-    const btnFullscreenExit = document.getElementById('btnFullscreenExit');
-    const btnCommand = document.getElementById('btnCommand');
-    const btnCloseCommand = document.getElementById('closeCommand');
-    const btnRunCommands = document.getElementById('runCommands');
-    const btnClearCommand = document.getElementById('clearCommand');
-    const btnAddTank = document.getElementById('btnAddTank');
-    const btnAddPump = document.getElementById('btnAddPump');
-    const btnMTO = document.getElementById('btnMTO');
-    const btnPDF = document.getElementById('btnPDF');
-    const btnExportPCF = document.getElementById('btnExportPCF');
-    const btnImportPCF = document.getElementById('btnImportPCF');
-    const btnUndo = document.getElementById('btnUndo');
-    const btnRedo = document.getElementById('btnRedo');
-    const btnVoice = document.getElementById('btnVoice');
-    const btnApplyNorm = document.getElementById('btnApplyNorm');
-    const btnSpeakSummary = document.getElementById('btnSpeakSummary');
-    const btnRecalc = document.getElementById('btnRecalc');
-    const btnToggleCatalog = document.getElementById('btnToggleCatalog');
-    const btnSetElev = document.getElementById('btnSetElev');
-    const btnExportProject = document.getElementById('btnExportProject');
-    const btnImportProject = document.getElementById('btnImportProject');
-    
-    const toolSelect = document.getElementById('toolSelect');
-    const toolMoveEq = document.getElementById('toolMoveEq');
-    const toolEditPipe = document.getElementById('toolEditPipe');
-    const toolAddPoint = document.getElementById('toolAddPoint');
+    const sidePanel = document.getElementById('side-panel');
+    const panelContent = document.getElementById('panel-content');
     
     // -------------------- 2. ESTADO DE LA APLICACIÓN --------------------
     let toolMode = 'select';
     let voiceEnabled = true;
-    let SmartFlowRenderer = null;
     
     let draggingEquipment = false;
-    let draggedEquip = null;
+    let draggedEquipTag = null;
     let dragLastPos = { x: 0, y: 0 };
-    let panning = false;
-    let panStart = { x: 0, y: 0 };
     
-    // -------------------- 3. FUNCIONES DE UI --------------------
+    // -------------------- 3. HISTORIAL DE COMANDOS --------------------
+    const _commandHistory = [];
+    const MAX_HISTORY = 50;
+    let _historyIndex = -1;
+    let _tempCommand = '';
+    
+    function addToHistory(cmd) {
+        const trimmed = cmd.trim();
+        if (!trimmed) return;
+        if (_commandHistory.length > 0 && _commandHistory[_commandHistory.length - 1] === trimmed) return;
+        _commandHistory.push(trimmed);
+        if (_commandHistory.length > MAX_HISTORY) _commandHistory.shift();
+        _historyIndex = _commandHistory.length;
+        updateHistoryIndicator();
+    }
+    
+    function updateHistoryIndicator() {
+        const indicator = document.getElementById('historyIndicator');
+        if (indicator) {
+            if (_commandHistory.length > 0) {
+                indicator.textContent = `⏺ Historial: ${_commandHistory.length} comandos (↑↓ para navegar)`;
+            } else {
+                indicator.textContent = '';
+            }
+        }
+    }
+    
+    function navigateHistory(direction) {
+        if (!commandText) return;
+        if (_historyIndex === _commandHistory.length) {
+            _tempCommand = commandText.value;
+        }
+        if (direction === 'up') {
+            if (_historyIndex > 0) {
+                _historyIndex--;
+                commandText.value = _commandHistory[_historyIndex];
+            }
+        } else if (direction === 'down') {
+            if (_historyIndex < _commandHistory.length - 1) {
+                _historyIndex++;
+                commandText.value = _commandHistory[_historyIndex];
+            } else if (_historyIndex === _commandHistory.length - 1) {
+                _historyIndex++;
+                commandText.value = _tempCommand || '';
+            }
+        }
+    }
+    
+    // -------------------- 4. FUNCIONES DE UI --------------------
     function notify(msg, isErr = false) {
         if (notificationEl) {
             notificationEl.textContent = msg;
             notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
             notificationEl.style.display = 'block';
         }
-        if (statusMsgEl) statusMsgEl.innerHTML = msg;
+        if (statusMsgEl) statusMsgEl.textContent = msg;
         
         if (voiceEnabled && window.speechSynthesis) {
             window.speechSynthesis.cancel();
@@ -80,77 +96,84 @@
         setTimeout(() => { if (notificationEl) notificationEl.style.display = 'none'; }, 4000);
     }
     
-    function render() {
-        if (SmartFlowRenderer) SmartFlowRenderer.render();
+    function voiceFn(msg) {
+        if (voiceEnabled && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(msg);
+            u.lang = 'es-ES';
+            window.speechSynthesis.speak(u);
+        }
+    }
+    
+    function scheduleRender() {
+        if (window.SmartFlowRenderer) window.SmartFlowRenderer.render();
     }
     
     function autoCenter() {
-        if (SmartFlowRenderer) {
-            SmartFlowRenderer.centerProject();
-            notify("Vista centrada correctamente.", false);
+        if (window.SmartFlowRenderer) {
+            window.SmartFlowRenderer.autoCenter();
         }
     }
-
+    
     function toggleFullscreen() {
         document.body.classList.add('fullscreen-mode');
-        if (SmartFlowRenderer) {
-            SmartFlowRenderer.resizeCanvas();
-            SmartFlowRenderer.centerProject();
+        if (window.SmartFlowRenderer) {
+            window.SmartFlowRenderer.resizeCanvas();
+            window.SmartFlowRenderer.autoCenter();
         }
     }
-
+    
     function exitFullscreen() {
         document.body.classList.remove('fullscreen-mode');
-        if (SmartFlowRenderer) {
-            SmartFlowRenderer.resizeCanvas();
-            SmartFlowRenderer.centerProject();
+        if (window.SmartFlowRenderer) {
+            window.SmartFlowRenderer.resizeCanvas();
+            window.SmartFlowRenderer.autoCenter();
         }
     }
-
+    
     function togglePanel(show) {
-        const panel = document.getElementById('side-panel');
-        if (panel) {
-            if (show) panel.classList.remove('hidden');
-            else panel.classList.add('hidden');
+        if (sidePanel) {
+            if (show) sidePanel.classList.remove('hidden');
+            else sidePanel.classList.add('hidden');
         }
     }
-
-    function updatePropertyPanel(obj) {
-        const content = document.getElementById('panel-content');
-        if (!obj) { togglePanel(false); return; }
+    
+    function updatePropertyPanel(info) {
+        if (!panelContent) return;
+        if (!info) { togglePanel(false); return; }
         togglePanel(true);
-        content.innerHTML = `
-            <div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">${obj.tag}</span></div>
-            <div class="prop-group"><span class="prop-label">TIPO</span><span class="prop-value">${obj.tipo || 'Tubería'}</span></div>
-            <div class="prop-group"><span class="prop-label">MATERIAL</span><span class="prop-value">${obj.material || 'N/A'}</span></div>
-            <div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">${obj.diametro}"</span></div>
+        panelContent.innerHTML = `
+            <div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">${info.tag || 'N/A'}</span></div>
+            <div class="prop-group"><span class="prop-label">TIPO</span><span class="prop-value">${info.tipo || 'Desconocido'}</span></div>
+            <div class="prop-group"><span class="prop-label">MATERIAL</span><span class="prop-value">${info.material || 'N/A'}</span></div>
+            <div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">${info.diametro || 'N/A'}</span></div>
             <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
             <div class="prop-group"><span class="prop-label">PUERTOS</span>
-                ${obj.puertos ? obj.puertos.map(p => `
+                ${info.puertos && info.puertos.length ? info.puertos.map(p => `
                     <div class="port-item"><span>${p.id}</span><span class="${p.status === 'open' ? 'port-open' : 'port-connected'}">${p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO a ' + (p.connectedTo || '')}</span></div>
                 `).join('') : '<p>Sin puertos</p>'}
             </div>
         `;
     }
     
-    // -------------------- 4. INICIALIZACIÓN DE MÓDULOS --------------------
-    async function initModules() {
-        SmartFlowCore.init(notify, render, updatePropertyPanel);
-        SmartFlowRenderer = window.SmartFlowRenderer;
-        if (SmartFlowRenderer) {
+    // -------------------- 5. INICIALIZACIÓN DE MÓDULOS --------------------
+    function initModules() {
+        SmartFlowCore.init(notify, scheduleRender, updatePropertyPanel);
+        
+        if (typeof SmartFlowRenderer !== 'undefined') {
             SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
         }
         
         if (typeof SmartFlowRouter !== 'undefined') {
-            SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, window.notify || notify, render);
+            SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, notify, scheduleRender);
         }
         
-        SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, window.notify || notify, render);
+        SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, scheduleRender, voiceFn);
         
         notify("Smart Engineering - Sistema listo", false);
     }
     
-    // -------------------- 5. GESTIÓN DE PROYECTOS --------------------
+    // -------------------- 6. GESTIÓN DE PROYECTOS --------------------
     function guardarProyecto() {
         const state = SmartFlowCore.exportProject();
         localStorage.setItem('smartengp_v2_project', state);
@@ -182,7 +205,7 @@
         a.click();
         notify("Proyecto exportado como archivo JSON.", false);
     }
-
+    
     function importarProyectoArchivo() {
         const input = document.createElement('input');
         input.type = 'file';
@@ -213,21 +236,20 @@
         }
     }
     
-    // -------------------- 6. MTO EXPANDIDO --------------------
+    // -------------------- 7. MTO Y RESUMEN --------------------
     function exportarMTO() {
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
         let items = [];
-        equipos.forEach(eq => items.push([eq.tag, eq.tipo, "Und", 1]));
+        equipos.forEach(eq => { if (eq.tipo !== 'colector') items.push([eq.tag, eq.tipo, "Und", 1]); });
         lines.forEach(line => {
             let length = 0;
-            const pts = line._cachedPoints || line.points3D;
+            const pts = SmartFlowCore.getLinePoints(line);
             if (pts) for (let i = 0; i < pts.length - 1; i++) length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
             items.push([line.tag, `Tubería ${line.material || 'PPR'} ${line.diameter}"`, "m", (length / 1000).toFixed(2)]);
             if (line.components) {
                 line.components.forEach(comp => {
-                    let desc = comp.type;
-                    items.push([comp.tag || `ACC-${line.tag}`, desc, "Und", 1]);
+                    items.push([comp.tag || `ACC-${line.tag}`, comp.type, "Und", 1]);
                 });
             }
         });
@@ -243,20 +265,20 @@
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
         const tanques = equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
-        const bombas = equipos.filter(e => e.tipo.includes('bomba'));
-        const colectores = equipos.filter(e => e.tipo === 'colector');
-        let totalCodos = 0, totalValvulas = 0;
+        const bombas = equipos.filter(e => e.tipo && e.tipo.includes('bomba'));
+        let totalCodos = 0, totalTees = 0, totalReducciones = 0, totalValvulas = 0;
         lines.forEach(l => {
-            const pts = l._cachedPoints || l.points3D;
-            if (pts) totalCodos += Math.max(0, pts.filter(p => !p.isControlPoint).length - 2);
             if (l.components) {
                 l.components.forEach(c => {
-                    if (c.type.includes('ELBOW')) totalCodos++;
-                    if (c.type.includes('VALVE')) totalValvulas++;
+                    const type = c.type || '';
+                    if (type.includes('ELBOW')) totalCodos++;
+                    else if (type.includes('TEE')) totalTees++;
+                    else if (type.includes('REDUCER')) totalReducciones++;
+                    else if (type.includes('VALVE')) totalValvulas++;
                 });
             }
         });
-        const resumen = `Proyecto: ${tanques.length} tanques, ${bombas.length} bombas, ${colectores.length} colectores, ${lines.length} tuberías, ${totalCodos} codos, ${totalValvulas} válvulas.`;
+        const resumen = `Proyecto: ${equipos.length} equipos (${tanques.length} tanques, ${bombas.length} bombas), ${lines.length} tuberías, ${totalCodos} codos, ${totalTees} tees, ${totalReducciones} reducciones, ${totalValvulas} válvulas.`;
         notify(resumen, false);
         if (voiceEnabled && window.speechSynthesis) {
             const u = new SpeechSynthesisUtterance(resumen);
@@ -265,191 +287,169 @@
         }
     }
     
-    // -------------------- 7. CONFIGURACIÓN DE HERRAMIENTAS --------------------
+    // -------------------- 8. HERRAMIENTAS --------------------
     function setTool(mode) {
         toolMode = mode;
-        [toolSelect, toolMoveEq, toolEditPipe, toolAddPoint].forEach(btn => { if (btn) btn.classList.remove('active'); });
-        if (mode === 'select' && toolSelect) toolSelect.classList.add('active');
-        else if (mode === 'moveEq' && toolMoveEq) toolMoveEq.classList.add('active');
-        else if (mode === 'editPipe' && toolEditPipe) toolEditPipe.classList.add('active');
-        else if (mode === 'addPoint' && toolAddPoint) toolAddPoint.classList.add('active');
+        const buttons = {
+            select: document.getElementById('toolSelect'),
+            moveEq: document.getElementById('toolMoveEq'),
+            editPipe: document.getElementById('toolEditPipe'),
+            addPoint: document.getElementById('toolAddPoint')
+        };
+        Object.values(buttons).forEach(btn => { if (btn) btn.classList.remove('active'); });
+        if (buttons[mode]) buttons[mode].classList.add('active');
     }
     
-    function setElevation(level) {
+    window.setElevation = function(level) {
         SmartFlowCore.setElevation(level);
-        if (SmartFlowRenderer) SmartFlowRenderer.setElevation(level);
+        if (window.SmartFlowRenderer) window.SmartFlowRenderer.setElevation(level);
         if (customElev) customElev.value = level;
-    }
+    };
     
     function toggleVoice() {
         voiceEnabled = !voiceEnabled;
         SmartFlowCore.setVoice(voiceEnabled);
-        if (btnVoice) btnVoice.textContent = voiceEnabled ? "Voz ON" : "Voz OFF";
+        const btnVoice = document.getElementById('btnVoice');
+        if (btnVoice) btnVoice.textContent = voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
     }
     
-    // -------------------- ATAJOS DE TECLADO --------------------
+    // -------------------- 9. ATAJOS DE TECLADO --------------------
     function setupKeyboardShortcuts() {
         document.addEventListener('keydown', function(e) {
             const activeEl = document.activeElement;
-            if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id !== 'commandText') return;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.id !== 'commandText') return;
             
             if (e.ctrlKey && e.shiftKey) {
                 switch(e.key.toUpperCase()) {
-                    case 'C':
-                        e.preventDefault();
-                        if (commandPanel) commandPanel.style.display = 'block';
-                        if (commandText) commandText.focus();
-                        break;
-                    case 'R':
-                        e.preventDefault();
-                        resumenProyecto();
-                        break;
-                    case 'V':
-                        e.preventDefault();
-                        if (SmartFlowRenderer) SmartFlowRenderer.centerProject();
-                        break;
-                    case 'U':
-                        e.preventDefault();
-                        SmartFlowCore.undo();
-                        render();
-                        break;
-                    case 'Y':
-                        e.preventDefault();
-                        SmartFlowCore.redo();
-                        render();
-                        break;
-                    case 'M':
-                        e.preventDefault();
-                        exportarMTO();
-                        break;
-                    case 'P':
-                        e.preventDefault();
-                        if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF();
-                        break;
-                    case 'E':
-                        e.preventDefault();
-                        if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF();
-                        break;
-                    default:
-                        break;
+                    case 'C': e.preventDefault(); abrirPanelComandos(); break;
+                    case 'R': e.preventDefault(); resumenProyecto(); break;
+                    case 'V': e.preventDefault(); autoCenter(); break;
+                    case 'U': e.preventDefault(); SmartFlowCore.undo(); scheduleRender(); break;
+                    case 'Y': e.preventDefault(); SmartFlowCore.redo(); scheduleRender(); break;
+                    case 'M': e.preventDefault(); exportarMTO(); break;
+                    case 'P': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF(); break;
+                    case 'E': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF(); break;
                 }
             }
         });
     }
     
-    // -------------------- 8. EVENTOS DEL CANVAS --------------------
-    function pointToSegmentDistance(p, a, b) {
-        const ax = p.x - a.x, ay = p.y - a.y;
-        const bx = b.x - a.x, by = b.y - a.y;
-        const dot = ax * bx + ay * by;
-        const len2 = bx * bx + by * by;
-        if (len2 === 0) return Math.hypot(ax, ay);
-        let t = dot / len2;
-        t = Math.max(0, Math.min(1, t));
-        const projX = a.x + t * bx;
-        const projY = a.y + t * by;
-        return Math.hypot(p.x - projX, p.y - projY);
-    }
-    
-    function pickElement(mouseCanvas) {
-        if (SmartFlowRenderer && SmartFlowRenderer.pickElement) {
-            return SmartFlowRenderer.pickElement(mouseCanvas);
-        }
-        const db = SmartFlowCore.getDb();
-        const equipos = db?.equipos || [];
-        const lines = db?.lines || [];
-        const project = SmartFlowRenderer.project;
-        for (let eq of equipos) {
-            const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
-            if (eq.tipo === 'colector') {
-                const pIzq = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
-                const pDer = project({ x: eq.posX + eq.largo, y: eq.posY, z: eq.posZ });
-                if (pointToSegmentDistance(mouseCanvas, pIzq, pDer) < 15) return { type: 'equipment', obj: eq };
-            } else {
-                const w = (eq.diametro / 2) * SmartFlowRenderer.getCam().scale;
-                if (Math.hypot(mouseCanvas.x - p.x, mouseCanvas.y - p.y) < w + 10) return { type: 'equipment', obj: eq };
-            }
-        }
-        for (let line of lines) {
-            const pts = line._cachedPoints || line.points3D;
-            if (!pts) continue;
-            const proj = pts.map(p => project(p));
-            for (let i = 0; i < proj.length - 1; i++) {
-                if (pointToSegmentDistance(mouseCanvas, proj[i], proj[i+1]) < 12) return { type: 'line', obj: line };
-            }
-        }
-        return null;
-    }
-    
+    // -------------------- 10. EVENTOS DEL CANVAS (solo lógica de herramientas) --------------------
     function initCanvasEvents() {
         if (!canvas) return;
-        let panLocal = false, panStartLocal = { x: 0, y: 0 };
-        canvas.addEventListener('mousedown', (e) => {
+        
+        // El Renderer ya gestiona mousemove, click, touchstart, wheel.
+        // Aquí solo añadimos la lógica para las herramientas que requieren
+        // interacción directa con el canvas (mover equipo, añadir punto).
+        
+        canvas.addEventListener('mousedown', function(e) {
+            if (toolMode !== 'moveEq' && toolMode !== 'addPoint') return;
+            
             const rect = canvas.getBoundingClientRect();
             const mouse = {
                 x: (e.clientX - rect.left) * canvas.width / rect.width,
                 y: (e.clientY - rect.top) * canvas.height / rect.height
             };
-            const picked = pickElement(mouse);
-            if (toolMode === 'select') {
-                SmartFlowCore.setSelected(picked);
-                render();
-            } else if (toolMode === 'moveEq' && picked?.type === 'equipment') {
-                draggingEquipment = true;
-                draggedEquip = picked.obj;
-                dragLastPos = { x: e.clientX, y: e.clientY };
-                canvas.style.cursor = 'grabbing';
+            
+            if (toolMode === 'moveEq') {
+                const picked = SmartFlowRenderer.pickElement(mouse);
+                if (picked && picked.type === 'equipment') {
+                    draggingEquipment = true;
+                    draggedEquipTag = picked.obj.tag;
+                    dragLastPos = { x: e.clientX, y: e.clientY };
+                    canvas.style.cursor = 'grabbing';
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            } else if (toolMode === 'addPoint') {
+                // Añadir punto a línea seleccionada
+                const selected = SmartFlowCore.getSelected();
+                if (selected && selected.type === 'line') {
+                    const worldPos = SmartFlowRenderer.inverseProject(mouse.x, mouse.y);
+                    const line = selected.obj;
+                    const pts = SmartFlowCore.getLinePoints(line);
+                    if (pts) {
+                        pts.push(worldPos);
+                        line._cachedPoints = pts;
+                        SmartFlowCore.updateLine(line.tag, { _cachedPoints: pts });
+                        SmartFlowCore.syncPhysicalData();
+                        scheduleRender();
+                        notify(`Punto añadido a ${line.tag}`, false);
+                    }
+                }
                 e.preventDefault();
-            } else {
-                panLocal = true;
-                panStartLocal = { x: e.clientX, y: e.clientY };
-                canvas.style.cursor = 'grabbing';
-                e.preventDefault();
+                e.stopPropagation();
             }
         });
         
-        window.addEventListener('mousemove', (e) => {
-            if (draggingEquipment && draggedEquip) {
-                const dx = (e.clientX - dragLastPos.x) / SmartFlowRenderer.getCam().scale;
-                const dy = (e.clientY - dragLastPos.y) / SmartFlowRenderer.getCam().scale;
-                const db = SmartFlowCore.getDb();
-                const eq = db.equipos.find(eq => eq.tag === draggedEquip.tag);
-                if (eq) { eq.posX += dx; eq.posZ += dy; }
-                dragLastPos = { x: e.clientX, y: e.clientY };
-                render();
-            } else if (panLocal) {
-                const dx = e.clientX - panStartLocal.x;
-                const dy = e.clientY - panStartLocal.y;
-                SmartFlowRenderer.pan(dx, dy);
-                panStartLocal = { x: e.clientX, y: e.clientY };
+        window.addEventListener('mousemove', function(e) {
+            if (!draggingEquipment || !draggedEquipTag) return;
+            const dx = (e.clientX - dragLastPos.x) / SmartFlowRenderer.getCam().scale;
+            const dy = (e.clientY - dragLastPos.y) / SmartFlowRenderer.getCam().scale;
+            const eq = SmartFlowCore.findObjectByTag(draggedEquipTag);
+            if (eq) {
+                eq.posX += dx;
+                eq.posZ += dy;
             }
+            dragLastPos = { x: e.clientX, y: e.clientY };
+            scheduleRender();
         });
         
-        window.addEventListener('mouseup', () => {
+        window.addEventListener('mouseup', function() {
             if (draggingEquipment) {
                 SmartFlowCore.syncPhysicalData();
                 SmartFlowCore._saveState();
             }
             draggingEquipment = false;
-            panLocal = false;
-            canvas.style.cursor = 'grab';
-        });
-        
-        canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            SmartFlowRenderer.zoom(e.deltaY);
+            draggedEquipTag = null;
+            if (canvas) canvas.style.cursor = 'grab';
         });
     }
     
-    // -------------------- 9. CABLEADO DE BOTONES --------------------
+    // -------------------- 11. CABLEADO DE BOTONES --------------------
+    function abrirPanelComandos() {
+        if (commandPanel) {
+            commandPanel.style.display = 'block';
+            if (commandText) commandText.focus();
+        }
+    }
+    
+    function ejecutarComando() {
+        if (!commandText) return;
+        const cmd = commandText.value.trim();
+        if (!cmd) return;
+        
+        let success = true;
+        // Ya no dependemos de SmartFlowAccessibility ni SmartFlowAutocomplete
+        if (typeof SmartFlowCommands !== 'undefined') {
+            const result = SmartFlowCommands.executeCommand(cmd);
+            success = (result !== false);
+        }
+        
+        if (success) {
+            addToHistory(cmd);
+        }
+        
+        commandText.value = '';
+        _historyIndex = _commandHistory.length;
+        
+        // Ocultar panel tras ejecutar (excepto comandos informativos)
+        const lower = cmd.toLowerCase();
+        if (!lower.startsWith('info') && !lower.startsWith('coordenadas') && 
+            !lower.startsWith('nodos') && !lower.startsWith('listar') && 
+            !lower.startsWith('list') && !lower.startsWith('ayuda') && 
+            !lower.startsWith('help') && !lower.startsWith('bom') && 
+            !lower.startsWith('mto') && !lower.startsWith('audit')) {
+            if (commandPanel) commandPanel.style.display = 'none';
+        }
+    }
+    
     function bindEvents() {
         const vincular = (id, accion) => {
             const el = document.getElementById(id);
             if (el) el.onclick = accion;
-            else console.warn("Botón no encontrado: " + id);
         };
         
-        vincular('btnNew', nuevoProyecto);
         vincular('btnOpen', cargarProyecto);
         vincular('btnSave', guardarProyecto);
         vincular('btnExportProject', exportarProyectoArchivo);
@@ -458,26 +458,10 @@
         vincular('btnFullscreen', toggleFullscreen);
         vincular('btnFullscreenCenter', autoCenter);
         vincular('btnFullscreenExit', exitFullscreen);
-        vincular('btnCommand', () => { if (commandPanel) commandPanel.style.display = 'block'; });
+        vincular('btnCommand', abrirPanelComandos);
         vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
-        vincular('clearCommand', () => { if (commandText) commandText.value = ''; });
-        vincular('runCommands', () => {
-            if (commandText) {
-                const cmd = commandText.value.trim();
-                let processed = false;
-                if (typeof SmartFlowAccessibility !== 'undefined') {
-                    processed = SmartFlowAccessibility.processAccessibilityCommand(cmd);
-                }
-                if (!processed) {
-                    SmartFlowCommands.executeBatch(cmd);
-                }
-                commandText.value = '';
-                if (commandPanel) commandPanel.style.display = 'none';
-                if (typeof SmartFlowAutocomplete !== 'undefined') {
-                    SmartFlowAutocomplete.hideSuggestions();
-                }
-            }
-        });
+        vincular('clearCommand', () => { if (commandText) { commandText.value = ''; _historyIndex = _commandHistory.length; } });
+        vincular('runCommands', ejecutarComando);
         vincular('btnAddTank', () => {
             const equipos = SmartFlowCore.getEquipos();
             const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
@@ -487,7 +471,7 @@
         });
         vincular('btnAddPump', () => {
             const equipos = SmartFlowCore.getEquipos();
-            const tag = `B-${equipos.filter(e => e.tipo.includes('bomba')).length + 1}`;
+            const tag = `B-${equipos.filter(e => e.tipo && e.tipo.includes('bomba')).length + 1}`;
             const ult = equipos[equipos.length - 1];
             const x = ult ? ult.posX + 3000 : 5000;
             SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
@@ -497,8 +481,8 @@
         vincular('toolEditPipe', () => setTool('editPipe'));
         vincular('toolAddPoint', () => setTool('addPoint'));
         vincular('btnMTO', exportarMTO);
-        vincular('btnPDF', () => { if (SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF(); });
-        vincular('btnExportPCF', () => { if (SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF(); });
+        vincular('btnPDF', () => { if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) SmartFlowRenderer.exportPDF(); });
+        vincular('btnExportPCF', () => { if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) SmartFlowRenderer.exportPCF(); });
         vincular('btnImportPCF', () => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -513,54 +497,53 @@
             };
             input.click();
         });
-        vincular('btnToggleCatalog', () => {
-            if (catalogPanel) catalogPanel.style.display = catalogPanel.style.display === 'none' ? 'flex' : 'none';
-        });
-        vincular('btnUndo', () => { SmartFlowCore.undo(); render(); });
-        vincular('btnRedo', () => { SmartFlowCore.redo(); render(); });
+        vincular('btnUndo', () => { SmartFlowCore.undo(); scheduleRender(); });
+        vincular('btnRedo', () => { SmartFlowCore.redo(); scheduleRender(); });
         vincular('btnVoice', toggleVoice);
         vincular('btnSpeakSummary', resumenProyecto);
-        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); render(); });
+        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); scheduleRender(); });
         vincular('btnSetElev', () => {
             const val = parseInt(customElev?.value);
-            if (!isNaN(val)) setElevation(val);
+            if (!isNaN(val)) window.setElevation(val);
         });
         vincular('btnApplyNorm', () => notify("Función de normas en desarrollo.", false));
         
+        // Historial de comandos: teclas en el textarea
+        if (commandText) {
+            commandText.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    navigateHistory('up');
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    navigateHistory('down');
+                }
+            });
+        }
+        
         window.addEventListener('resize', () => {
-            if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
+            if (window.SmartFlowRenderer) window.SmartFlowRenderer.resizeCanvas();
             autoCenter();
         });
     }
     
-    // -------------------- 10. ARRANQUE DE LA APLICACIÓN --------------------
-    async function init() {
-        await initModules();
+    // -------------------- 12. ARRANQUE DE LA APLICACIÓN --------------------
+    function init() {
+        initModules();
         bindEvents();
         initCanvasEvents();
         setupKeyboardShortcuts();
         setTool('select');
-        setElevation(0);
-
+        window.setElevation(0);
+        
         if (window.innerWidth < 768) {
             togglePanel(false);
-            const floatBtn = document.createElement('button');
-            floatBtn.id = 'floatPanelToggle';
-            floatBtn.textContent = '📋';
-            floatBtn.style.cssText = 'position:fixed;top:10px;left:10px;z-index:1000;background:var(--accent-cyan);border:none;border-radius:50%;width:36px;height:36px;font-size:18px;';
-            floatBtn.onclick = () => {
-                const panel = document.getElementById('side-panel');
-                if (panel) {
-                    panel.classList.toggle('hidden');
-                }
-            };
-            document.body.appendChild(floatBtn);
         }
-
+        
         setTimeout(() => {
-            if (SmartFlowRenderer) SmartFlowRenderer.resizeCanvas();
+            if (window.SmartFlowRenderer) window.SmartFlowRenderer.resizeCanvas();
             autoCenter();
-        }, 50);
+        }, 100);
     }
     
     init();
