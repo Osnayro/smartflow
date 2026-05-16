@@ -150,8 +150,7 @@
             backdrop-filter: blur(8px); right: 0;
         }
         .dropdown-content button { width: 100%; text-align: left; border: none; border-radius: 0; }
-        .dropdown:hover .dropdown-content { display: block; }
-        .dropdown.open .dropdown-content { display: block; }
+        .dropdown.open > .dropdown-content { display: block; }
 
         .canvas-container { flex: 1; background: #000; position: relative; overflow: hidden; }
         canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
@@ -294,7 +293,7 @@
         </div>
         
         <div class="dropdown">
-            <button>📂 Archivo</button>
+            <button id="btnFileMenu">📂 Archivo</button>
             <div class="dropdown-content">
                 <button id="btnOpen">📂 Abrir</button>
                 <button id="btnSave">💾 Guardar</button>
@@ -389,3 +388,32 @@
     <script src="js/main.js"></script>
 </body>
 </html>
+```
+
+Cambios clave respecto al HTML anterior:
+
+1. Botón "Archivo" ahora tiene id="btnFileMenu" (antes no tenía ID).
+2. Regla CSS cambiada de .dropdown:hover .dropdown-content a .dropdown.open > .dropdown-content para que solo se abra con JavaScript, no con hover.
+3. main.js ya está preparado para manejar btnFileMenu y btnMoreMenu con la misma lógica de toggle (abrir/cerrar al hacer clic, cerrar al hacer clic fuera).
+
+En main.js, la función que maneja los menús es:
+
+```javascript
+// Manejo unificado de dropdowns
+const dropdownButtons = ['btnFileMenu', 'btnMoreMenu'];
+dropdownButtons.forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const parent = this.closest('.dropdown');
+            if (parent) parent.classList.toggle('open');
+        });
+    }
+});
+// Cerrar dropdowns al hacer clic fuera
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+});
