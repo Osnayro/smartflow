@@ -1,419 +1,665 @@
 
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SmartEngp | AcQuaBlue</title>
+// ============================================================
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.9
+// Archivo: js/main.js
+// ============================================================
+
+(function() {
+    "use strict";
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    // -------------------- 1. REFERENCIAS AL DOM --------------------
+    const canvas = document.getElementById('isoCanvas');
+    const notificationEl = document.getElementById('notification');
+    const statusMsgEl = document.getElementById('statusMsg');
+    const commandPanel = document.getElementById('commandPanel');
+    const commandText = document.getElementById('commandText');
+    const customElev = document.getElementById('customElev');
+    const sidePanel = document.getElementById('side-panel');
+    const panelContent = document.getElementById('panel-content');
     
-    <style>
-        :root {
-            --primary-bg: #0a0e17;
-            --panel-bg: rgba(20, 28, 45, 0.95);
-            --accent-cyan: #00f2ff;
-            --accent-blue: #1e4eb8;
-            --text-main: #e0e6ed;
-            --toolbar-bg: #0f172a;
-            --button-bg: #1e293b;
-            --button-border: #334155;
+    const splashScreen = document.getElementById('splash-screen');
+    const welcomePanel = document.getElementById('welcome-panel');
+    const projectModal = document.getElementById('project-name-modal');
+    const projectInput = document.getElementById('project-name-input');
+    
+    // -------------------- 2. ESTADO DE LA APLICACIÓN --------------------
+    let toolMode = 'select';
+    let voiceEnabled = true;
+    
+    let draggingEquipment = false;
+    let draggedEquipTag = null;
+    let dragLastPos = { x: 0, y: 0 };
+    
+    // -------------------- 3. HISTORIAL DE COMANDOS --------------------
+    const _commandHistory = [];
+    const MAX_HISTORY = 50;
+    let _historyIndex = -1;
+    let _tempCommand = '';
+    
+    function addToHistory(cmd) {
+        const trimmed = cmd.trim();
+        if (!trimmed) return;
+        if (_commandHistory.length > 0 && _commandHistory[_commandHistory.length - 1] === trimmed) return;
+        _commandHistory.push(trimmed);
+        if (_commandHistory.length > MAX_HISTORY) _commandHistory.shift();
+        _historyIndex = _commandHistory.length;
+        updateHistoryIndicator();
+    }
+    
+    function updateHistoryIndicator() {
+        const indicator = document.getElementById('historyIndicator');
+        if (indicator) {
+            if (_commandHistory.length > 0) {
+                indicator.textContent = `⏺ Historial: ${_commandHistory.length} comandos (↑↓ para navegar)`;
+            } else {
+                indicator.textContent = '';
+            }
         }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+    }
+    
+    function navigateHistory(direction) {
+        if (!commandText) return;
+        if (_historyIndex === _commandHistory.length) {
+            _tempCommand = commandText.value;
+        }
+        if (direction === 'up') {
+            if (_historyIndex > 0) {
+                _historyIndex--;
+                commandText.value = _commandHistory[_historyIndex];
+            }
+        } else if (direction === 'down') {
+            if (_historyIndex < _commandHistory.length - 1) {
+                _historyIndex++;
+                commandText.value = _commandHistory[_historyIndex];
+            } else if (_historyIndex === _commandHistory.length - 1) {
+                _historyIndex++;
+                commandText.value = _tempCommand || '';
+            }
+        }
+    }
+    
+    // -------------------- 4. FUNCIONES DE UI --------------------
+    function notify(msg, isErr = false) {
+        if (notificationEl) {
+            notificationEl.textContent = msg;
+            notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
+            notificationEl.style.display = 'block';
+        }
+        if (statusMsgEl) statusMsgEl.textContent = msg;
         
-        body {
-            background: var(--primary-bg);
-            color: var(--text-main);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        if (voiceEnabled && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(msg);
+            u.lang = 'es-ES';
+            setTimeout(() => window.speechSynthesis.speak(u), 50);
         }
-
-        #splash-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: radial-gradient(circle at center, #10172a 0%, #020617 100%);
-            z-index: 10000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: opacity 0.8s ease, visibility 0.8s;
-        }
-
-        .splash-content { text-align: center; width: 350px; }
-        .corporate-header { margin-bottom: 25px; }
-        .company-name { font-size: 11px; letter-spacing: 3px; color: #fff; opacity: 0.6; text-transform: uppercase; display: block; }
-        .powered-by { font-size: 8px; color: var(--accent-cyan); letter-spacing: 1px; text-transform: uppercase; }
-
-        .hex-container {
-            width: 120px; height: 120px;
-            margin: 0 auto 30px;
-            border: 1px solid var(--accent-cyan);
-            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-            display: flex; justify-content: center; align-items: center;
-            background: rgba(0, 242, 255, 0.05);
-            animation: hex-pulse 2.5s infinite ease-in-out;
-        }
-        .hex-container img { width: 70%; filter: drop-shadow(0 0 10px #00f2ff); }
-
-        @keyframes hex-pulse {
-            0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(0,242,255,0.1); }
-            50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(0,242,255,0.3); }
-        }
-
-        .splash-title { font-size: 30px; letter-spacing: 8px; color: white; font-weight: 900; text-transform: uppercase; margin-bottom: 5px; }
-        .splash-subtitle { color: var(--accent-cyan); letter-spacing: 4px; font-size: 10px; margin-bottom: 35px; opacity: 0.8; font-weight: bold; }
-
-        .loading-bar-container { width: 200px; height: 1px; background: rgba(255,255,255,0.1); margin: 0 auto 15px; overflow: hidden; }
-        .loading-bar-fill { width: 0%; height: 100%; background: var(--accent-cyan); animation: fill-bar 4.5s forwards cubic-bezier(0.19, 1, 0.22, 1); }
-
-        .splash-status { font-family: monospace; font-size: 9px; color: #64748b; text-transform: uppercase; margin-bottom: 50px; height: 15px; }
-
-        .author-footer { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
-        .leader-by { font-size: 9px; color: #fff; opacity: 0.5; text-transform: uppercase; }
-        .engineer-name { font-size: 13px; font-weight: bold; color: #fff; display: block; letter-spacing: 1.5px; margin-top: 4px; }
-
-        @keyframes fill-bar { 0% { width: 0%; } 100% { width: 100%; } }
-        .splash-hidden { opacity: 0; visibility: hidden; }
-
-        #welcome-panel {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--primary-bg); z-index: 9000;
-            display: flex; justify-content: center; align-items: center;
-            transition: opacity 0.6s ease, visibility 0.6s;
-        }
-        .welcome-container {
-            width: 600px; padding: 40px; background: rgba(15, 23, 42, 0.85);
-            border: 1px solid var(--accent-cyan); border-radius: 16px;
-            backdrop-filter: blur(12px); box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            text-align: center;
-        }
-        .home-logo-wrapper { margin-bottom: 25px; }
-        .home-logo-img { width: 130px; margin: 10px 0 25px; filter: drop-shadow(0 0 15px rgba(0,242,255,0.4)); }
-        .header-names { display: flex; justify-content: space-between; margin-bottom: 35px; text-align: left; }
-        .corp-name { color: var(--accent-cyan); font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-        .user-name { color: #fff; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; text-align: right; }
-        .button-group { display: flex; flex-direction: column; gap: 16px; }
-        .welcome-btn {
-            background: transparent; border: 1px solid var(--accent-cyan); color: var(--accent-cyan);
-            padding: 16px 24px; font-size: 18px; font-weight: bold; text-transform: uppercase;
-            letter-spacing: 3px; border-radius: 8px; cursor: pointer; transition: all 0.3s;
-        }
-        .welcome-btn:hover { background: var(--accent-cyan); color: #000; }
-        .welcome-btn.secondary { border-color: #64748b; color: #94a3b8; }
-        .welcome-btn.secondary:hover { background: #334155; border-color: #94a3b8; color: white; }
-        .welcome-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-
-        #project-name-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 9500; display: none;
-            justify-content: center; align-items: center;
-        }
-        .modal-content {
-            width: 400px; padding: 30px; background: var(--panel-bg);
-            border: 1px solid var(--accent-cyan); border-radius: 16px; text-align: center;
-        }
-        .modal-content h3 { color: var(--accent-cyan); margin-bottom: 20px; font-size: 18px; }
-        .modal-content input { width: 100%; padding: 12px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 8px; margin-bottom: 25px; }
-        .modal-actions { display: flex; gap: 15px; justify-content: center; }
-        .modal-btn { padding: 10px 24px; background: var(--accent-blue); border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; }
-        .modal-btn.cancel { background: #334155; }
-
-        .toolbar {
-            background: var(--toolbar-bg); padding: 6px 12px; display: flex;
-            align-items: center; flex-wrap: wrap; gap: 6px;
-            border-bottom: 1px solid var(--accent-blue); box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-            z-index: 500;
-        }
-        .toolbar-logo { display: flex; align-items: center; margin-right: 10px; }
-        .toolbar-logo img { height: 24px; margin-right: 6px; }
-        .toolbar-title { color: var(--accent-cyan); font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-
-        button {
-            background: var(--button-bg); border: 1px solid var(--button-border); color: white;
-            padding: 6px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
-            cursor: pointer; transition: all 0.2s; text-transform: uppercase; white-space: nowrap;
-        }
-        button:hover { background: var(--accent-blue); border-color: var(--accent-cyan); }
-        button.active { background: var(--accent-cyan); color: #000; border-color: var(--accent-cyan); }
-
-        .dropdown { position: relative; display: inline-block; }
-        .dropdown-content {
-            display: none; position: absolute; background: var(--panel-bg);
-            min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 1; border: 1px solid var(--accent-cyan); border-radius: 4px;
-            backdrop-filter: blur(8px); right: 0;
-        }
-        .dropdown-content button { width: 100%; text-align: left; border: none; border-radius: 0; }
-        .dropdown.open > .dropdown-content { display: block; }
-
-        .canvas-container { flex: 1; background: #000; position: relative; overflow: hidden; }
-        canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
-        canvas:active { cursor: grabbing; }
-
-        #side-panel {
-            position: absolute; top: 10px; right: 10px; width: 280px; max-width: 85vw; max-height: 60vh;
-            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 242, 255, 0.3); border-radius: 8px;
-            padding: 12px; z-index: 100; overflow-y: auto; transition: transform 0.3s ease;
-        }
-        #side-panel.hidden { transform: translateX(320px); }
-        #side-panel::-webkit-scrollbar { width: 6px; }
-        #side-panel::-webkit-scrollbar-track { background: rgba(0,242,255,0.05); }
-        #side-panel::-webkit-scrollbar-thumb { background: rgba(0,242,255,0.3); border-radius: 3px; }
-        #panel-content { max-height: calc(60vh - 50px); overflow-y: auto; }
-
-        #commandPanel {
-            position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-            width: 90%; max-width: 500px; background: rgba(15, 23, 42, 0.95);
-            border-radius: 12px; border: 1px solid var(--accent-cyan);
-            z-index: 1000; display: none; backdrop-filter: blur(10px);
-            padding: 10px;
-        }
-        .command-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--accent-cyan); }
-        textarea {
-            width: 100%; margin: 0; background: #0f0f17; color: #eee;
-            border: 1px solid #3a3a4a; border-radius: 8px; padding: 10px;
-            font-family: 'Courier New', monospace; font-size: 13px; resize: vertical;
-        }
-        .command-buttons { display: flex; gap: 8px; margin-top: 8px; }
-        .history-indicator { font-size: 10px; color: #64748b; margin-top: 4px; text-align: right; }
-
-        .notification {
-            position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
-            background: #238636; padding: 8px 16px; border-radius: 8px;
-            z-index: 2000; display: none; font-weight: bold; font-size: 13px;
-            pointer-events: none;
-        }
-
-        .status-bar {
-            position: fixed; bottom: 8px; left: 12px; z-index: 300;
-            background: rgba(2, 6, 23, 0.7); padding: 4px 12px; font-size: 10px;
-            border-radius: 4px; color: var(--accent-cyan); pointer-events: none;
-            backdrop-filter: blur(4px); border: 1px solid rgba(0,242,255,0.2);
-        }
-
-        .tools-panel {
-            position: fixed; left: 10px; top: 80px; background: rgba(15, 23, 42, 0.9);
-            border-radius: 10px; padding: 6px; z-index: 400; border: 1px solid rgba(0,242,255,0.3);
-            backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 4px;
-            transition: all 0.3s;
-        }
-        .tools-panel.collapsed #toolsButtons { display: none; }
-        .tools-panel.collapsed { padding: 4px; }
-
-        #toolsButtons { display: flex; flex-direction: column; gap: 4px; }
-        #toolsButtons button { font-size: 10px; padding: 4px 8px; }
-
-        .elevation-inline { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
-        .elevation-inline span { font-size: 10px; color: var(--accent-cyan); }
-        .elevation-inline button { font-size: 10px; padding: 2px 6px; }
-        .elevation-inline input { width: 60px; background: #0f172a; border: 1px solid #334155; color: white; font-size: 10px; padding: 2px 4px; border-radius: 4px; }
-
-        #fullscreen-controls {
-            display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 9999; gap: 12px;
-        }
-
-        body.fullscreen-mode .toolbar,
-        body.fullscreen-mode #side-panel,
-        body.fullscreen-mode #commandPanel,
-        body.fullscreen-mode .status-bar,
-        body.fullscreen-mode .tools-panel,
-        body.fullscreen-mode #notification { display: none !important; }
-        body.fullscreen-mode .canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
-        body.fullscreen-mode #fullscreen-controls { display: flex !important; }
-
-        @media (max-width: 768px) {
-            .toolbar button { font-size: 9px; padding: 4px 6px; }
-            .toolbar-title { font-size: 14px; }
-            #side-panel { width: 260px; right: 5px; }
-            .tools-panel { top: 70px; left: 4px; }
-        }
-    </style>
-</head>
-<body>
-
-    <div id="splash-screen">
-        <div class="splash-content">
-            <div class="corporate-header">
-                <span class="company-name">AcQuaBlue International Corp.</span>
-                <span class="powered-by">Smart Engineering Systems</span>
-            </div>
-            <div class="hex-container">
-                <img src="img/logo.PNG" alt="Logo" onerror="this.style.display='none'">
-            </div>
-            <h1 class="splash-title">SmartEngp</h1>
-            <p class="splash-subtitle">INGENIERÍA INTELIGENTE</p>
-            <div class="loading-bar-container"><div class="loading-bar-fill"></div></div>
-            <div class="splash-status" id="splash-status">Inicializando protocolos SmartEngp...</div>
-            <div class="author-footer">
-                <span class="leader-by">Ingeniero Líder de Proyecto:</span>
-                <span class="engineer-name">Ing. Osnay Romero</span>
-            </div>
-        </div>
-    </div>
-
-    <div id="welcome-panel">
-        <div class="welcome-container">
-            <div class="home-logo-wrapper">
-                <img src="img/logo.PNG" alt="Logo" class="home-logo-img" onerror="this.style.display='none'">
-            </div>
-            <div class="header-names">
-                <h1 class="corp-name">ACQUABLUE<br>INTERNATIONAL CORP.</h1>
-                <h2 class="user-name">ING.<br>OSNAY ROMERO</h2>
-            </div>
-            <div class="button-group">
-                <button class="welcome-btn" id="welcome-new-project">➕ NUEVO PROYECTO</button>
-                <button class="welcome-btn secondary" id="welcome-open-project">📂 ABRIR PROYECTO EXISTENTE</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="project-name-modal">
-        <div class="modal-content">
-            <h3>Nuevo Proyecto</h3>
-            <input type="text" id="project-name-input" placeholder="Nombre del proyecto" value="Proyecto_SmartEngp">
-            <div class="modal-actions">
-                <button class="modal-btn" id="modal-accept">Aceptar</button>
-                <button class="modal-btn cancel" id="modal-skip">Saltar</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="toolbar" role="toolbar">
-        <div class="toolbar-logo">
-            <img src="img/logo.PNG" alt="Logo" style="height: 24px;" onerror="this.style.display='none'">
-            <span class="toolbar-title">SmartEngp</span>
-        </div>
         
-        <div class="dropdown">
-            <button id="btnFileMenu">📂 Archivo</button>
-            <div class="dropdown-content">
-                <button id="btnOpen">📂 Abrir</button>
-                <button id="btnSave">💾 Guardar</button>
-                <button id="btnExportProject">📤 Exportar Proy</button>
-                <button id="btnImportProject">📥 Importar Proy</button>
+        setTimeout(() => { if (notificationEl) notificationEl.style.display = 'none'; }, 4000);
+    }
+    
+    function voiceFn(msg) {
+        if (voiceEnabled && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(msg);
+            u.lang = 'es-ES';
+            window.speechSynthesis.speak(u);
+        }
+    }
+    
+    function scheduleRender() {
+        if (window.SmartFlowRenderer) window.SmartFlowRenderer.render();
+    }
+    
+    function autoCenter() {
+        if (window.SmartFlowRenderer) {
+            window.SmartFlowRenderer.autoCenter();
+            notify("✅ Vista centrada correctamente.", false);
+        }
+    }
+    
+    function toggleFullscreen() {
+        document.body.classList.add('fullscreen-mode');
+        if (window.SmartFlowRenderer) {
+            window.SmartFlowRenderer.resizeCanvas();
+            window.SmartFlowRenderer.autoCenter();
+        }
+    }
+    
+    function exitFullscreen() {
+        document.body.classList.remove('fullscreen-mode');
+        if (window.SmartFlowRenderer) {
+            window.SmartFlowRenderer.resizeCanvas();
+            window.SmartFlowRenderer.autoCenter();
+        }
+    }
+    
+    function togglePanel(show) {
+        if (sidePanel) {
+            if (show) sidePanel.classList.remove('hidden');
+            else sidePanel.classList.add('hidden');
+        }
+    }
+    
+    let _allPanelsVisible = true;
+    function toggleAllPanels() {
+        _allPanelsVisible = !_allPanelsVisible;
+        if (sidePanel) sidePanel.style.display = _allPanelsVisible ? '' : 'none';
+        const toolsPanel = document.getElementById('toolsPanel');
+        if (toolsPanel) toolsPanel.style.display = _allPanelsVisible ? '' : 'none';
+        if (commandPanel && commandPanel.style.display === 'block') {
+            commandPanel.style.display = _allPanelsVisible ? 'block' : 'none';
+        }
+        const btn = document.getElementById('btnTogglePanels');
+        if (btn) {
+            btn.textContent = _allPanelsVisible ? '👁️' : '👁️‍🗨️';
+            if (!_allPanelsVisible) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    }
+    
+    function updatePropertyPanel(info) {
+        if (!panelContent) return;
+        if (!info) { togglePanel(false); return; }
+        togglePanel(true);
+        panelContent.innerHTML = `
+            <div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">${info.tag || 'N/A'}</span></div>
+            <div class="prop-group"><span class="prop-label">TIPO</span><span class="prop-value">${info.tipo || 'Desconocido'}</span></div>
+            <div class="prop-group"><span class="prop-label">MATERIAL</span><span class="prop-value">${info.material || 'N/A'}</span></div>
+            <div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">${info.diametro || 'N/A'}</span></div>
+            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
+            <div class="prop-group"><span class="prop-label">PUERTOS</span>
+                ${info.puertos && info.puertos.length ? info.puertos.map(p => `
+                    <div class="port-item"><span>${p.id}</span><span class="${p.status === 'open' ? 'port-open' : 'port-connected'}">${p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO a ' + (p.connectedTo || '')}</span></div>
+                `).join('') : '<p>Sin puertos</p>'}
             </div>
-        </div>
+        `;
+    }
+    
+    // -------------------- 5. INICIALIZACIÓN DE MÓDULOS --------------------
+    function initModules() {
+        SmartFlowCore.init(notify, scheduleRender, updatePropertyPanel);
         
-        <button id="btnReset">🔄 Centrar</button>
-        <button id="btnFullscreen">⛶ Full</button>
-        <button id="btnCommand">🤖 Cmd</button>
-        <button id="btnMTO">📊 MTO</button>
-        <button id="btnPDF">📄 PDF</button>
-        <button id="btnTogglePanels" title="Mostrar/ocultar paneles">👁️</button>
+        if (typeof SmartFlowRenderer !== 'undefined') {
+            SmartFlowRenderer.init(canvas, SmartFlowCore, notify);
+        }
         
-        <div class="dropdown">
-            <button id="btnMoreMenu">⚙️ +</button>
-            <div class="dropdown-content">
-                <button id="btnAddTank">🏭 Tanque</button>
-                <button id="btnAddPump">⚙️ Bomba</button>
-                <button id="btnUndo">↩️ Undo</button>
-                <button id="btnRedo">↪️ Redo</button>
-                <button id="btnVoice">🔊 Voz ON</button>
-                <button id="btnExportPCF">📦 Export PCF</button>
-                <button id="btnImportPCF">📂 Import PCF</button>
-                <button id="btnApplyNorm">📐 Normas</button>
-                <button id="btnSpeakSummary">📢 Resumen</button>
-                <button id="btnRecalc">🔄 Recalcular</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="canvas-container" id="canvas-container">
-        <canvas id="isoCanvas"></canvas>
-        <div id="side-panel" class="property-panel hidden">
-            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="color:var(--accent-cyan); font-weight:bold;">PROPIEDADES TÉCNICAS</span>
-                <button onclick="togglePanel(false)" style="background:none;border:none;color:white;font-size:18px;padding:0;width:24px;">×</button>
-            </div>
-            <div id="panel-content"><p class="empty-msg">Seleccione un elemento para ver sus detalles</p></div>
-        </div>
-    </div>
-
-    <div id="commandPanel" class="command-panel">
-        <div class="command-header">
-            <strong>🤖 Comandos IA</strong>
-            <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;">✖</button>
-        </div>
-        <textarea id="commandText" rows="3" placeholder="Ej: conectar TK-01 N1 to B-01 SUC diametro 3&#10;Ej: crear tanque_v TK-02 at (3000,1450,0) diam 2000 altura 2500"></textarea>
-        <div class="history-indicator" id="historyIndicator"></div>
-        <div class="command-buttons">
-            <button id="runCommands">Ejecutar</button>
-            <button id="clearCommand">Limpiar</button>
-        </div>
-    </div>
-
-    <div id="notification" class="notification"></div>
-
-    <div class="status-bar" id="statusMsg">SISTEMA LISTO | SmartEngp</div>
-
-    <div class="tools-panel" id="toolsPanel">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <span style="font-size:10px; color:var(--accent-cyan);">HERRAMIENTAS</span>
-            <button id="toolToggleHide" style="padding:2px 6px; font-size:10px; background:none; border:1px solid #334155;">−</button>
-        </div>
-        <div id="toolsButtons">
-            <button id="toolSelect" class="active">🔍 Seleccionar</button>
-            <button id="toolMoveEq">✋ Mover equipo</button>
-            <button id="toolEditPipe">✏️ Editar tubería</button>
-            <button id="toolAddPoint">➕ Añadir punto</button>
-            <div class="elevation-inline">
-                <span>📐 Elev:</span>
-                <button onclick="setElevation(0)">0</button>
-                <button onclick="setElevation(2500)">2.5m</button>
-                <button onclick="setElevation(5000)">5.0m</button>
-                <input type="number" id="customElev" value="0" step="100" style="width:60px;">
-                <button id="btnSetElev">Set</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="fullscreen-controls">
-        <button id="btnFullscreenCenter" style="padding:12px 20px; border-radius:30px; background:var(--accent-cyan); color:#000; font-weight:bold; border:none;">🔄 Centrar</button>
-        <button id="btnFullscreenExit" style="padding:12px 20px; border-radius:30px; background:#ef4444; color:white; font-weight:bold; border:none;">✕ Salir</button>
-    </div>
-
-    <script src="js/catalog.js"></script>
-    <script src="js/core.js"></script>
-    <script src="js/router.js"></script>
-    <script src="js/renderer.js"></script>
-    <script src="js/commands.js"></script>
-    <script src="js/main.js"></script>
-</body>
-</html>
-```
-
-Cambios clave respecto al HTML anterior:
-
-1. Botón "Archivo" ahora tiene id="btnFileMenu" (antes no tenía ID).
-2. Regla CSS cambiada de .dropdown:hover .dropdown-content a .dropdown.open > .dropdown-content para que solo se abra con JavaScript, no con hover.
-3. main.js ya está preparado para manejar btnFileMenu y btnMoreMenu con la misma lógica de toggle (abrir/cerrar al hacer clic, cerrar al hacer clic fuera).
-
-En main.js, la función que maneja los menús es:
-
-```javascript
-// Manejo unificado de dropdowns
-const dropdownButtons = ['btnFileMenu', 'btnMoreMenu'];
-dropdownButtons.forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const parent = this.closest('.dropdown');
-            if (parent) parent.classList.toggle('open');
+        if (typeof SmartFlowRouter !== 'undefined') {
+            SmartFlowRouter.init(SmartFlowCore, SmartFlowCatalog, notify, scheduleRender);
+        }
+        
+        SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, scheduleRender, voiceFn);
+        
+        SmartFlowCore.setVoice(voiceEnabled);
+        
+        notify("Smart Engineering - Sistema listo", false);
+    }
+    
+    // -------------------- 6. GESTIÓN DE PROYECTOS --------------------
+    function guardarProyecto() {
+        const state = SmartFlowCore.exportProject();
+        localStorage.setItem('smartengp_v2_project', state);
+        notify("✅ Proyecto guardado en el navegador.", false);
+    }
+    
+    function cargarProyecto() {
+        const data = localStorage.getItem('smartengp_v2_project');
+        if (data) {
+            try {
+                const state = JSON.parse(data);
+                SmartFlowCore.importState(state.data || state);
+                autoCenter();
+                notify("✅ Proyecto cargado correctamente.", false);
+            } catch (e) {
+                notify("Error al cargar el proyecto: archivo corrupto.", true);
+            }
+        } else {
+            notify("No hay proyecto guardado.", true);
+        }
+    }
+    
+    function exportarProyectoArchivo() {
+        const state = SmartFlowCore.exportProject();
+        const blob = new Blob([state], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${window.currentProjectName || 'Proyecto'}_SmartEngp.json`;
+        a.click();
+        notify("✅ Proyecto exportado como archivo JSON.", false);
+    }
+    
+    function importarProyectoArchivo() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const state = JSON.parse(ev.target.result);
+                    SmartFlowCore.importState(state.data || state);
+                    autoCenter();
+                    notify("✅ Proyecto importado correctamente.", false);
+                } catch (err) {
+                    notify("Error al importar el proyecto: archivo corrupto.", true);
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    }
+    
+    function nuevoProyecto() {
+        if (confirm("¿Desea crear un nuevo proyecto? Se perderán los cambios no guardados.")) {
+            SmartFlowCore.nuevoProyecto();
+            autoCenter();
+        }
+    }
+    
+    function iniciarNuevoProyecto() {
+        const name = projectInput ? projectInput.value.trim() : '';
+        if (name) window.currentProjectName = name;
+        if (projectModal) projectModal.style.display = 'none';
+        if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
+        SmartFlowCore.nuevoProyecto();
+        if (statusMsgEl) statusMsgEl.textContent = `Proyecto: ${window.currentProjectName} | Listo`;
+        autoCenter();
+    }
+    
+    function saltarNombreProyecto() {
+        if (projectModal) projectModal.style.display = 'none';
+        if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
+        if (statusMsgEl) statusMsgEl.textContent = `Proyecto: ${window.currentProjectName} | Listo`;
+    }
+    
+    // -------------------- 7. MTO Y RESUMEN --------------------
+    function exportarMTO() {
+        const equipos = SmartFlowCore.getEquipos();
+        const lines = SmartFlowCore.getLines();
+        let items = [];
+        equipos.forEach(eq => { if (eq.tipo !== 'colector') items.push([eq.tag, eq.tipo, "Und", 1]); });
+        lines.forEach(line => {
+            let length = 0;
+            const pts = SmartFlowCore.getLinePoints(line);
+            if (pts) for (let i = 0; i < pts.length - 1; i++) length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
+            items.push([line.tag, `Tubería ${line.material || 'PPR'} ${line.diameter}"`, "m", (length / 1000).toFixed(2)]);
+            if (line.components) {
+                line.components.forEach(comp => {
+                    items.push([comp.tag || `ACC-${line.tag}`, comp.type, "Und", 1]);
+                });
+            }
+        });
+        if (items.length === 0) { notify("No hay elementos para exportar.", true); return; }
+        const ws = XLSX.utils.aoa_to_sheet([["Tag", "Descripción", "Unidad", "Cantidad"], ...items]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "MTO");
+        XLSX.writeFile(wb, `MTO_${Date.now()}.xlsx`);
+        notify("✅ MTO exportado correctamente.", false);
+    }
+    
+    function resumenProyecto() {
+        const equipos = SmartFlowCore.getEquipos();
+        const lines = SmartFlowCore.getLines();
+        const tanques = equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
+        const bombas = equipos.filter(e => e.tipo && e.tipo.includes('bomba'));
+        let totalCodos = 0, totalTees = 0, totalReducciones = 0, totalValvulas = 0;
+        lines.forEach(l => {
+            if (l.components) {
+                l.components.forEach(c => {
+                    const type = c.type || '';
+                    if (type.includes('ELBOW')) totalCodos++;
+                    else if (type.includes('TEE')) totalTees++;
+                    else if (type.includes('REDUCER')) totalReducciones++;
+                    else if (type.includes('VALVE')) totalValvulas++;
+                });
+            }
+        });
+        const resumen = `Proyecto: ${equipos.length} equipos (${tanques.length} tanques, ${bombas.length} bombas), ${lines.length} tuberías, ${totalCodos} codos, ${totalTees} tees, ${totalReducciones} reducciones, ${totalValvulas} válvulas.`;
+        notify(resumen, false);
+    }
+    
+    // -------------------- 8. HERRAMIENTAS --------------------
+    function setTool(mode) {
+        toolMode = mode;
+        const buttons = {
+            select: document.getElementById('toolSelect'),
+            moveEq: document.getElementById('toolMoveEq'),
+            editPipe: document.getElementById('toolEditPipe'),
+            addPoint: document.getElementById('toolAddPoint')
+        };
+        Object.values(buttons).forEach(btn => { if (btn) btn.classList.remove('active'); });
+        if (buttons[mode]) buttons[mode].classList.add('active');
+    }
+    
+    window.setElevation = function(level) {
+        SmartFlowCore.setElevation(level);
+        if (window.SmartFlowRenderer) window.SmartFlowRenderer.setElevation(level);
+        if (customElev) customElev.value = level;
+    };
+    
+    function toggleVoice() {
+        voiceEnabled = !voiceEnabled;
+        SmartFlowCore.setVoice(voiceEnabled);
+        const btnVoice = document.getElementById('btnVoice');
+        if (btnVoice) btnVoice.textContent = voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
+        notify(voiceEnabled ? "✅ Voz activada" : "🔇 Voz desactivada", false);
+    }
+    
+    // -------------------- 9. ATAJOS DE TECLADO --------------------
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', function(e) {
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') && activeEl.id !== 'commandText') return;
+            
+            if (e.ctrlKey && e.shiftKey) {
+                switch(e.key.toUpperCase()) {
+                    case 'C': e.preventDefault(); abrirPanelComandos(); break;
+                    case 'R': e.preventDefault(); resumenProyecto(); break;
+                    case 'V': e.preventDefault(); autoCenter(); break;
+                    case 'U': e.preventDefault(); SmartFlowCore.undo(); scheduleRender(); notify("✅ Acción deshecha.", false); break;
+                    case 'Y': e.preventDefault(); SmartFlowCore.redo(); scheduleRender(); notify("✅ Acción rehecha.", false); break;
+                    case 'M': e.preventDefault(); exportarMTO(); break;
+                    case 'P': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) { SmartFlowRenderer.exportPDF(); notify("✅ PDF generado correctamente.", false); } break;
+                    case 'E': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) { SmartFlowRenderer.exportPCF(); notify("✅ Archivo PCF exportado correctamente.", false); } break;
+                }
+            }
         });
     }
-});
-// Cerrar dropdowns al hacer clic fuera
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.dropdown')) {
-        document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+    
+    // -------------------- 10. EVENTOS DEL CANVAS --------------------
+    function initCanvasEvents() {
+        if (!canvas) return;
+        
+        canvas.addEventListener('mousedown', function(e) {
+            if (toolMode !== 'moveEq' && toolMode !== 'addPoint') return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const mouse = {
+                x: (e.clientX - rect.left) * canvas.width / rect.width,
+                y: (e.clientY - rect.top) * canvas.height / rect.height
+            };
+            
+            if (toolMode === 'moveEq') {
+                const picked = SmartFlowRenderer.pickElement(mouse);
+                if (picked && picked.type === 'equipment') {
+                    draggingEquipment = true;
+                    draggedEquipTag = picked.obj.tag;
+                    dragLastPos = { x: e.clientX, y: e.clientY };
+                    canvas.style.cursor = 'grabbing';
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            } else if (toolMode === 'addPoint') {
+                const selected = SmartFlowCore.getSelected();
+                if (selected && selected.type === 'line') {
+                    const worldPos = SmartFlowRenderer.inverseProject(mouse.x, mouse.y);
+                    const line = selected.obj;
+                    const pts = SmartFlowCore.getLinePoints(line);
+                    if (pts) {
+                        pts.push(worldPos);
+                        line._cachedPoints = pts;
+                        SmartFlowCore.updateLine(line.tag, { _cachedPoints: pts });
+                        SmartFlowCore.syncPhysicalData();
+                        scheduleRender();
+                        notify(`✅ Punto añadido a ${line.tag}`, false);
+                    }
+                }
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        });
+        
+        window.addEventListener('mousemove', function(e) {
+            if (!draggingEquipment || !draggedEquipTag) return;
+            const dx = (e.clientX - dragLastPos.x) / SmartFlowRenderer.getCam().scale;
+            const dy = (e.clientY - dragLastPos.y) / SmartFlowRenderer.getCam().scale;
+            const eq = SmartFlowCore.findObjectByTag(draggedEquipTag);
+            if (eq) {
+                eq.posX += dx;
+                eq.posZ += dy;
+            }
+            dragLastPos = { x: e.clientX, y: e.clientY };
+            scheduleRender();
+        });
+        
+        window.addEventListener('mouseup', function() {
+            if (draggingEquipment) {
+                SmartFlowCore.syncPhysicalData();
+                SmartFlowCore._saveState();
+            }
+            draggingEquipment = false;
+            draggedEquipTag = null;
+            if (canvas) canvas.style.cursor = 'grab';
+        });
     }
-});
+    
+    // -------------------- 11. CABLEADO DE BOTONES --------------------
+    function abrirPanelComandos() {
+        if (commandPanel) {
+            commandPanel.style.display = 'block';
+            if (commandText) commandText.focus();
+        }
+    }
+    
+    function ejecutarComando() {
+        if (!commandText) return;
+        const cmd = commandText.value.trim();
+        if (!cmd) return;
+        
+        let success = true;
+        if (typeof SmartFlowCommands !== 'undefined') {
+            const result = SmartFlowCommands.executeCommand(cmd);
+            success = (result !== false);
+        }
+        
+        if (success) {
+            addToHistory(cmd);
+        }
+        
+        commandText.value = '';
+        _historyIndex = _commandHistory.length;
+        
+        const lower = cmd.toLowerCase();
+        if (!lower.startsWith('info') && !lower.startsWith('coordenadas') && 
+            !lower.startsWith('nodos') && !lower.startsWith('listar') && 
+            !lower.startsWith('list') && !lower.startsWith('ayuda') && 
+            !lower.startsWith('help') && !lower.startsWith('bom') && 
+            !lower.startsWith('mto') && !lower.startsWith('audit')) {
+            if (commandPanel) commandPanel.style.display = 'none';
+        }
+    }
+    
+    function bindEvents() {
+        const vincular = (id, accion) => {
+            const el = document.getElementById(id);
+            if (el) el.onclick = accion;
+        };
+        
+        vincular('welcome-new-project', () => { if (projectModal) projectModal.style.display = 'flex'; });
+        vincular('welcome-open-project', () => {
+            cargarProyecto();
+            if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
+        });
+        vincular('modal-accept', iniciarNuevoProyecto);
+        vincular('modal-skip', saltarNombreProyecto);
+        
+        vincular('btnOpen', cargarProyecto);
+        vincular('btnSave', guardarProyecto);
+        vincular('btnExportProject', exportarProyectoArchivo);
+        vincular('btnImportProject', importarProyectoArchivo);
+        
+        vincular('btnReset', autoCenter);
+        vincular('btnFullscreen', toggleFullscreen);
+        vincular('btnFullscreenCenter', autoCenter);
+        vincular('btnFullscreenExit', exitFullscreen);
+        vincular('btnTogglePanels', toggleAllPanels);
+        
+        vincular('btnCommand', abrirPanelComandos);
+        vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
+        vincular('clearCommand', () => { if (commandText) { commandText.value = ''; _historyIndex = _commandHistory.length; } });
+        vincular('runCommands', ejecutarComando);
+        
+        vincular('btnAddTank', () => {
+            const equipos = SmartFlowCore.getEquipos();
+            const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
+            const ult = equipos[equipos.length - 1];
+            const x = ult ? ult.posX + 3000 : 0;
+            SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
+            notify(`✅ Equipo ${tag} creado.`, false);
+        });
+        vincular('btnAddPump', () => {
+            const equipos = SmartFlowCore.getEquipos();
+            const tag = `B-${equipos.filter(e => e.tipo && e.tipo.includes('bomba')).length + 1}`;
+            const ult = equipos[equipos.length - 1];
+            const x = ult ? ult.posX + 3000 : 5000;
+            SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
+            notify(`✅ Equipo ${tag} creado.`, false);
+        });
+        
+        vincular('toolSelect', () => setTool('select'));
+        vincular('toolMoveEq', () => setTool('moveEq'));
+        vincular('toolEditPipe', () => setTool('editPipe'));
+        vincular('toolAddPoint', () => setTool('addPoint'));
+        vincular('toolToggleHide', () => {
+            const panel = document.getElementById('toolsPanel');
+            const buttons = document.getElementById('toolsButtons');
+            const toggleBtn = document.getElementById('toolToggleHide');
+            if (buttons.style.display === 'none') {
+                buttons.style.display = 'flex';
+                buttons.style.flexDirection = 'column';
+                buttons.style.gap = '4px';
+                if (toggleBtn) toggleBtn.textContent = '−';
+                if (panel) panel.classList.remove('collapsed');
+            } else {
+                buttons.style.display = 'none';
+                if (toggleBtn) toggleBtn.textContent = '+';
+                if (panel) panel.classList.add('collapsed');
+            }
+        });
+        
+        vincular('btnMTO', exportarMTO);
+        vincular('btnPDF', () => { 
+            if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) {
+                SmartFlowRenderer.exportPDF();
+                notify("✅ PDF generado correctamente.", false);
+            }
+        });
+        vincular('btnExportPCF', () => { 
+            if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) {
+                SmartFlowRenderer.exportPCF();
+                notify("✅ Archivo PCF exportado correctamente.", false);
+            }
+        });
+        vincular('btnImportPCF', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pcf,.txt';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => { SmartFlowCommands.importPCF(ev.target.result); };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        });
+        
+        vincular('btnUndo', () => { SmartFlowCore.undo(); scheduleRender(); notify("✅ Acción deshecha.", false); });
+        vincular('btnRedo', () => { SmartFlowCore.redo(); scheduleRender(); notify("✅ Acción rehecha.", false); });
+        vincular('btnVoice', toggleVoice);
+        vincular('btnSpeakSummary', resumenProyecto);
+        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); scheduleRender(); notify("✅ Recálculo completado.", false); });
+        vincular('btnSetElev', () => {
+            const val = parseInt(customElev?.value);
+            if (!isNaN(val)) window.setElevation(val);
+        });
+        vincular('btnApplyNorm', () => notify("Función de normas en desarrollo.", false));
+        
+        // ---- MENÚS DROPDOWN (Archivo y ⚙️ +) ----
+        function setupDropdown(buttonId) {
+            const btn = document.getElementById(buttonId);
+            if (!btn) return;
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const parent = this.closest('.dropdown');
+                if (parent) parent.classList.toggle('open');
+            });
+        }
+        setupDropdown('btnFileMenu');
+        setupDropdown('btnMoreMenu');
+        
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.dropdown')) {
+                document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+            }
+        });
+        
+        if (commandText) {
+            commandText.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    navigateHistory('up');
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    navigateHistory('down');
+                }
+            });
+        }
+        
+        window.addEventListener('resize', () => {
+            if (window.SmartFlowRenderer) window.SmartFlowRenderer.resizeCanvas();
+            autoCenter();
+        });
+    }
+    
+    // -------------------- 12. ARRANQUE DE LA APLICACIÓN --------------------
+    function init() {
+        window.currentProjectName = window.currentProjectName || 'Proyecto_SmartEngp';
+        window.voiceEnabled = true;
+        
+        const splashStatus = document.getElementById('splash-status');
+        const messages = [
+            "Cargando librerías de AcQuaBlue...",
+            "Sincronizando modelos de objetos inteligentes...",
+            "Optimizando motor gráfico isométrico...",
+            "Iniciando interfaz de Ing. Osnay Romero...",
+            "¡SmartEngp Activo!"
+        ];
+        let msgIndex = 0;
+        const interval = setInterval(() => {
+            if (msgIndex < messages.length && splashStatus) {
+                splashStatus.textContent = messages[msgIndex];
+                msgIndex++;
+            }
+        }, 800);
+        
+        initModules();
+        bindEvents();
+        initCanvasEvents();
+        setupKeyboardShortcuts();
+        setTool('select');
+        window.setElevation(0);
+        
+        setTimeout(() => {
+            if (splashScreen) splashScreen.classList.add('splash-hidden');
+            clearInterval(interval);
+        }, 4500);
+        
+        setTimeout(() => {
+            if (welcomePanel) welcomePanel.classList.remove('welcome-hidden');
+        }, 4800);
+        
+        if (window.innerWidth < 768) {
+            togglePanel(false);
+        }
+        
+        setTimeout(() => {
+            if (window.SmartFlowRenderer) window.SmartFlowRenderer.resizeCanvas();
+            autoCenter();
+        }, 100);
+    }
+    
+    init();
+})();
