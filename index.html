@@ -82,37 +82,22 @@
         .splash-hidden { opacity: 0; visibility: hidden; }
 
         #welcome-panel {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: var(--primary-bg);
-            z-index: 9000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--primary-bg); z-index: 9000;
+            display: flex; justify-content: center; align-items: center;
             transition: opacity 0.6s ease, visibility 0.6s;
         }
-
         .welcome-container {
-            width: 600px;
-            padding: 40px;
-            background: rgba(15, 23, 42, 0.85);
-            border: 1px solid var(--accent-cyan);
-            border-radius: 16px;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative;
-            overflow: hidden;
+            width: 600px; padding: 40px; background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--accent-cyan); border-radius: 16px;
+            backdrop-filter: blur(12px); box-shadow: 0 20px 40px rgba(0,0,0,0.6);
             text-align: center;
         }
-
-        .home-logo-wrapper { text-align: center; margin-bottom: 25px; }
-        .home-logo-img { width: 130px; margin-top: 10px; margin-bottom: 25px; filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.4)); }
-
+        .home-logo-wrapper { margin-bottom: 25px; }
+        .home-logo-img { width: 130px; margin: 10px 0 25px; filter: drop-shadow(0 0 15px rgba(0,242,255,0.4)); }
         .header-names { display: flex; justify-content: space-between; margin-bottom: 35px; text-align: left; }
         .corp-name { color: var(--accent-cyan); font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
         .user-name { color: #fff; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; text-align: right; }
-
         .button-group { display: flex; flex-direction: column; gap: 16px; }
         .welcome-btn {
             background: transparent; border: 1px solid var(--accent-cyan); color: var(--accent-cyan);
@@ -140,120 +125,115 @@
         .modal-btn.cancel { background: #334155; }
 
         .toolbar {
-            background: var(--toolbar-bg); padding: 10px 16px; display: flex;
-            align-items: center; flex-wrap: wrap; gap: 8px;
-            border-bottom: 1px solid var(--accent-blue); box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            background: var(--toolbar-bg); padding: 6px 12px; display: flex;
+            align-items: center; flex-wrap: wrap; gap: 6px;
+            border-bottom: 1px solid var(--accent-blue); box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+            z-index: 500;
         }
-        .toolbar-logo { display: flex; align-items: center; margin-right: 15px; }
-        .toolbar-logo img { height: 28px; margin-right: 8px; }
-        .toolbar-title { color: var(--accent-cyan); font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
+        .toolbar-logo { display: flex; align-items: center; margin-right: 10px; }
+        .toolbar-logo img { height: 24px; margin-right: 6px; }
+        .toolbar-title { color: var(--accent-cyan); font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
 
         button {
             background: var(--button-bg); border: 1px solid var(--button-border); color: white;
-            padding: 8px 14px; border-radius: 4px; font-size: 12px; font-weight: 600;
-            cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+            padding: 6px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; text-transform: uppercase; white-space: nowrap;
         }
         button:hover { background: var(--accent-blue); border-color: var(--accent-cyan); }
+        button.active { background: var(--accent-cyan); color: #000; border-color: var(--accent-cyan); }
 
-        .dropdown {
-            position: relative;
-            display: inline-block;
-        }
+        .dropdown { position: relative; display: inline-block; }
         .dropdown-content {
-            display: none;
-            position: absolute;
-            background: var(--panel-bg);
-            min-width: 160px;
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 1;
-            border: 1px solid var(--accent-cyan);
-            border-radius: 4px;
-            backdrop-filter: blur(8px);
+            display: none; position: absolute; background: var(--panel-bg);
+            min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1; border: 1px solid var(--accent-cyan); border-radius: 4px;
+            backdrop-filter: blur(8px); right: 0;
         }
-        .dropdown-content button {
-            width: 100%;
-            text-align: left;
-            border: none;
-            border-radius: 0;
-        }
-        .dropdown:hover .dropdown-content {
-            display: block;
-        }
+        .dropdown-content button { width: 100%; text-align: left; border: none; border-radius: 0; }
+        .dropdown:hover .dropdown-content { display: block; }
 
         .canvas-container { flex: 1; background: #000; position: relative; overflow: hidden; }
-        canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+        canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
         canvas:active { cursor: grabbing; }
 
-        .property-panel {
-            position: absolute; top: 20px; right: 20px; width: 280px; max-height: 80vh;
-            background: var(--panel-bg); backdrop-filter: blur(10px);
-            border: 1px solid var(--accent-blue); border-radius: 8px;
-            padding: 15px; z-index: 100; overflow-y: auto; transition: transform 0.3s ease;
+        #side-panel {
+            position: absolute; top: 10px; right: 10px; width: 280px; max-width: 85vw; max-height: 60vh;
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 242, 255, 0.3); border-radius: 8px;
+            padding: 12px; z-index: 100; overflow-y: auto; transition: transform 0.3s ease;
         }
-        .property-panel.hidden { transform: translateX(320px); }
+        #side-panel.hidden { transform: translateX(320px); }
+        #side-panel::-webkit-scrollbar { width: 6px; }
+        #side-panel::-webkit-scrollbar-track { background: rgba(0,242,255,0.05); }
+        #side-panel::-webkit-scrollbar-thumb { background: rgba(0,242,255,0.3); border-radius: 3px; }
+        #panel-content { max-height: calc(60vh - 50px); overflow-y: auto; }
 
-        .command-panel {
-            position: fixed; left: 10px; bottom: 10px; width: 90%; max-width: 500px;
-            background: var(--panel-bg); border-radius: 12px;
-            border: 1px solid var(--accent-cyan); z-index: 1000; display: none;
+        #commandPanel {
+            position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+            width: 90%; max-width: 500px; background: rgba(15, 23, 42, 0.95);
+            border-radius: 12px; border: 1px solid var(--accent-cyan);
+            z-index: 1000; display: none; backdrop-filter: blur(10px);
+            padding: 10px;
         }
+        .command-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--accent-cyan); }
         textarea {
-            width: calc(100% - 24px); margin: 12px; background: #0f0f17; color: #eee;
-            border: 1px solid #3a3a4a; border-radius: 8px; padding: 12px; font-family: 'Courier New', monospace;
+            width: 100%; margin: 0; background: #0f0f17; color: #eee;
+            border: 1px solid #3a3a4a; border-radius: 8px; padding: 10px;
+            font-family: 'Courier New', monospace; font-size: 13px; resize: vertical;
         }
+        .command-buttons { display: flex; gap: 8px; margin-top: 8px; }
+        .history-indicator { font-size: 10px; color: #64748b; margin-top: 4px; text-align: right; }
+
         .notification {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            background: #238636; padding: 10px 20px; border-radius: 8px;
-            z-index: 2000; display: none; font-weight: bold;
+            position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+            background: #238636; padding: 8px 16px; border-radius: 8px;
+            z-index: 2000; display: none; font-weight: bold; font-size: 13px;
+            pointer-events: none;
         }
+
         .status-bar {
-            background: #020617; padding: 8px 20px; font-size: 10px;
-            border-top: 1px solid var(--accent-blue); color: var(--accent-cyan);
-            display: flex; justify-content: space-between;
+            position: fixed; bottom: 8px; left: 12px; z-index: 300;
+            background: rgba(2, 6, 23, 0.7); padding: 4px 12px; font-size: 10px;
+            border-radius: 4px; color: var(--accent-cyan); pointer-events: none;
+            backdrop-filter: blur(4px); border: 1px solid rgba(0,242,255,0.2);
         }
+
         .tools-panel {
-            position: fixed; left: 20px; top: 100px; background: var(--panel-bg);
-            border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
-            z-index: 900; border: 1px solid var(--accent-blue);
+            position: fixed; left: 10px; top: 80px; background: rgba(15, 23, 42, 0.9);
+            border-radius: 10px; padding: 6px; z-index: 400; border: 1px solid rgba(0,242,255,0.3);
+            backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 4px;
+            transition: all 0.3s;
         }
-        .elevation-panel {
-            position: fixed; bottom: 20px; right: 20px; background: var(--panel-bg);
-            padding: 8px 12px; border-radius: 8px; border: 1px solid var(--accent-cyan);
-            z-index: 900; display: flex; gap: 6px; align-items: center;
+        .tools-panel.collapsed #toolsButtons { display: none; }
+        .tools-panel.collapsed { padding: 4px; }
+
+        #toolsButtons { display: flex; flex-direction: column; gap: 4px; }
+        #toolsButtons button { font-size: 10px; padding: 4px 8px; }
+
+        .elevation-inline { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+        .elevation-inline span { font-size: 10px; color: var(--accent-cyan); }
+        .elevation-inline button { font-size: 10px; padding: 2px 6px; }
+        .elevation-inline input { width: 60px; background: #0f172a; border: 1px solid #334155; color: white; font-size: 10px; padding: 2px 4px; border-radius: 4px; }
+
+        #fullscreen-controls {
+            display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 9999; gap: 12px;
         }
 
         body.fullscreen-mode .toolbar,
-        body.fullscreen-mode .property-panel,
-        body.fullscreen-mode .command-panel,
+        body.fullscreen-mode #side-panel,
+        body.fullscreen-mode #commandPanel,
         body.fullscreen-mode .status-bar,
         body.fullscreen-mode .tools-panel,
-        body.fullscreen-mode .elevation-panel,
-        body.fullscreen-mode #notification {
-            display: none !important;
-        }
-        body.fullscreen-mode .canvas-container {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
-        }
-        body.fullscreen-mode #fullscreen-controls {
-            display: flex !important;
-        }
-
-        #side-panel {
-            background: rgba(15, 23, 42, 0.75) !important;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 242, 255, 0.3) !important;
-            max-height: 60vh !important;
-            overflow-y: auto !important;
-        }
-        #side-panel::-webkit-scrollbar { width: 6px; }
-        #side-panel::-webkit-scrollbar-track { background: rgba(0, 242, 255, 0.05); }
-        #side-panel::-webkit-scrollbar-thumb { background: rgba(0, 242, 255, 0.3); border-radius: 3px; }
-        #panel-content { max-height: calc(60vh - 50px); overflow-y: auto; }
+        body.fullscreen-mode #notification { display: none !important; }
+        body.fullscreen-mode .canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
+        body.fullscreen-mode #fullscreen-controls { display: flex !important; }
 
         @media (max-width: 768px) {
-            .toolbar button { font-size: 10px; padding: 6px 8px; }
-            .property-panel { width: 260px; right: 10px; }
+            .toolbar button { font-size: 9px; padding: 4px 6px; }
+            .toolbar-title { font-size: 14px; }
+            #side-panel { width: 260px; right: 5px; }
+            .tools-panel { top: 70px; left: 4px; }
         }
     </style>
 </head>
@@ -308,7 +288,7 @@
 
     <div class="toolbar" role="toolbar">
         <div class="toolbar-logo">
-            <img src="img/logo.PNG" alt="Logo" style="height: 28px;" onerror="this.style.display='none'">
+            <img src="img/logo.PNG" alt="Logo" style="height: 24px;" onerror="this.style.display='none'">
             <span class="toolbar-title">SmartEngp</span>
         </div>
         
@@ -324,18 +304,19 @@
         
         <button id="btnReset">🔄 Centrar</button>
         <button id="btnFullscreen">⛶ Full</button>
-        <button id="btnCommand">🤖 Comandos</button>
-        <button id="btnAddTank">🏭 Tanque</button>
-        <button id="btnAddPump">⚙️ Bomba</button>
+        <button id="btnCommand">🤖 Cmd</button>
         <button id="btnMTO">📊 MTO</button>
         <button id="btnPDF">📄 PDF</button>
-        <button id="btnUndo">↩️ Undo</button>
-        <button id="btnRedo">↪️ Redo</button>
-        <button id="btnVoice">🔊 Voz ON</button>
+        <button id="btnTogglePanels" title="Mostrar/ocultar paneles">👁️</button>
         
         <div class="dropdown">
-            <button>⚙️ Más</button>
+            <button>⚙️ +</button>
             <div class="dropdown-content">
+                <button id="btnAddTank">🏭 Tanque</button>
+                <button id="btnAddPump">⚙️ Bomba</button>
+                <button id="btnUndo">↩️ Undo</button>
+                <button id="btnRedo">↪️ Redo</button>
+                <button id="btnVoice">🔊 Voz ON</button>
                 <button id="btnExportPCF">📦 Export PCF</button>
                 <button id="btnImportPCF">📂 Import PCF</button>
                 <button id="btnApplyNorm">📐 Normas</button>
@@ -348,9 +329,9 @@
     <div class="canvas-container" id="canvas-container">
         <canvas id="isoCanvas"></canvas>
         <div id="side-panel" class="property-panel hidden">
-            <div class="panel-header">
-                <span>PROPIEDADES TÉCNICAS</span>
-                <button onclick="togglePanel(false)">×</button>
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="color:var(--accent-cyan); font-weight:bold;">PROPIEDADES TÉCNICAS</span>
+                <button onclick="togglePanel(false)" style="background:none;border:none;color:white;font-size:18px;padding:0;width:24px;">×</button>
             </div>
             <div id="panel-content"><p class="empty-msg">Seleccione un elemento para ver sus detalles</p></div>
         </div>
@@ -361,7 +342,8 @@
             <strong>🤖 Comandos IA</strong>
             <button id="closeCommand" style="background:none;border:none;color:white;font-size:20px;padding:0;width:30px;">✖</button>
         </div>
-        <textarea id="commandText" rows="5" placeholder="Ejemplos:&#10;crear tanque_v TK-01 at (0,1450,0) diam 2380 altura 2900&#10;ruta desde TK-01 N1 a B-01 SUC diametro 3&#10;ayuda"></textarea>
+        <textarea id="commandText" rows="3" placeholder="Ej: conectar TK-01 N1 to B-01 SUC diametro 3&#10;Ej: crear tanque_v TK-02 at (3000,1450,0) diam 2000 altura 2500"></textarea>
+        <div class="history-indicator" id="historyIndicator"></div>
         <div class="command-buttons">
             <button id="runCommands">Ejecutar</button>
             <button id="clearCommand">Limpiar</button>
@@ -370,34 +352,30 @@
 
     <div id="notification" class="notification"></div>
 
-    <div class="status-bar">
-        <div id="statusMsg">SISTEMA LISTO | SmartEngp</div>
-        <div>AcQuaBlue International Corp. | Ing. Osnay Romero</div>
-    </div>
+    <div class="status-bar" id="statusMsg">SISTEMA LISTO | SmartEngp</div>
 
     <div class="tools-panel" id="toolsPanel">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <span style="font-size:10px; color:var(--accent-cyan);">HERRAMIENTAS</span>
-            <button id="toolToggleHide" style="padding:2px 6px; font-size:10px; background:none; border:1px solid #334155;">✖</button>
+            <button id="toolToggleHide" style="padding:2px 6px; font-size:10px; background:none; border:1px solid #334155;">−</button>
         </div>
-        <div id="toolsButtons" style="display:flex; flex-direction:column; gap:8px;">
+        <div id="toolsButtons">
             <button id="toolSelect" class="active">🔍 Seleccionar</button>
             <button id="toolMoveEq">✋ Mover equipo</button>
             <button id="toolEditPipe">✏️ Editar tubería</button>
             <button id="toolAddPoint">➕ Añadir punto</button>
+            <div class="elevation-inline">
+                <span>📐 Elev:</span>
+                <button onclick="setElevation(0)">0</button>
+                <button onclick="setElevation(2500)">2.5m</button>
+                <button onclick="setElevation(5000)">5.0m</button>
+                <input type="number" id="customElev" value="0" step="100" style="width:60px;">
+                <button id="btnSetElev">Set</button>
+            </div>
         </div>
     </div>
 
-    <div class="elevation-panel" id="elevationPanel">
-        <span style="font-size:12px;">📐 Elev. (mm):</span>
-        <button onclick="setElevation(0)" style="padding:2px 8px;">0</button>
-        <button onclick="setElevation(2500)" style="padding:2px 8px;">2.5m</button>
-        <button onclick="setElevation(5000)" style="padding:2px 8px;">5.0m</button>
-        <input type="number" id="customElev" value="0" step="100">
-        <button id="btnSetElev" style="padding:2px 8px;">Set</button>
-    </div>
-
-    <div id="fullscreen-controls" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:9999; gap:12px;">
+    <div id="fullscreen-controls">
         <button id="btnFullscreenCenter" style="padding:12px 20px; border-radius:30px; background:var(--accent-cyan); color:#000; font-weight:bold; border:none;">🔄 Centrar</button>
         <button id="btnFullscreenExit" style="padding:12px 20px; border-radius:30px; background:#ef4444; color:white; font-weight:bold; border:none;">✕ Salir</button>
     </div>
@@ -408,80 +386,5 @@
     <script src="js/renderer.js"></script>
     <script src="js/commands.js"></script>
     <script src="js/main.js"></script>
-
-    <script>
-        window.voiceEnabled = true;
-        window.currentProjectName = "Proyecto_SmartEngp";
-        window.SmartFlowAccessibility = { 
-            isVoiceEnabled: function() { return window.voiceEnabled; }, 
-            speak: function(m) { console.log("IA Voice:", m); }
-        };
-        function setElevation(level) {
-            if (typeof SmartFlowCore !== 'undefined') SmartFlowCore.setElevation(level);
-            document.getElementById('customElev').value = level;
-        }
-        function togglePanel(show) {
-            const panel = document.getElementById('side-panel');
-            if (panel) panel.classList[show ? 'remove' : 'add']('hidden');
-        }
-
-        // Barra de herramientas flotante ocultable
-        document.getElementById('toolToggleHide').addEventListener('click', function() {
-            const buttons = document.getElementById('toolsButtons');
-            if (buttons.style.display === 'none') {
-                buttons.style.display = 'flex';
-                buttons.style.flexDirection = 'column';
-                buttons.style.gap = '8px';
-                this.textContent = '✖';
-            } else {
-                buttons.style.display = 'none';
-                this.textContent = '+';
-            }
-        });
-
-        // Eventos del panel de bienvenida
-        window.addEventListener('load', function() {
-            const splash = document.getElementById('splash-screen');
-            const welcome = document.getElementById('welcome-panel');
-            const modal = document.getElementById('project-name-modal');
-            const inputProject = document.getElementById('project-name-input');
-            const statusEl = document.getElementById('splash-status');
-            
-            const messages = [
-                "Cargando librerías de AcQuaBlue...",
-                "Sincronizando modelos de objetos inteligentes...",
-                "Optimizando motor gráfico isométrico...",
-                "Iniciando interfaz de Ing. Osnay Romero...",
-                "¡SmartEngp Activo!"
-            ];
-            
-            let i = 0;
-            const interval = setInterval(() => {
-                if(i < messages.length) { statusEl.innerText = messages[i]; i++; }
-            }, 800);
-
-            setTimeout(() => { splash.classList.add('splash-hidden'); clearInterval(interval); }, 4500);
-            setTimeout(() => { welcome.classList.remove('welcome-hidden'); }, 4800);
-
-            document.getElementById('welcome-new-project').onclick = () => { modal.style.display = 'flex'; };
-            document.getElementById('welcome-open-project').onclick = () => {
-                document.getElementById('btnOpen')?.click();
-                welcome.classList.add('welcome-hidden');
-            };
-            document.getElementById('modal-accept').onclick = () => {
-                const name = inputProject.value.trim();
-                if (name) window.currentProjectName = name;
-                modal.style.display = 'none';
-                welcome.classList.add('welcome-hidden');
-                if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.nuevoProyecto) SmartFlowCore.nuevoProyecto();
-                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
-            };
-            document.getElementById('modal-skip').onclick = () => {
-                modal.style.display = 'none';
-                welcome.classList.add('welcome-hidden');
-                document.getElementById('statusMsg').innerText = `Proyecto: ${window.currentProjectName} | Listo`;
-            };
-        });
-    </script>
 </body>
 </html>
