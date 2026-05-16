@@ -1,12 +1,14 @@
 
 // ============================================================
-// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v5.2
+// MÓDULO 1: SMARTFLOW CORE (Núcleo de Estado) - v5.3
 // Archivo: js/core.js
-// Cambios: Formato de exportación/importación unificado 2D/3D
+// Cambios: Índices O(1), acceso unificado a puntos, eventos,
+//          debounce de auditoría, corrección de bugs, caché de proyección delegada
 // ============================================================
 
 const SmartFlowCore = (function() {
     
+    // -------------------- BASE DE DATOS --------------------
     let _db = {
         equipos: [],
         lines: [],
@@ -41,6 +43,24 @@ const SmartFlowCore = (function() {
         }
     };
 
+    // -------------------- ÍNDICES RÁPIDOS (O(1)) --------------------
+    /** @type {Map<string, Object>} */
+    let _equiposMap = new Map();
+    /** @type {Map<string, Object>} */
+    let _linesMap = new Map();
+
+    /**
+     * Reconstruye los mapas de búsqueda a partir de los arrays principales.
+     * Debe llamarse tras cada modificación estructural de _db.equipos o _db.lines.
+     */
+    function rebuildIndexes() {
+        _equiposMap.clear();
+        _linesMap.clear();
+        if (_db.equipos) _db.equipos.forEach(e => _equiposMap.set(e.tag, e));
+        if (_db.lines) _db.lines.forEach(l => _linesMap.set(l.tag, l));
+    }
+
+    // -------------------- PARÁMETROS GLOBALES --------------------
     let _datumElevation = 0;
     let _datumNorth = 0;
     let _datumEast = 0;
@@ -51,15 +71,73 @@ const SmartFlowCore = (function() {
     let _voiceEnabled = true;
     let _currentElevation = 0;
 
-    let _notifyUI = (msg, isErr) => console.log(msg);
+    // -------------------- SISTEMA DE EVENTOS --------------------
+    const _listeners = {
+        modelChanged: [],
+        selectionChanged: [],
+        notification: []
+    };
+
+    function on(eventName, callback) {
+        if (_listeners[eventName]) {
+            _listeners[eventName].push(callback);
+        }
+    }
+
+    function off(eventName, callback) {
+        if (_listeners[eventName]) {
+            _listeners[eventName] = _listeners[eventName].filter(cb => cb !== callback);
+        }
+    }
+
+    function emit(eventName, data) {
+        if (_listeners[eventName]) {
+            _listeners[eventName].forEach(cb => {
+                try { cb(data); } catch (e) { console.error(e); }
+            });
+        }
+    }
+
+    // -------------------- NOTIFICACIONES Y RENDER --------------------
+    let _notifyUI = (msg, isErr) => {
+        console.log(msg);
+        emit('notification', { message: msg, isError: isErr });
+    };
     let _renderUI = () => {};
     let _onSelectionChanged = (obj) => {};
 
+    // -------------------- HELPERS --------------------
     const _exists = (tag, type) => _db[type].some(item => item.tag === tag);
     const _deepClone = (obj) => {
         try { return structuredClone(obj); }
         catch (e) { return JSON.parse(JSON.stringify(obj)); }
     };
+
+    /**
+     * Obtiene los puntos de una línea de forma unificada.
+     * @param {Object} line
+     * @returns {Array|null}
+     */
+    function getLinePoints(line) {
+        if (!line) return null;
+        return line._cachedPoints || line.points3D || null;
+    }
+
+    /**
+     * Búsqueda ultrarrápida por tag (O(1)).
+     * @param {string} tag
+     * @returns {Object|undefined}
+     */
+    function findObjectByTag(tag) {
+        return _equiposMap.get(tag) || _linesMap.get(tag);
+    }
+
+    function getObjectPosition(obj) {
+        if (obj.posX !== undefined) return { x: obj.posX, y: obj.posY, z: obj.posZ };
+        const pts = getLinePoints(obj);
+        if (pts && pts.length > 0) return pts[0];
+        return { x: 0, y: 0, z: 0 };
+    }
 
     function getAbsolutePosition(obj) {
         const pos = getObjectPosition(obj);
@@ -70,6 +148,15 @@ const SmartFlowCore = (function() {
         };
     }
 
+    function checkCompatibility(portA, portB) {
+        const alerts = [];
+        if (portA.diametro !== portB.diametro) alerts.push(`Diferencia de diámetro: ${portA.diametro}" vs ${portB.diametro}"`);
+        if (portA.constraints?.spec && portB.constraints?.spec && portA.constraints.spec !== portB.constraints.spec)
+            alerts.push(`Diferencia de especificación: ${portA.constraints.spec} vs ${portB.constraints.spec}`);
+        return { isCompatible: alerts.length === 0, alerts };
+    }
+
+    // -------------------- SINCRONIZACIÓN FÍSICA --------------------
     function syncPhysicalData() {
         _db.lines.forEach(line => {
             if (line.origin && line.origin.objTag) {
@@ -83,7 +170,7 @@ const SmartFlowCore = (function() {
                             y: posBase.y + (puerto.relY || puerto.relPos?.y || 0),
                             z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0)
                         };
-                        const pts = line._cachedPoints || line.points3D;
+                        const pts = getLinePoints(line);
                         if (pts && pts.length > 0) pts[0] = newStart;
                     }
                 }
@@ -99,36 +186,19 @@ const SmartFlowCore = (function() {
                             y: posBase.y + (puerto.relY || puerto.relPos?.y || 0),
                             z: posBase.z + (puerto.relZ || puerto.relPos?.z || 0)
                         };
-                        const pts = line._cachedPoints || line.points3D;
+                        const pts = getLinePoints(line);
                         if (pts && pts.length > 0) pts[pts.length - 1] = newEnd;
                     }
                 }
             }
         });
+        emit('modelChanged', { type: 'sync' });
         _renderUI();
     }
 
-    function findObjectByTag(tag) {
-        return _db.equipos.find(e => e.tag === tag) || _db.lines.find(l => l.tag === tag);
-    }
-
-    function getObjectPosition(obj) {
-        if (obj.posX !== undefined) return { x: obj.posX, y: obj.posY, z: obj.posZ };
-        const pts = obj._cachedPoints || obj.points3D;
-        if (pts && pts.length > 0) return pts[0];
-        return { x: 0, y: 0, z: 0 };
-    }
-
-    function checkCompatibility(portA, portB) {
-        const alerts = [];
-        if (portA.diametro !== portB.diametro) alerts.push(`Diferencia de diámetro: ${portA.diametro}" vs ${portB.diametro}"`);
-        if (portA.constraints?.spec && portB.constraints?.spec && portA.constraints.spec !== portB.constraints.spec)
-            alerts.push(`Diferencia de especificación: ${portA.constraints.spec} vs ${portB.constraints.spec}`);
-        return { isCompatible: alerts.length === 0, alerts };
-    }
-
+    // -------------------- GEOMETRÍA Y UTILIDADES --------------------
     function _findSegmentAtPoint(line, clickPoint, tolerance = 500) {
-        const pts = line._cachedPoints || line.points3D;
+        const pts = getLinePoints(line);
         if (!pts || pts.length < 2) return -1;
         let minDist = Infinity, bestIndex = -1;
         for (let i = 0; i < pts.length - 1; i++) {
@@ -154,9 +224,9 @@ const SmartFlowCore = (function() {
     }
 
     function _splitLineSegment(lineTag, param) {
-        const line = _db.lines.find(l => l.tag === lineTag);
+        const line = _linesMap.get(lineTag);
         if (!line) return null;
-        const pts = line._cachedPoints || line.points3D;
+        const pts = getLinePoints(line);
         if (!pts || pts.length < 2) return null;
         let totalLen = 0, lengths = [];
         for (let i = 0; i < pts.length-1; i++) { const d = Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z); lengths.push(d); totalLen += d; }
@@ -198,10 +268,18 @@ const SmartFlowCore = (function() {
         return count;
     }
 
+    // -------------------- AUDITORÍAS --------------------
+    let _auditDebounceTimer = null;
+    let _lastAuditResults = null;
+
+    /**
+     * Ejecuta las auditorías de colisiones y espaciado de juntas.
+     * @returns {Object} collisions, jointIssues
+     */
     function auditCollisions() {
         const collisions = [];
         _db.lines.forEach(line => {
-            const pts = line._cachedPoints || line.points3D; if (!pts || pts.length < 2) return;
+            const pts = getLinePoints(line); if (!pts || pts.length < 2) return;
             _db.equipos.forEach(eq => {
                 if ((line.origin && line.origin.objTag === eq.tag) || (line.destination && line.destination.objTag === eq.tag)) return;
                 let box;
@@ -219,9 +297,9 @@ const SmartFlowCore = (function() {
             });
         });
         for (let i = 0; i < _db.lines.length; i++) {
-            const lineA = _db.lines[i], ptsA = lineA._cachedPoints || lineA.points3D; if (!ptsA || ptsA.length < 2) continue;
+            const lineA = _db.lines[i], ptsA = getLinePoints(lineA); if (!ptsA || ptsA.length < 2) continue;
             for (let j = i+1; j < _db.lines.length; j++) {
-                const lineB = _db.lines[j], ptsB = lineB._cachedPoints || lineB.points3D; if (!ptsB || ptsB.length < 2) continue;
+                const lineB = _db.lines[j], ptsB = getLinePoints(lineB); if (!ptsB || ptsB.length < 2) continue;
                 const share = (lineA.origin && lineB.origin && lineA.origin.objTag === lineB.origin.objTag) || (lineA.origin && lineB.destination && lineA.origin.objTag === lineB.destination.objTag) || (lineA.destination && lineB.origin && lineA.destination.objTag === lineB.origin.objTag) || (lineA.destination && lineB.destination && lineA.destination.objTag === lineB.destination.objTag);
                 if (share) continue;
                 let col = false;
@@ -241,7 +319,7 @@ const SmartFlowCore = (function() {
     function auditJointSpacing(minDistance = 50) {
         const issues = [];
         _db.lines.forEach(line => {
-            const pts = line._cachedPoints || line.points3D;
+            const pts = getLinePoints(line);
             if (!pts || pts.length < 2) return;
             const joints = [];
             if (line.components) {
@@ -267,10 +345,75 @@ const SmartFlowCore = (function() {
         return issues;
     }
 
+    /**
+     * Ejecuta todas las auditorías y guarda resultados.
+     * Llama a notifyUI con el reporte.
+     * @param {boolean} silent - si true, no notifica
+     * @returns {Object} { collisions, jointIssues, report }
+     */
+    function runAllAudits(silent = false) {
+        const collisions = auditCollisions();
+        const jointIssues = auditJointSpacing(50);
+        _lastAuditResults = { collisions, jointIssues, timestamp: Date.now() };
+        
+        // Construir reporte textual
+        let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n";
+        let errors = 0, warnings = 0;
+        _db.lines.forEach(line => {
+            const diamLinea = line.diameter;
+            if (line.origin && line.origin.objTag) {
+                const obj = findObjectByTag(line.origin.objTag);
+                const nz = obj?.puertos?.find(p => p.id === line.origin.portId);
+                if (nz && nz.diametro !== diamLinea) {
+                    errors++;
+                    report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`;
+                }
+            }
+            if (line.destination && line.destination.objTag) {
+                const obj = findObjectByTag(line.destination.objTag);
+                const nz = obj?.puertos?.find(p => p.id === line.destination.portId);
+                if (nz && nz.diametro !== diamLinea) {
+                    errors++;
+                    report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`;
+                }
+            }
+            if (!getLinePoints(line) || getLinePoints(line).length < 2) {
+                errors++;
+                report += `⚠️ ERROR [${line.tag}]: Línea sin geometría definida.\n`;
+            }
+        });
+        collisions.forEach(c => {
+            if (c.type === 'LINE_EQUIPMENT') report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con equipo ${c.equipment}\n`;
+            else report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con línea ${c.line2}\n`;
+            warnings++;
+        });
+        jointIssues.forEach(j => {
+            report += `⚠️ JUNTAS CERCANAS [${j.line}]: ${j.joint1} y ${j.joint2} a ${j.distance}mm (mínimo 50mm)\n`;
+            warnings++;
+        });
+        if (errors === 0 && warnings === 0) report += "✅ Modelo íntegro. Sin discrepancias de diámetro, colisiones o juntas cercanas.";
+        else report += `Se encontraron ${errors} errores y ${warnings} advertencias.`;
+        
+        if (!silent) _notifyUI(report, errors > 0);
+        return { collisions, jointIssues, report };
+    }
+
+    /**
+     * Programa una auditoría diferida (debounce).
+     */
+    function scheduleAudit() {
+        if (_auditDebounceTimer) clearTimeout(_auditDebounceTimer);
+        _auditDebounceTimer = setTimeout(() => {
+            runAllAudits(true); // silencioso
+            emit('modelChanged', { type: 'audit' });
+        }, 500);
+    }
+
+    // -------------------- SPOOL --------------------
     function getSpoolReport(lineTag) {
-        const line = _db.lines.find(l => l.tag === lineTag);
+        const line = _linesMap.get(lineTag);
         if (!line) return null;
-        const pts = line._cachedPoints || line.points3D;
+        const pts = getLinePoints(line);
         if (!pts || pts.length < 2) return null;
         let totalLen = 0;
         for (let i = 0; i < pts.length-1; i++) totalLen += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z);
@@ -304,6 +447,7 @@ const SmartFlowCore = (function() {
         };
     }
 
+    // -------------------- DATUM --------------------
     function setDatum(elevation, north, east) {
         _datumElevation = elevation || 0;
         _datumNorth = north || 0;
@@ -311,43 +455,69 @@ const SmartFlowCore = (function() {
         _notifyUI(`Datum actualizado: EL=${_datumElevation}m, N=${_datumNorth}, E=${_datumEast}`, false);
     }
 
+    // -------------------- API PÚBLICA --------------------
     return {
+        // Inicialización
         init: function(notifyFn, renderFn, propertyPanelFn) {
             _notifyUI = notifyFn || _notifyUI;
             _renderUI = renderFn || _renderUI;
             this._onSelectionChanged = propertyPanelFn || (() => {});
+            rebuildIndexes();
             this._saveState();
         },
 
+        // Eventos
+        on,
+        off,
+
+        // Gestión de equipos
         addEquipment: function(equipo) {
             if (!equipo.tag) return _notifyUI("Error: Tag requerido.", true);
-            if (_exists(equipo.tag, 'equipos')) return _notifyUI(`Error: El equipo ${equipo.tag} ya existe.`, true);
+            if (_equiposMap.has(equipo.tag)) return _notifyUI(`Error: El equipo ${equipo.tag} ya existe.`, true);
             if (equipo.puertos) equipo.puertos.forEach(p => { if (!p.status) p.status = 'open'; if (!p.flow) p.flow = 'bi'; if (!p.constraints) p.constraints = { spec: equipo.spec || 'STD', diametro: p.diametro || 3 }; });
             _db.equipos.push(equipo);
-            this._saveState(); _notifyUI(`Equipo ${equipo.tag} añadido.`, false); _renderUI();
+            _equiposMap.set(equipo.tag, equipo);
+            this._saveState();
+            _notifyUI(`Equipo ${equipo.tag} añadido.`, false);
+            _renderUI();
+            emit('modelChanged', { type: 'addEquipment', tag: equipo.tag });
+            scheduleAudit();
             return true;
         },
         addLine: function(linea) {
             if (!linea.tag) return _notifyUI("Error: Tag de línea requerido.", true);
-            if (_exists(linea.tag, 'lines')) return _notifyUI(`Error: La línea ${linea.tag} ya existe.`, true);
+            if (_linesMap.has(linea.tag)) return _notifyUI(`Error: La línea ${linea.tag} ya existe.`, true);
             if (linea.spec && _db.specs[linea.spec]) { const s = _db.specs[linea.spec]; linea.material = s.mat; linea.rating = s.rating; linea.schedule = s.sch; }
             _db.lines.push(linea);
-            this._saveState(); _notifyUI(`Línea ${linea.tag} creada correctamente.`, false); _renderUI();
+            _linesMap.set(linea.tag, linea);
+            this._saveState();
+            _notifyUI(`Línea ${linea.tag} creada correctamente.`, false);
+            _renderUI();
+            emit('modelChanged', { type: 'addLine', tag: linea.tag });
+            scheduleAudit();
             return true;
         },
         syncPhysicalData,
+
         updateEquipment: function(tag, datos) {
-            const eq = _db.equipos.find(e => e.tag === tag);
+            const eq = _equiposMap.get(tag);
             if (!eq) return _notifyUI(`Equipo ${tag} no encontrado.`, true);
             Object.assign(eq, datos);
-            syncPhysicalData(); this._saveState(); _renderUI();
+            syncPhysicalData();
+            this._saveState();
+            _renderUI();
+            emit('modelChanged', { type: 'updateEquipment', tag });
+            scheduleAudit();
             return true;
         },
         updateLine: function(tag, datos) {
-            const line = _db.lines.find(l => l.tag === tag);
+            const line = _linesMap.get(tag);
             if (!line) return _notifyUI(`Línea ${tag} no encontrada.`, true);
             Object.assign(line, datos);
-            this._saveState(); _renderUI();
+            this._saveState();
+            _renderUI();
+            emit('modelChanged', { type: 'updateLine', tag });
+            scheduleAudit();
             return true;
         },
         updatePuerto: function(ownerTag, puertoId, cambios) {
@@ -362,34 +532,43 @@ const SmartFlowCore = (function() {
             if (cambios.diametro !== undefined) puerto.diametro = cambios.diametro;
             if (cambios.pos) { puerto.relX = cambios.pos.x; puerto.relY = cambios.pos.y; puerto.relZ = cambios.pos.z; }
             if (cambios.dir) { const { dx, dy, dz } = cambios.dir; const len = Math.sqrt(dx*dx+dy*dy+dz*dz); if (len > 0) puerto.orientacion = { dx: dx/len, dy: dy/len, dz: dz/len }; }
-            syncPhysicalData(); this._saveState(); _renderUI();
+            syncPhysicalData();
+            this._saveState();
+            _renderUI();
+            emit('modelChanged', { type: 'updatePuerto', tag: ownerTag, portId: puertoId });
             return true;
         },
+
+        // Proyecto
         nuevoProyecto: function() {
             const oldSpecs = _db.specs;
             _db = { equipos: [], lines: [], specs: oldSpecs };
-            _selectedElement = null; _history = { past: [], future: [], maxSize: 50 };
-            this._saveState(); _renderUI(); _notifyUI("Nuevo proyecto creado.", false);
+            _selectedElement = null;
+            _history = { past: [], future: [], maxSize: 50 };
+            _lastAuditResults = null;
+            rebuildIndexes();
+            this._saveState();
+            _renderUI();
+            _notifyUI("Nuevo proyecto creado.", false);
+            emit('modelChanged', { type: 'newProject' });
         },
         importState: function(state) {
-            // Acepta string JSON o objeto
             const data = typeof state === 'string' ? JSON.parse(state) : state;
-            
-            // Soportar formato antiguo (con envoltura "data") y nuevo (plano)
             let equipos = data.equipos || (data.data && data.data.equipos) || [];
             let lines = data.lines || (data.data && data.data.lines) || [];
-            
-            // Normalización ligera
             if (!Array.isArray(equipos)) equipos = [];
             if (!Array.isArray(lines)) lines = [];
-            
             _db.equipos = _deepClone(equipos);
             _db.lines = _deepClone(lines);
             _selectedElement = null;
+            _lastAuditResults = null;
+            rebuildIndexes();
             this._saveState();
             syncPhysicalData();
             _renderUI();
             _notifyUI("Proyecto importado correctamente.", false);
+            emit('modelChanged', { type: 'import' });
+            scheduleAudit();
             return true;
         },
         exportProject: function() {
@@ -398,40 +577,62 @@ const SmartFlowCore = (function() {
                 lines: _db.lines
             });
         },
+
+        // Historial
         _saveState: function() {
             const state = _deepClone({ equipos: _db.equipos, lines: _db.lines });
-            _history.past.push(state); if (_history.past.length > _history.maxSize) _history.past.shift();
+            _history.past.push(state);
+            if (_history.past.length > _history.maxSize) _history.past.shift();
             _history.future = [];
         },
         undo: function() {
             if (_history.past.length <= 1) return _notifyUI("Nada que deshacer.", true);
-            const current = _deepClone({ equipos: _db.equipos, lines: _db.lines }); _history.future.push(current);
-            _history.past.pop(); const prev = _history.past[_history.past.length-1];
-            _db.equipos = _deepClone(prev.equipos); _db.lines = _deepClone(prev.lines);
-            _selectedElement = null; syncPhysicalData(); _renderUI(); _notifyUI("Acción deshecha.", false);
+            const current = _deepClone({ equipos: _db.equipos, lines: _db.lines });
+            _history.future.push(current);
+            _history.past.pop();
+            const prev = _history.past[_history.past.length-1];
+            _db.equipos = _deepClone(prev.equipos);
+            _db.lines = _deepClone(prev.lines);
+            _selectedElement = null;
+            rebuildIndexes();
+            syncPhysicalData();
+            _renderUI();
+            _notifyUI("Acción deshecha.", false);
+            emit('modelChanged', { type: 'undo' });
+            scheduleAudit();
         },
         redo: function() {
             if (_history.future.length === 0) return _notifyUI("Nada que rehacer.", true);
-            const next = _history.future.pop(); _history.past.push(_deepClone(next));
-            _db.equipos = _deepClone(next.equipos); _db.lines = _deepClone(next.lines);
-            _selectedElement = null; syncPhysicalData(); _renderUI(); _notifyUI("Acción rehecha.", false);
+            const next = _history.future.pop();
+            _history.past.push(_deepClone(next));
+            _db.equipos = _deepClone(next.equipos);
+            _db.lines = _deepClone(next.lines);
+            _selectedElement = null;
+            rebuildIndexes();
+            syncPhysicalData();
+            _renderUI();
+            _notifyUI("Acción rehecha.", false);
+            emit('modelChanged', { type: 'redo' });
+            scheduleAudit();
         },
+
+        // Auditorías
         auditModel: function() {
-            let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n"; let errors = 0, warnings = 0;
-            _db.lines.forEach(line => {
-                const diamLinea = line.diameter;
-                if (line.origin && line.origin.objTag) { const obj = findObjectByTag(line.origin.objTag); const nz = obj?.puertos?.find(p => p.id === line.origin.portId); if (nz && nz.diametro !== diamLinea) { errors++; report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`; } }
-                if (line.destination && line.destination.objTag) { const obj = findObjectByTag(line.destination.objTag); const nz = obj?.puertos?.find(p => p.id === line.destination.portId); if (nz && nz.diametro !== diamLinea) { errors++; report += `⚠️ ERROR [${line.tag}]: Diámetro línea (${diamLinea}") no coincide con puerto ${nz.id} (${nz.diametro}")\n`; } }
-                if (!(line._cachedPoints || line.points3D) || (line._cachedPoints||line.points3D).length < 2) { errors++; report += `⚠️ ERROR [${line.tag}]: Línea sin geometría definida.\n`; }
-            });
-            const collisions = auditCollisions();
-            collisions.forEach(c => { if (c.type === 'LINE_EQUIPMENT') report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con equipo ${c.equipment}\n`; else report += `⚠️ COLISIÓN: Línea ${c.line1} interfiere con línea ${c.line2}\n`; warnings++; });
-            const jointIssues = auditJointSpacing(50);
-            jointIssues.forEach(j => { report += `⚠️ JUNTAS CERCANAS [${j.line}]: ${j.joint1} y ${j.joint2} a ${j.distance}mm (mínimo 50mm)\n`; warnings++; });
-            if (errors === 0 && warnings === 0) report += "✅ Modelo íntegro. Sin discrepancias de diámetro, colisiones o juntas cercanas."; else report += `Se encontraron ${errors} errores y ${warnings} advertencias.`;
-            _notifyUI(report, errors > 0); return report;
+            return runAllAudits().report;
         },
-        recalculateAll: function() { syncPhysicalData(); const collisions = auditCollisions(); if (collisions.length > 0) _notifyUI(`Recálculo completado. ${collisions.length} posibles interferencias.`, true); else _notifyUI("Recálculo completado. Sin interferencias.", false); _renderUI(); },
+        recalculateAll: function() {
+            syncPhysicalData();
+            const result = runAllAudits(true);
+            if (result.collisions.length > 0) _notifyUI(`Recálculo completado. ${result.collisions.length} posibles interferencias.`, true);
+            else _notifyUI("Recálculo completado. Sin interferencias.", false);
+            _renderUI();
+            emit('modelChanged', { type: 'recalculateAll' });
+        },
+        getLastAuditResults: function() {
+            return _lastAuditResults;
+        },
+
+        // Conexiones y accesorios
         connectSmart: function(source, target) {
             const objS = findObjectByTag(source.tag), objT = findObjectByTag(target.tag);
             if (!objS || !objT) return _notifyUI("Objeto no encontrado.", true);
@@ -439,27 +640,42 @@ const SmartFlowCore = (function() {
             if (!pS || !pT) return _notifyUI("Puerto no encontrado.", true);
             const validation = checkCompatibility(pS, pT);
             if (!validation.isCompatible) _notifyUI(`⚠️ Advertencia: ${validation.alerts.join(", ")}`, false);
-            pS.status = "connected"; pS.connectedTo = { tag: target.tag, portId: target.portId };
-            pT.status = "connected"; pT.connectedTo = { tag: source.tag, portId: source.portId };
-            syncPhysicalData(); this._saveState(); _notifyUI(`Conexión lógica: ${source.tag}:${source.portId} ↔ ${target.tag}:${target.portId}`, false); return true;
+            pS.status = "connected";
+            pS.connectedTo = { tag: target.tag, portId: target.portId };
+            pT.status = "connected";
+            pT.connectedTo = { tag: source.tag, portId: source.portId };
+            syncPhysicalData();
+            this._saveState();
+            _notifyUI(`Conexión lógica: ${source.tag}:${source.portId} ↔ ${target.tag}:${target.portId}`, false);
+            emit('modelChanged', { type: 'connect' });
+            scheduleAudit();
+            return true;
         },
         injectAccessory: function(lineTag, param, accesorioDef) {
-            const result = _splitLineSegment(lineTag, param); if (!result) return null;
+            const result = _splitLineSegment(lineTag, param);
+            if (!result) return null;
             if (accesorioDef && accesorioDef.generarPuertos) {
-                const line = _db.lines.find(l => l.tag === lineTag);
-                const nuevosPuertos = accesorioDef.generarPuertos(line, param, line.diameter);
-                line.puertos = line.puertos.filter(p => !p.id.startsWith('ACC-'));
-                nuevosPuertos.forEach((p, idx) => { p.id = `${accesorioDef.tag||'ACC'}_${idx}`; line.puertos.push(p); });
-                _notifyUI(`Accesorio ${accesorioDef.tag||'ACC'} inyectado en ${lineTag}`, false);
+                const line = _linesMap.get(lineTag);
+                if (line) {
+                    const nuevosPuertos = accesorioDef.generarPuertos(line, param, line.diameter);
+                    line.puertos = line.puertos.filter(p => !p.id.startsWith('ACC-'));
+                    nuevosPuertos.forEach((p, idx) => { p.id = `${accesorioDef.tag||'ACC'}_${idx}`; line.puertos.push(p); });
+                    _notifyUI(`Accesorio ${accesorioDef.tag||'ACC'} inyectado en ${lineTag}`, false);
+                }
             }
-            this._saveState(); syncPhysicalData(); _renderUI(); return result;
+            this._saveState();
+            syncPhysicalData();
+            _renderUI();
+            emit('modelChanged', { type: 'injectAccessory', lineTag });
+            scheduleAudit();
+            return result;
         },
         splitLine: function(lineTag, point, config) {
-            const line = _db.lines.find(l => l.tag === lineTag);
+            const line = _linesMap.get(lineTag);
             if (!line) { _notifyUI("Línea no encontrada.", true); return null; }
             const segmentIndex = _findSegmentAtPoint(line, point);
             if (segmentIndex === -1) { _notifyUI("El punto no está sobre la línea o está demasiado lejos.", true); return null; }
-            const pts = line._cachedPoints || line.points3D;
+            const pts = getLinePoints(line);
             const a = pts[segmentIndex], b = pts[segmentIndex + 1];
             const dir = { dx: b.x - a.x, dy: b.y - a.y, dz: b.z - a.z };
             const len = Math.hypot(dir.dx, dir.dy, dir.dz) || 1;
@@ -486,15 +702,26 @@ const SmartFlowCore = (function() {
             line._cachedPoints = pts;
 
             if (!line.puertos) line.puertos = [];
-            line.puertos.push({ id: 'S1', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P1' }, diametro: line.diameter });
-            line.puertos.push({ id: 'S2', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P2' }, diametro: line.diameter });
+            // Evitar duplicados de puertos S1/S2
+            if (!line.puertos.find(p => p.id === 'S1')) {
+                line.puertos.push({ id: 'S1', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P1' }, diametro: line.diameter });
+            }
+            if (!line.puertos.find(p => p.id === 'S2')) {
+                line.puertos.push({ id: 'S2', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P2' }, diametro: line.diameter });
+            }
 
             _db.equipos.push(nuevoAccesorio);
-            this._saveState(); syncPhysicalData(); _renderUI();
+            _equiposMap.set(accessoryTag, nuevoAccesorio);
+            this._saveState();
+            syncPhysicalData();
+            _renderUI();
             _notifyUI(`Línea ${lineTag} dividida. Accesorio ${accessoryTag} insertado.`, false);
+            emit('modelChanged', { type: 'splitLine', lineTag });
+            scheduleAudit();
             return { componente: nuevoAccesorio, linea: line };
         },
 
+        // Selección
         setSelected: function(element) {
             if (element && element.obj && !findObjectByTag(element.obj.tag)) {
                 _selectedElement = null;
@@ -511,20 +738,17 @@ const SmartFlowCore = (function() {
                 this._onSelectionChanged(null);
             }
         },
-
         getPropertyInfo: function(tag) {
             const obj = findObjectByTag(tag);
             if (!obj) return null;
-
-            const isLine = _db.lines.some(l => l.tag === tag);
-            const isEquipment = _db.equipos.some(e => e.tag === tag);
-
+            const isLine = _linesMap.has(tag);
+            const isEquipment = _equiposMap.has(tag);
             return {
                 tag: obj.tag,
                 tipo: obj.tipo || (isLine ? 'Tubería' : (isEquipment ? 'Equipo' : 'Desconocido')),
                 spec: obj.spec || 'N/A',
                 material: obj.material || 'N/A',
-                diametro: obj.diameter || obj.diametro || (obj.diameter || 'N/A'),
+                diametro: obj.diameter || obj.diametro || 'N/A',
                 dimensiones: obj.posX !== undefined ? {
                     posX: obj.posX, posY: obj.posY, posZ: obj.posZ,
                     diametro: obj.diametro, altura: obj.altura, largo: obj.largo
@@ -539,40 +763,51 @@ const SmartFlowCore = (function() {
                 spool: isLine ? getSpoolReport(tag) : null
             };
         },
-
         updateFromPanel: function(tag, field, newValue) {
             const obj = findObjectByTag(tag);
             if (!obj) { _notifyUI("Objeto no encontrado.", true); return false; }
-
             if (field === 'tag') {
-                if (_exists(newValue, 'equipos') || _exists(newValue, 'lines')) {
+                if (_equiposMap.has(newValue) || _linesMap.has(newValue)) {
                     _notifyUI("Error: El Tag ya existe.", true);
                     return false;
                 }
+                // Actualizar referencias en líneas
                 _db.lines.forEach(line => {
                     if (line.origin && line.origin.objTag === tag) line.origin.objTag = newValue;
                     if (line.destination && line.destination.objTag === tag) line.destination.objTag = newValue;
                 });
-                obj.tag = newValue;
+                // Actualizar índices
+                if (_equiposMap.has(tag)) {
+                    _equiposMap.delete(tag);
+                    obj.tag = newValue;
+                    _equiposMap.set(newValue, obj);
+                } else if (_linesMap.has(tag)) {
+                    _linesMap.delete(tag);
+                    obj.tag = newValue;
+                    _linesMap.set(newValue, obj);
+                }
             } else {
                 obj[field] = newValue;
             }
-
             if (['posX', 'posY', 'posZ', 'diametro', 'altura', 'largo', 'diameter'].includes(field)) {
                 syncPhysicalData();
             }
-
             this._saveState();
             _renderUI();
             _notifyUI(`Propiedad '${field}' actualizada.`, false);
+            emit('modelChanged', { type: 'updateProperty', tag, field });
+            scheduleAudit();
             return true;
         },
 
+        // Acceso a datos
         auditCollisions,
         auditJointSpacing,
         getSpoolReport,
         setDatum,
         getAbsolutePosition,
+        getLinePoints, // Exponer helper unificado
+        findObjectByTag, // Exponer búsqueda rápida
         getDb: function() { return _db; },
         getEquipos: function() { return _db.equipos; },
         getLines: function() { return _db.lines; },
@@ -581,6 +816,10 @@ const SmartFlowCore = (function() {
         setElevation: function(level) { _currentElevation = level; },
         getElevation: function() { return _currentElevation; },
         setVoice: function(enabled) { _voiceEnabled = enabled; },
-        isVoiceEnabled: function() { return _voiceEnabled; }
+        isVoiceEnabled: function() { return _voiceEnabled; },
+        
+        // Propiedades útiles
+        get equiposMap() { return _equiposMap; },
+        get linesMap() { return _linesMap; }
     };
 })();
