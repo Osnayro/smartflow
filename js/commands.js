@@ -1,5 +1,6 @@
+
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.11
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.10
 // Archivo: js/commands.js
 // ============================================================
 
@@ -81,14 +82,17 @@ const SmartFlowCommands = (function() {
         return obj._cachedPoints || obj.points3D || obj.points || [];
     }
 
+    // Versión mejorada que también busca orientacion
     function getPortDirectionLocal(obj, portId) {
         if (!obj) return { dx: 1, dy: 0, dz: 0 };
+        // Buscar en puertos del equipo
         const puerto = obj.puertos?.find(p => p.id === portId);
         if (puerto) {
             if (puerto.orientacion) return puerto.orientacion;
             if (puerto.dir) return puerto.dir;
             if (puerto.normal) return puerto.normal;
         }
+        // Si es línea, calcular a partir de los puntos
         const pts = getPoints(obj);
         if (pts && pts.length >= 2) {
             if (portId === '0') {
@@ -137,107 +141,27 @@ const SmartFlowCommands = (function() {
         }
     }
 
-    // ==================== ENSURE FITTINGS REVOLUCIONADO V5.11 ====================
+    // ==================== ENSURE FITTINGS (siempre usa Router si existe) ====================
     function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
+        // Delegar completamente en Router si está disponible
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.ensureFittings) {
             return SmartFlowRouter.ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material);
         }
-
-        let pts = line._cachedPoints || line.points3D || [];
+        // Fallback local idéntico al del Router
+        const pts = line._cachedPoints || line.points3D || [];
         if (pts.length < 2) return { added: [], message: '' };
-        
         const added = [];
-        line.components = line.components || [];
-
-        // ----------------------------------------------------------------------
-        // FASE 1: PROCESAR CORTES Y CODOS EN NODOS INTERMEDIOS (QUIEBRES DE LA LÍNEA)
-        // ----------------------------------------------------------------------
-        if (pts.length >= 3) {
-            let i = 1;
-            while (i < pts.length - 1) {
-                const pA = pts[i - 1]; // Nodo anterior
-                const pB = pts[i];     // Nodo central (Punto de quiebre teórico)
-                const pC = pts[i + 1]; // Nodo siguiente
-
-                // Calcular vectores entrantes y salientes del quiebre
-                const vIn = { x: pB.x - pA.x, y: pB.y - pA.y, z: pB.z - pA.z };
-                const vOut = { x: pC.x - pB.x, y: pC.y - pB.y, z: pC.z - pB.z };
-
-                const lenIn = Math.hypot(vIn.x, vIn.y, vIn.z) || 1;
-                const lenOut = Math.hypot(vOut.x, vOut.y, vOut.z) || 1;
-
-                const vInUnit = { x: vIn.x / lenIn, y: vIn.y / lenIn, z: vIn.z / lenIn };
-                const vOutUnit = { x: vOut.x / lenOut, y: vOut.y / lenOut, z: vOut.z / lenOut };
-
-                // Producto escalar entre ambos vectores para verificar cambios de dirección
-                const dot = vInUnit.x * vOutUnit.x + vInUnit.y * vOutUnit.y + vInUnit.z * vOutUnit.z;
-                const angleRad = Math.acos(Math.min(1, Math.max(-1, dot)));
-                const angleDeg = angleRad * 180 / Math.PI;
-
-                // Si hay una desviación mayor a 3 grados, inyectamos un accesorio de catálogo
-                if (angleDeg > 3) {
-                    const elbowType = findElbowForLineLocal(material, diameter, angleDeg);
-                    if (elbowType) {
-                        const fittingLen = typeof SmartFlowRouter !== 'undefined' ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
-                        
-                        // Calcular parámetro relativo de la posición del codo en la tubería
-                        let currentAccum = 0, totalLineLen = 0;
-                        for (let j = 0; j < pts.length - 1; j++) {
-                            const d = Math.hypot(pts[j+1].x - pts[j].x, pts[j+1].y - pts[j].y, pts[j+1].z - pts[j].z);
-                            if (j < i) currentAccum += d;
-                            totalLineLen += d;
-                        }
-                        const paramCalculado = totalLineLen > 0 ? (currentAccum / totalLineLen) : 0.5;
-
-                        // Inyectar el componente dinámico
-                        line.components.push({
-                            type: elbowType,
-                            tag: `${elbowType}-${Date.now().toString(36).slice(-4)}-${i}`,
-                            param: paramCalculado,
-                            anguloReal: angleDeg
-                        });
-
-                        added.push({ type: elbowType, position: `nodo_${i}` });
-
-                        // Ajustar físicamente la tubería (Ajuste por Take-Out) para evitar colisiones visuales
-                        if (fittingLen > 0) {
-                            // Retraer el punto final del tubo entrante
-                            pts[i] = {
-                                x: pB.x - vInUnit.x * fittingLen,
-                                y: pB.y - vInUnit.y * fittingLen,
-                                z: pB.z - vInUnit.z * fittingLen
-                            };
-                            // Insertar un nuevo punto intermedio para desplazar el inicio del tubo saliente
-                            const nuevoPuntoSalida = {
-                                x: pB.x + vOutUnit.x * fittingLen,
-                                y: pB.y + vOutUnit.y * fittingLen,
-                                z: pB.z + vOutUnit.z * fittingLen
-                            };
-                            
-                            pts.splice(i + 1, 0, nuevoPuntoSalida);
-                            i++; // Avanzar el índice por el punto inyectado
-                        }
-                    }
-                }
-                i++;
-            }
-        }
-
-        // ----------------------------------------------------------------------
-        // FASE 2: VERIFICACIÓN Y ALINEACIÓN DE EXTREMOS (CONEXIÓN A PUERTOS)
-        // ----------------------------------------------------------------------
-        // Extremo inicial (Origen)
         const startDir = getPortDirectionLocal(fromObj, fromPortId);
         const toTarget = { x: pts[1].x - pts[0].x, y: pts[1].y - pts[0].y, z: pts[1].z - pts[0].z };
         const toTargetLen = Math.hypot(toTarget.x, toTarget.y, toTarget.z) || 1;
         const toTargetDir = { x: toTarget.x / toTargetLen, y: toTarget.y / toTargetLen, z: toTarget.z / toTargetLen };
         const dotStart = Math.abs(startDir.dx * toTargetDir.x + startDir.dy * toTargetDir.y + startDir.dz * toTargetDir.z);
         const angleStart = Math.acos(Math.min(1, dotStart)) * 180 / Math.PI;
-
         if (angleStart > 3) {
             const elbowType = findElbowForLineLocal(material, diameter, angleStart);
             if (elbowType) {
-                const fittingLen = typeof SmartFlowRouter !== 'undefined' ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
+                const fittingLen = SmartFlowRouter ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
+                line.components = line.components || [];
                 line.components.push({ type: elbowType, tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, param: 0.0 });
                 added.push({ type: elbowType, position: 'inicio' });
                 if (fittingLen > 0 && pts.length >= 2) {
@@ -245,8 +169,6 @@ const SmartFlowCommands = (function() {
                 }
             }
         }
-
-        // Extremo final (Destino)
         const endIdx = pts.length - 1;
         const endDir = getPortDirectionLocal(toObj, toPortId);
         const fromTarget = { x: pts[endIdx - 1].x - pts[endIdx].x, y: pts[endIdx - 1].y - pts[endIdx].y, z: pts[endIdx - 1].z - pts[endIdx].z };
@@ -254,11 +176,11 @@ const SmartFlowCommands = (function() {
         const fromTargetDir = { x: fromTarget.x / fromTargetLen, y: fromTarget.y / fromTargetLen, z: fromTarget.z / fromTargetLen };
         const dotEnd = Math.abs(endDir.dx * fromTargetDir.x + endDir.dy * fromTargetDir.y + endDir.dz * fromTargetDir.z);
         const angleEnd = Math.acos(Math.min(1, dotEnd)) * 180 / Math.PI;
-
         if (angleEnd > 3) {
             const elbowType = findElbowForLineLocal(material, diameter, angleEnd);
             if (elbowType) {
-                const fittingLen = typeof SmartFlowRouter !== 'undefined' ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
+                const fittingLen = SmartFlowRouter ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
+                line.components = line.components || [];
                 line.components.push({ type: elbowType, tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, param: 1.0 });
                 added.push({ type: elbowType, position: 'fin' });
                 if (fittingLen > 0 && pts.length >= 2) {
@@ -266,16 +188,14 @@ const SmartFlowCommands = (function() {
                 }
             }
         }
-
-        // Validación de reductores en el nodo final
         const fromDiam = fromObj.diameter || (fromObj.puertos?.find(p => p.id === fromPortId)?.diametro) || diameter;
         const toDiam = toObj.diameter || (toObj.puertos?.find(p => p.id === toPortId)?.diametro) || diameter;
         if (Math.abs(fromDiam - toDiam) > 0.5) {
             const reducerType = 'CONCENTRIC_REDUCER';
+            line.components = line.components || [];
             line.components.push({ type: reducerType, tag: `${reducerType}-${Date.now().toString(36).slice(-4)}`, param: 1.0 });
             added.push({ type: reducerType, position: 'fin (reductor)' });
         }
-
         line._cachedPoints = pts;
         line.points3D = pts;
         const msg = added.length > 0 ? ' | Accesorios: ' + added.map(a => `${a.type} (${a.position})`).join(', ') : '';
@@ -304,7 +224,7 @@ const SmartFlowCommands = (function() {
                 return false;
             });
         }
-        return bestMatch || 'ELBOW_90_LR'; // Fallback industrial por defecto
+        return bestMatch;
     }
 
     // ==================== COMANDO COORDENADAS / PUNTO ====================
@@ -480,7 +400,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- CREATE ---
+    // --- CREATE (sin manifold) ---
     function parseCreate(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'create') return false;
@@ -534,19 +454,14 @@ const SmartFlowCommands = (function() {
             i++;
         }
         if (points.length < 2) { notifyWithVoice("Error: Se requieren al menos 2 puntos", true); return true; }
-        
         const nuevaLinea = { tag, diameter, material, spec, _cachedPoints: points, waypoints: points.slice(1, -1), components: [] };
-        
-        // Evaluar e inyectar codos intermedios automáticamente en base a su geometría vectorial recién trazada
-        ensureFittings(nuevaLinea, null, null, null, null, diameter, material);
-        
         _core.addLine(nuevaLinea);
         if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
         notifyWithVoice(`Línea ${tag} creada`, false);
         return true;
     }
 
-    // --- CONNECT ---
+    // --- CONNECT (línea recta, ensureFittings para accesorios) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -596,6 +511,7 @@ const SmartFlowCommands = (function() {
         let endPos = null, nuevoPuertoId = toNozzleRaw;
         let nzTo = null;
 
+        // Línea destino sin puerto explícito → tee
         if (isToLine && (!toNozzleRaw || toNozzleRaw === '')) {
             const pts = _core.getLinePoints(toObj);
             if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
@@ -620,6 +536,7 @@ const SmartFlowCommands = (function() {
             const toObjUpd = _core.findObjectByTag(toEquip);
             if (toObjUpd?.puertos) nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
         } else {
+            // Destino con puerto concreto o numérico
             const numPos = parseFloat(toNozzleRaw);
             const isNumeric = !isNaN(numPos) && isFinite(numPos);
             let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
@@ -802,7 +719,7 @@ const SmartFlowCommands = (function() {
     function generateBOM() {
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return; }
         const db = _core.getDb(); const lines = db.lines || []; const equipos = db.equipos || []; let items = [];
-        equipos.forEach(eq => { if (eq.tipo !== 'colector') { items.push({ tipo: 'EQUIPO', tag: eq.tag, descripcion: `${eq.tipo} ${eq.material || ''}`, cantidad: 1, unit: 'Und' }); } });
+        equipos.forEach(eq => { if (eq.tipo !== 'colector') { items.push({ tipo: 'EQUIPO', tag: eq.tag, descripcion: `${eq.tipo} ${eq.material || ''}`, cantidad: 1, unidad: 'Und' }); } });
         const pipeMap = new Map();
         lines.forEach(line => {
             const pts = getPoints(line); if (!pts || pts.length < 2) return;
@@ -1086,7 +1003,7 @@ const SmartFlowCommands = (function() {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
         _voiceFn = voiceFn || null;
-        console.log('✅ SmartFlow Commands v5.11 (Inyección de codos intermedia por geometría vectorial integrada)');
+        console.log('✅ SmartFlow Commands v5.10 (ensureFittings robusto, sin falsos avisos)');
     }
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
