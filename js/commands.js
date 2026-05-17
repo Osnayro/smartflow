@@ -1,9 +1,4 @@
 
-// ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.15
-// Archivo: js/commands.js
-// ============================================================
-
 const SmartFlowCommands = (function() {
     
     let _core = null;
@@ -13,7 +8,6 @@ const SmartFlowCommands = (function() {
     let _renderUI = () => {};
     let _voiceFn = null;
 
-    // -------------------- DICCIONARIO DE INTENCIONES --------------------
     const IntentDictionary = {
         'crear': 'create', 'nuevo': 'create', 'añadir': 'create', 'instalar': 'create', 'pon': 'create', 'crea': 'create',
         'create': 'create', 'add': 'create',
@@ -52,7 +46,6 @@ const SmartFlowCommands = (function() {
         return cmd;
     }
 
-    // -------------------- UTILIDADES --------------------
     function extractCoords(str) {
         const m = str.match(/\((-?\d+\.?\d*)\s*,?\s*(-?\d+\.?\d*)\s*,?\s*(-?\d+\.?\d*)\)/);
         return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3]) } : null;
@@ -138,7 +131,6 @@ const SmartFlowCommands = (function() {
         }
     }
 
-    // ==================== ENSURE FITTINGS (RESOLUCIÓN GEOMÉTRICA EXACTA) ====================
     function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.ensureFittings) {
             return SmartFlowRouter.ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material);
@@ -168,7 +160,6 @@ const SmartFlowCommands = (function() {
             return len > 0.01 ? { x: dx / len, y: dy / len, z: dz / len, len } : { x: 0, y: 0, z: 0, len: 0 };
         }
 
-        // FASE 1: PROCESAMIENTO DE QUIEBRES INTERMEDIOS
         let puntosCorregidos = [ { ...pts[0] } ];
         
         for (let i = 1; i < pts.length - 1; i++) {
@@ -215,7 +206,6 @@ const SmartFlowCommands = (function() {
         }
         puntosCorregidos.push({ ...pts[pts.length - 1] });
 
-        // FASE 2: VERIFICACIÓN Y ALINEACIÓN DE EXTREMOS
         if (fromObj && fromPortId && puntosCorregidos.length >= 2) {
             const startDir = getPortDirectionLocal(fromObj, fromPortId);
             const vStart = getUnitVector(puntosCorregidos[0], puntosCorregidos[1]);
@@ -273,7 +263,6 @@ const SmartFlowCommands = (function() {
             }
         }
 
-        // FASE 3: REDUCCIONES AUTOMÁTICAS
         if (fromObj && toObj && fromPortId && toPortId) {
             const fromNozzleDiam = parseFloat(fromObj.puertos?.find(p => p.id === fromPortId)?.diametro || fromObj.diameter || diameter);
             const toNozzleDiam = parseFloat(toObj.puertos?.find(p => p.id === toPortId)?.diametro || toObj.diameter || diameter);
@@ -295,7 +284,6 @@ const SmartFlowCommands = (function() {
         return { added, message: msg };
     }
 
-    // ==================== COMANDO COORDENADAS / PUNTO ====================
     function parsePoint(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'point' && parts[0] !== 'coordenadas') return false;
@@ -384,7 +372,6 @@ const SmartFlowCommands = (function() {
         } catch (e) { notifyWithVoice('❌ Error: ' + e.message, true); return true; }
     }
 
-    // ==================== COMANDO NODOS ====================
     function parseNodes(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'nodes' && parts[0] !== 'nodos') return false;
@@ -404,7 +391,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // ==================== COMANDOS INFO ====================
     function parseInfo(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'info') return false;
@@ -468,7 +454,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- CREATE (sin manifold) ---
     function parseCreate(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'create') return false;
@@ -529,7 +514,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- CONNECT (línea recta, ensureFittings para accesorios) ---
     function parseConnect(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'connect' && parts[0] !== 'conectar') return false;
@@ -579,7 +563,6 @@ const SmartFlowCommands = (function() {
         let endPos = null, nuevoPuertoId = toNozzleRaw;
         let nzTo = null;
 
-        // Línea destino sin puerto explícito → tee
         if (isToLine && (!toNozzleRaw || toNozzleRaw === '')) {
             const pts = _core.getLinePoints(toObj);
             if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
@@ -604,7 +587,6 @@ const SmartFlowCommands = (function() {
             const toObjUpd = _core.findObjectByTag(toEquip);
             if (toObjUpd?.puertos) nzTo = toObjUpd.puertos.find(p => p.id === puertoId);
         } else {
-            // Destino con puerto concreto o numérico
             const numPos = parseFloat(toNozzleRaw);
             const isNumeric = !isNaN(numPos) && isFinite(numPos);
             let posRelativa = isNumeric ? Math.min(1, Math.max(0, numPos)) : null;
@@ -635,18 +617,6 @@ const SmartFlowCommands = (function() {
                     const pts = _core.getLinePoints(toObj);
                     if (!pts || pts.length < 2) { notifyWithVoice("La línea destino no tiene geometría", true); return true; }
                     endPos = toNozzleRaw === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
-                    // AÑADIR PUERTO VIRTUAL A LA LÍNEA PARA QUE EL RENDERIZADOR TENGA DIRECCIÓN
-                    const dirVec = getPortDirectionLocal(toObj, toNozzleRaw);
-                    if (!toObj.puertos) toObj.puertos = [];
-                    if (!toObj.puertos.find(p => p.id === toNozzleRaw)) {
-                        toObj.puertos.push({
-                            id: toNozzleRaw,
-                            relX: 0, relY: 0, relZ: 0,
-                            orientacion: dirVec,
-                            diametro: toObj.diameter || diameter,
-                            status: 'connected'
-                        });
-                    }
                 } else {
                     if (!toObj.puertos) toObj.puertos = [];
                     nzTo = toObj.puertos?.find(n => n.id === toNozzleRaw);
@@ -680,7 +650,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- ROUTE (sí usa el router) ---
     function parseRoute(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'route' && parts[0] !== 'ruta') return false;
@@ -702,7 +671,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- DELETE ---
     function parseDelete(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'delete' && parts[0] !== 'eliminar') return false;
@@ -728,7 +696,6 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // --- EDIT ---
     function parseEditCommand(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'edit' && parts[0] !== 'editar') return false;
@@ -779,7 +746,6 @@ const SmartFlowCommands = (function() {
         return false;
     }
 
-    // --- LIST ---
     function listEquipos() { const eqs = _core.getDb().equipos; notifyWithVoice(eqs.length ? `Equipos (${eqs.length}): ${eqs.map(e=>e.tag).join(', ')}` : 'No hay equipos'); }
     function listLineas() { const ls = _core.getDb().lines; notifyWithVoice(ls.length ? `Líneas (${ls.length}): ${ls.map(l=>`${l.tag}(${l.diameter}" ${l.material||'?'})`).join(', ')}` : 'No hay líneas'); }
     function parseList(cmd) {
@@ -794,7 +760,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- BOM ---
     function parseBOM(cmd) { const t = cmd.trim().toLowerCase(); if (t === 'bom' || t === 'mto' || t === 'generate bom' || t === 'generar bom') { generateBOM(); return true; } return false; }
     function generateBOM() {
         if (!_core) { notifyWithVoice("Error: Core no inicializado", true); return; }
@@ -819,10 +784,8 @@ const SmartFlowCommands = (function() {
         notifyWithVoice(`BOM generado con ${items.length} líneas.`, false);
     }
 
-    // --- AUDIT ---
     function parseAudit(cmd) { const t = cmd.trim().toLowerCase(); if (t === 'audit' || t === 'auditar') { if (_core && _core.auditModel) _core.auditModel(); else notifyWithVoice("Auditoría no disponible.", true); return true; } return false; }
 
-    // --- HELP ---
     function parseHelp(cmd) {
         const lower = cmd.toLowerCase(); if (lower !== 'help' && lower !== 'ayuda') return false;
         let ayuda = "═══════════════════════════════════════════════════════════\n              SMARTFLOW PRO - COMANDOS DISPONIBLES\n═══════════════════════════════════════════════════════════\n\n";
@@ -835,7 +798,6 @@ const SmartFlowCommands = (function() {
         notifyWithVoice(ayuda, false); return true;
     }
 
-    // --- TAP (línea recta, solo tee) ---
     function parseTap(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'tap') return false;
@@ -883,7 +845,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- SPLIT ---
     function parseSplit(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'split' && parts[0] !== 'dividir' && parts[0] !== 'romper') return false;
@@ -901,7 +862,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // ==================== IMPORTACIÓN PCF COMPLETA ====================
     const skeyToInternal = {
         'TANK': { type: 'equipment', internal: 'tanque_v' },
         'PUMP': { type: 'equipment', internal: 'bomba' },
@@ -1041,7 +1001,6 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // ==================== EJECUCIÓN DE COMANDOS ====================
     function executeCommand(cmd) {
         if (!cmd || cmd.startsWith('//')) return false;
         const normalized = normalizeCommand(cmd);
@@ -1083,7 +1042,6 @@ const SmartFlowCommands = (function() {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
         _voiceFn = voiceFn || null;
-        console.log('✅ SmartFlow Commands v5.15 (puertos virtuales en extremos de línea)');
     }
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
