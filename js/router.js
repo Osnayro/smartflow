@@ -1,9 +1,6 @@
-
 // ============================================================
-// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v3.4
+// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v3.5
 // Archivo: js/router.js
-// Cambios: Corrección en calculateOrthogonalIntersection,
-//          ensureFittings sin Math.abs, mejora en speakText
 // ============================================================
 
 const SmartFlowRouter = (function() {
@@ -208,190 +205,146 @@ const SmartFlowRouter = (function() {
         return null;
     }
 
+    // ==================== NUEVA VERSIÓN ROBUSTECIDA ====================
     function findElbowForLine(material, diameter, angleDeg) {
         const catalog = _catalog || window.SmartFlowCatalog;
         if (!catalog) return null;
         const allTypes = catalog.listComponentTypes();
-        const elbowTypes = allTypes.filter(t => t.startsWith('ELBOW_'));
+        
+        // CORRECCIÓN: Filtrar si contiene 'ELBOW' en cualquier parte del nombre (por si es PPR_ELBOW o ELBOW_PPR)
+        const elbowTypes = allTypes.filter(t => t.toUpperCase().includes('ELBOW'));
+        
         let bestMatch = null, bestDiff = Infinity;
         for (const type of elbowTypes) {
             const comp = catalog.getComponent(type);
-            if (!comp || !comp.angulo) continue;
+            // Validar que el componente tenga un ángulo definido
+            if (!comp || typeof comp.angulo === 'undefined') continue;
+            
             const diff = Math.abs(comp.angulo - angleDeg);
-            if (diff < bestDiff && diff < 15) { bestDiff = diff; bestMatch = type; }
+            if (diff < bestDiff && diff < 15) { 
+                bestDiff = diff; 
+                bestMatch = type; 
+            }
         }
+        
         if (!bestMatch) {
             const mat = (material || '').toUpperCase();
+            // Buscar una coincidencia por material si no se halló por ángulo exacto
             bestMatch = elbowTypes.find(t => {
-                if (mat.includes('PPR') && t.includes('PPR')) return true;
-                if (mat.includes('HDPE') && t.includes('HDPE')) return true;
-                if ((mat.includes('ACERO') || mat.includes('CS')) && (t.includes('CS') || t.includes('LR'))) return true;
-                if (mat.includes('INOX') && (t.includes('SS') || t.includes('SANITARY'))) return true;
+                if (mat.includes('PPR') && t.toUpperCase().includes('PPR')) return true;
+                if (mat.includes('HDPE') && t.toUpperCase().includes('HDPE')) return true;
+                if ((mat.includes('ACERO') || mat.includes('CS')) && (t.toUpperCase().includes('CS') || t.toUpperCase().includes('LR'))) return true;
+                if (mat.includes('INOX') && (t.toUpperCase().includes('SS') || t.toUpperCase().includes('SANITARY'))) return true;
                 return false;
             });
         }
+        
         if (bestMatch) console.log(`✅ Codo seleccionado: ${bestMatch} (${angleDeg.toFixed(0)}°)`);
         return bestMatch;
     }
 
     function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
-        const pts = line._cachedPoints || line.points3D || [];
+        // Asegurar que trabajamos con una copia limpia de los puntos geométricos
+        const pts = [...(line._cachedPoints || line.points3D || [])];
         if (pts.length < 2) return { added: [], message: '' };
         const added = [];
 
-        // FASE 1: PROCESAMIENTO DE QUIEBRES INTERMEDIOS (igual que en commands v5.13)
-        const catalog = _catalog || window.SmartFlowCatalog;
-        function getSpecs(type, diam) {
-            if (catalog && typeof catalog.getFittingSpecs === 'function') {
-                return catalog.getFittingSpecs(type, diam, material);
-            }
-            const dMm = diam * 25.4;
-            if (type.includes('ELBOW')) return { takeout: dMm * 1.5, skey: 'ELBW' };
-            if (type.includes('REDUCER')) return { takeout: 100, skey: 'REDC' };
-            return { takeout: 50, skey: 'GENERIC' };
-        }
-        function getUnitVector(pA, pB) {
-            const dx = pB.x - pA.x, dy = pB.y - pA.y, dz = pB.z - pA.z;
-            const len = Math.hypot(dx, dy, dz);
-            return len > 0.01 ? { x: dx / len, y: dy / len, z: dz / len, len } : { x: 0, y: 0, z: 0, len: 0 };
-        }
-
-        let puntosCorregidos = [ { ...pts[0] } ];
+        // 1. EVALUACIÓN DEL CODO DE INICIO
+        const startDir = getPortDirectionLocal(fromObj, fromPortId);
+        const toTarget = { x: pts[1].x - pts[0].x, y: pts[1].y - pts[0].y, z: pts[1].z - pts[0].z };
+        const toTargetLen = Math.hypot(toTarget.x, toTarget.y, toTarget.z) || 1;
+        const toTargetDir = { x: toTarget.x / toTargetLen, y: toTarget.y / toTargetLen, z: toTarget.z / toTargetLen };
         
-        for (let i = 1; i < pts.length - 1; i++) {
-            const pPrev = puntosCorregidos[puntosCorregidos.length - 1];
-            const pCurr = pts[i];
-            const pNext = pts[i + 1];
+        // CORRECCIÓN: Quitar Math.abs para evaluar rango completo 0-180
+        const dotStart = startDir.dx * toTargetDir.x + startDir.dy * toTargetDir.y + startDir.dz * toTargetDir.z;
+        const angleStart = Math.acos(Math.max(-1, Math.min(1, dotStart))) * 180 / Math.PI;
 
-            const vIn = getUnitVector(pPrev, pCurr);
-            const vOut = getUnitVector(pCurr, pNext);
-
-            if (vIn.len === 0 || vOut.len === 0) continue;
-
-            const dot = vIn.x * vOut.x + vIn.y * vOut.y + vIn.z * vOut.z;
-            
-            if (dot < 0.9986) {
-                const angleRad = Math.acos(Math.min(1, Math.max(-1, dot)));
-                const angleDeg = angleRad * 180 / Math.PI;
-                
-                const elbowType = angleDeg > 65 ? 'ELBOW_90_LR' : 'ELBOW_45';
-                const specs = getSpecs(elbowType, diameter);
-                
-                const alpha = Math.PI - angleRad;
-                const takeout = specs.takeout * Math.tan(alpha / 2);
-
-                const pIn = { x: pCurr.x - vIn.x * takeout, y: pCurr.y - vIn.y * takeout, z: pCurr.z - vIn.z * takeout };
-                const pOut = { x: pCurr.x + vOut.x * takeout, y: pCurr.y + vOut.y * takeout, z: pCurr.z + vOut.z * takeout };
-
-                puntosCorregidos.push(pIn);
-
+        if (angleStart > MIN_ANGLE_FOR_ELBOW && angleStart < 175) {
+            const elbowType = findElbowForLine(material, diameter, angleStart);
+            if (elbowType) {
+                const fittingLen = getFittingLength(elbowType, diameter);
                 line.components = line.components || [];
-                line.components.push({
-                    type: elbowType,
-                    skey: specs.skey,
-                    tag: `${elbowType}-${Date.now().toString(36).slice(-4)}-${i}`,
-                    param: i / (pts.length - 1),
-                    position3D: { ...pCurr },
-                    takeout: takeout
+                line.components.push({ 
+                    type: elbowType, 
+                    tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, 
+                    param: 0.0 
                 });
-
-                puntosCorregidos.push(pOut);
-                added.push({ type: elbowType, position: `Nodo Intermedio ${i}` });
-            } else {
-                puntosCorregidos.push({ ...pCurr });
+                added.push({ type: elbowType, position: 'inicio' });
+                if (fittingLen > 0) {
+                    pts[0] = { 
+                        x: pts[0].x + toTargetDir.x * fittingLen, 
+                        y: pts[0].y + toTargetDir.y * fittingLen, 
+                        z: pts[0].z + toTargetDir.z * fittingLen 
+                    };
+                }
             }
         }
-        puntosCorregidos.push({ ...pts[pts.length - 1] });
 
-        // FASE 2: VERIFICACIÓN Y ALINEACIÓN DE EXTREMOS (sin Math.abs)
-        if (puntosCorregidos.length >= 2 && fromObj && fromPortId) {
-            const startDir = getPortDirectionLocal(fromObj, fromPortId);
-            const vStart = getUnitVector(puntosCorregidos[0], puntosCorregidos[1]);
-            const dotStart = startDir.dx * vStart.x + startDir.dy * vStart.y + startDir.dz * vStart.z;
-            const angleStart = Math.acos(Math.max(-1, Math.min(1, dotStart))) * 180 / Math.PI;
-            
-            if (angleStart > 3 && vStart.len > 10) { 
-                const specs = getSpecs('ELBOW_90_LR', diameter);
-                const takeout = specs.takeout;
-                
-                const nuevoPunto = { 
-                    x: puntosCorregidos[0].x + vStart.x * takeout, 
-                    y: puntosCorregidos[0].y + vStart.y * takeout, 
-                    z: puntosCorregidos[0].z + vStart.z * takeout 
-                };
-                puntosCorregidos.splice(1, 0, nuevoPunto);
-                
-                line.components.push({
-                    type: 'ELBOW_90_LR',
-                    skey: specs.skey,
-                    tag: `ELBOW-START-${Date.now().toString(36).slice(-4)}`,
-                    param: 0.0,
-                    position3D: { ...puntosCorregidos[0] }
+        // 2. EVALUACIÓN DEL CODO DE FIN
+        const endIdx = pts.length - 1;
+        const endDir = getPortDirectionLocal(toObj, toPortId);
+        const fromTarget = { x: pts[endIdx - 1].x - pts[endIdx].x, y: pts[endIdx - 1].y - pts[endIdx].y, z: pts[endIdx - 1].z - pts[endIdx].z };
+        const fromTargetLen = Math.hypot(fromTarget.x, fromTarget.y, fromTarget.z) || 1;
+        const fromTargetDir = { x: fromTarget.x / fromTargetLen, y: fromTarget.y / fromTargetLen, z: fromTarget.z / fromTargetLen };
+        
+        // CORRECCIÓN: Quitar Math.abs
+        const dotEnd = endDir.dx * fromTargetDir.x + endDir.dy * fromTargetDir.y + endDir.dz * fromTargetDir.z;
+        const angleEnd = Math.acos(Math.max(-1, Math.min(1, dotEnd))) * 180 / Math.PI;
+
+        if (angleEnd > MIN_ANGLE_FOR_ELBOW && angleEnd < 175) {
+            const elbowType = findElbowForLine(material, diameter, angleEnd);
+            if (elbowType) {
+                const fittingLen = getFittingLength(elbowType, diameter);
+                line.components = line.components || [];
+                line.components.push({ 
+                    type: elbowType, 
+                    tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, 
+                    param: 1.0 
                 });
-                added.push({ type: 'ELBOW_90_LR', position: 'Origen (Nozzle)' });
+                added.push({ type: elbowType, position: 'fin' });
+                if (fittingLen > 0) {
+                    pts[endIdx] = { 
+                        x: pts[endIdx].x + fromTargetDir.x * fittingLen, 
+                        y: pts[endIdx].y + fromTargetDir.y * fittingLen, 
+                        z: pts[endIdx].z + fromTargetDir.z * fittingLen 
+                    };
+                }
             }
         }
 
-        if (puntosCorregidos.length >= 2 && toObj && toPortId) {
-            const endIdx = puntosCorregidos.length - 1;
-            const endDir = getPortDirectionLocal(toObj, toPortId);
-            const vEnd = getUnitVector(puntosCorregidos[endIdx], puntosCorregidos[endIdx - 1]);
-            const dotEnd = endDir.dx * vEnd.x + endDir.dy * vEnd.y + endDir.dz * vEnd.z;
-            const angleEnd = Math.acos(Math.max(-1, Math.min(1, dotEnd))) * 180 / Math.PI;
+        // 3. EVALUACIÓN DE REDUCCIÓN (CORRECCIÓN: Sanitización con parseFloat)
+        const rawFromDiam = fromObj.diameter || (fromObj.puertos?.find(p => p.id === fromPortId)?.diametro) || diameter;
+        const rawToDiam = toObj.diameter || (toObj.puertos?.find(p => p.id === toPortId)?.diametro) || diameter;
+        
+        const fromDiam = parseFloat(rawFromDiam);
+        const toDiam = parseFloat(rawToDiam);
 
-            if (angleEnd > 3 && vEnd.len > 10) {
-                const specs = getSpecs('ELBOW_90_LR', diameter);
-                const takeout = specs.takeout;
-                
-                const nuevoPunto = { 
-                    x: puntosCorregidos[endIdx].x + vEnd.x * takeout, 
-                    y: puntosCorregidos[endIdx].y + vEnd.y * takeout, 
-                    z: puntosCorregidos[endIdx].z + vEnd.z * takeout 
-                };
-                puntosCorregidos.splice(endIdx, 0, nuevoPunto);
-                
-                line.components.push({
-                    type: 'ELBOW_90_LR',
-                    skey: specs.skey,
-                    tag: `ELBOW-END-${Date.now().toString(36).slice(-4)}`,
-                    param: 1.0,
-                    position3D: { ...puntosCorregidos[puntosCorregidos.length - 1] }
+        if (!isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.05) {
+            const reducerType = findComponentInCatalog('CONCENTRIC_REDUCER', material, []);
+            if (reducerType) {
+                line.components = line.components || [];
+                line.components.push({ 
+                    type: reducerType, 
+                    tag: `${reducerType}-${Date.now().toString(36).slice(-4)}`, 
+                    param: 1.0 
                 });
-                added.push({ type: 'ELBOW_90_LR', position: 'Destino (Nozzle)' });
+                added.push({ type: reducerType, position: 'fin (reductor)' });
             }
         }
 
-        // FASE 3: REDUCCIONES AUTOMÁTICAS
-        if (fromObj && toObj && fromPortId && toPortId) {
-            const fromNozzleDiam = fromObj?.puertos?.find(p => p.id === fromPortId)?.diametro || fromObj?.diameter || diameter;
-            const toNozzleDiam = toObj?.puertos?.find(p => p.id === toPortId)?.diametro || toObj?.diameter || diameter;
-
-            if (Math.abs(fromNozzleDiam - diameter) > 0.01 && puntosCorregidos.length >= 2) {
-                const specs = getSpecs('CONCENTRIC_REDUCER', diameter);
-                const vDir = getUnitVector(puntosCorregidos[0], puntosCorregidos[1]);
-                const pRedOut = { x: puntosCorregidos[0].x + vDir.x * specs.takeout, y: puntosCorregidos[0].y + vDir.y * specs.takeout, z: puntosCorregidos[0].z + vDir.z * specs.takeout };
-                puntosCorregidos.splice(1, 0, pRedOut);
-                line.components.push({ type: 'CONCENTRIC_REDUCER', skey: specs.skey, tag: `REDC-START-${Date.now().toString(36).slice(-4)}`, param: 0.02 });
-                added.push({ type: 'CONCENTRIC_REDUCER', position: 'Origen (Cambio ⌀)' });
-            }
-
-            if (Math.abs(toNozzleDiam - diameter) > 0.01 && puntosCorregidos.length >= 2) {
-                const endIdx = puntosCorregidos.length - 1;
-                const specs = getSpecs('CONCENTRIC_REDUCER', diameter);
-                const vDir = getUnitVector(puntosCorregidos[endIdx], puntosCorregidos[endIdx - 1]);
-                const pRedIn = { x: puntosCorregidos[endIdx].x + vDir.x * specs.takeout, y: puntosCorregidos[endIdx].y + vDir.y * specs.takeout, z: puntosCorregidos[endIdx].z + vDir.z * specs.takeout };
-                puntosCorregidos.splice(endIdx, 0, pRedIn);
-                line.components.push({ type: 'CONCENTRIC_REDUCER', skey: specs.skey, tag: `REDC-END-${Date.now().toString(36).slice(-4)}`, param: 0.98 });
-                added.push({ type: 'CONCENTRIC_REDUCER', position: 'Destino (Cambio ⌀)' });
-            }
+        // Sincronizar todos los arrays posibles de la entidad de línea para evitar desajustes del Core
+        line._cachedPoints = pts;
+        line.points3D = pts;
+        line.points = pts;
+        if (pts.length > 2) {
+            line.waypoints = pts.slice(1, -1);
         }
 
-        line._cachedPoints = puntosCorregidos;
-        line.points3D = puntosCorregidos;
-
-        const msg = added.length > 0 ? ' | Accesorios Inyectados: ' + added.map(a => `${a.type} en ${a.position}`).join(', ') : '';
+        const msg = added.length > 0 ? ' | Accesorios: ' + added.map(a => `${a.type} (${a.position})`).join(', ') : '';
         return { added, message: msg };
     }
+
+    // ==================== RESTO DE FUNCIONES SIN CAMBIOS ====================
 
     function insertarAccesorioEnLinea(lineTag, puntoConexion, diametroNuevaLinea, forzarTee = false) {
         ensureInitialized();
@@ -588,7 +541,7 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('✅ SmartFlow Router v3.4 (intersección corregida, ensureFittings sin Math.abs, voz mejorada)');
+        console.log('✅ SmartFlow Router v3.5 (búsqueda de codos flexible, diámetros saneados, sincronización de puntos)');
     }
 
     return {
