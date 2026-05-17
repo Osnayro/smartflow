@@ -1,3 +1,4 @@
+
 // ============================================================
 // MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.15
 // Archivo: js/commands.js
@@ -139,7 +140,6 @@ const SmartFlowCommands = (function() {
 
     // ==================== ENSURE FITTINGS (RESOLUCIÓN GEOMÉTRICA EXACTA) ====================
     function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
-        // Delegar en Router si está disponible
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.ensureFittings) {
             return SmartFlowRouter.ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material);
         }
@@ -296,19 +296,6 @@ const SmartFlowCommands = (function() {
     }
 
     // ==================== COMANDO COORDENADAS / PUNTO ====================
-    function parsePoint(cmd) { /* ... sin cambios ... */ return false; }
-    // (Se incluyen todas las funciones originales: parsePoint, parseNodes, parseInfo, infoLine, infoEquipment, infoComponent,
-    //  parseCreate, parseCreateLine, parseConnect, parseRoute, parseDelete, parseEditCommand, listEquipos, listLineas, parseList,
-    //  parseBOM, generateBOM, parseAudit, parseHelp, parseTap, parseSplit, importPCF, executeCommand, executeBatch, init)
-    // Por brevedad, se omiten aquí pero van en el archivo final completo.
-
-    // ==================== RESTO DEL ARCHIVO (IDÉNTICO A V5.13) ====================
-    // ... (todo el código desde parsePoint hasta init, sin cambios)
-
-    return {
-        init, executeCommand, executeBatch, importPCF, getPortDirectionLocal
-    };
-})(); // ==================== COMANDO COORDENADAS / PUNTO ====================
     function parsePoint(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'point' && parts[0] !== 'coordenadas') return false;
@@ -1101,4 +1088,3 @@ const SmartFlowCommands = (function() {
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
 })();
-
