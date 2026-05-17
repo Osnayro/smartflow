@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.9
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.11
 // Archivo: js/main.js
 // ============================================================
 
@@ -362,6 +362,7 @@
                     case 'M': e.preventDefault(); exportarMTO(); break;
                     case 'P': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) { SmartFlowRenderer.exportPDF(); notify("✅ PDF generado correctamente.", false); } break;
                     case 'E': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) { SmartFlowRenderer.exportPCF(); notify("✅ Archivo PCF exportado correctamente.", false); } break;
+                    case 'S': e.preventDefault(); guardarProyecto(); break;
                 }
             }
         });
@@ -444,28 +445,37 @@
     
     function ejecutarComando() {
         if (!commandText) return;
-        const cmd = commandText.value.trim();
-        if (!cmd) return;
+        const textoCompleto = commandText.value.trim();
+        if (!textoCompleto) return;
+        
+        // Dividir en líneas y filtrar vacías
+        const lineas = textoCompleto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         
         let success = true;
-        if (typeof SmartFlowCommands !== 'undefined') {
-            const result = SmartFlowCommands.executeCommand(cmd);
-            success = (result !== false);
+        if (lineas.length === 1) {
+            // Un solo comando
+            const resultado = SmartFlowCommands.executeCommand(lineas[0]);
+            success = (resultado !== false);
+        } else {
+            // Múltiples comandos (lote)
+            const ejecutados = SmartFlowCommands.executeBatch(lineas.join('\n'));
+            success = ejecutados > 0;
         }
         
         if (success) {
-            addToHistory(cmd);
+            addToHistory(textoCompleto);
         }
         
         commandText.value = '';
         _historyIndex = _commandHistory.length;
         
-        const lower = cmd.toLowerCase();
-        if (!lower.startsWith('info') && !lower.startsWith('coordenadas') && 
-            !lower.startsWith('nodos') && !lower.startsWith('listar') && 
-            !lower.startsWith('list') && !lower.startsWith('ayuda') && 
-            !lower.startsWith('help') && !lower.startsWith('bom') && 
-            !lower.startsWith('mto') && !lower.startsWith('audit')) {
+        // Ocultar panel tras ejecutar (excepto comandos informativos)
+        const primeraLinea = lineas[0].toLowerCase();
+        if (!primeraLinea.startsWith('info') && !primeraLinea.startsWith('coordenadas') && 
+            !primeraLinea.startsWith('nodos') && !primeraLinea.startsWith('listar') && 
+            !primeraLinea.startsWith('list') && !primeraLinea.startsWith('ayuda') && 
+            !primeraLinea.startsWith('help') && !primeraLinea.startsWith('bom') && 
+            !primeraLinea.startsWith('mto') && !primeraLinea.startsWith('audit')) {
             if (commandPanel) commandPanel.style.display = 'none';
         }
     }
