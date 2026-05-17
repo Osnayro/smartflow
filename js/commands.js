@@ -1,6 +1,6 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.9
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.10
 // Archivo: js/commands.js
 // ============================================================
 
@@ -82,20 +82,17 @@ const SmartFlowCommands = (function() {
         return obj._cachedPoints || obj.points3D || obj.points || [];
     }
 
+    // Versión mejorada que también busca orientacion
     function getPortDirectionLocal(obj, portId) {
-        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getPortDirection) {
-            return SmartFlowRouter.getPortDirection(obj, portId);
-        }
         if (!obj) return { dx: 1, dy: 0, dz: 0 };
-        if (obj.posX !== undefined || (obj.pos && obj.pos.x !== undefined)) {
-            const puerto = obj.puertos?.find(p => p.id === portId);
-            if (puerto) {
-                if (puerto.orientacion) return puerto.orientacion;
-                if (puerto.dir) return puerto.dir;
-                if (puerto.normal) return puerto.normal;
-            }
-            return { dx: 1, dy: 0, dz: 0 };
+        // Buscar en puertos del equipo
+        const puerto = obj.puertos?.find(p => p.id === portId);
+        if (puerto) {
+            if (puerto.orientacion) return puerto.orientacion;
+            if (puerto.dir) return puerto.dir;
+            if (puerto.normal) return puerto.normal;
         }
+        // Si es línea, calcular a partir de los puntos
         const pts = getPoints(obj);
         if (pts && pts.length >= 2) {
             if (portId === '0') {
@@ -141,40 +138,16 @@ const SmartFlowCommands = (function() {
         }
         if (typeof _voiceFn === 'function') {
             _voiceFn(message);
-        } else if (typeof SmartFlowAccessibility !== 'undefined' && SmartFlowAccessibility.isVoiceEnabled()) {
-            SmartFlowAccessibility.speak(message);
         }
     }
 
-    function findElbowForLine(material, diameter, angleDeg) {
-        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.findElbowForLine) {
-            return SmartFlowRouter.findElbowForLine(material, diameter, angleDeg);
-        }
-        const catalog = _catalog || window.SmartFlowCatalog;
-        if (!catalog) return null;
-        const allTypes = catalog.listComponentTypes();
-        const elbowTypes = allTypes.filter(t => t.startsWith('ELBOW_'));
-        let bestMatch = null, bestDiff = Infinity;
-        for (const type of elbowTypes) {
-            const comp = catalog.getComponent(type);
-            if (!comp || !comp.angulo) continue;
-            const diff = Math.abs(comp.angulo - angleDeg);
-            if (diff < bestDiff && diff < 15) { bestDiff = diff; bestMatch = type; }
-        }
-        return bestMatch;
-    }
-
-    function getFittingLength(componentType, diameter) {
-        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.getFittingLength) {
-            return SmartFlowRouter.getFittingLength(componentType, diameter);
-        }
-        return 50;
-    }
-
+    // ==================== ENSURE FITTINGS (siempre usa Router si existe) ====================
     function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
+        // Delegar completamente en Router si está disponible
         if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.ensureFittings) {
             return SmartFlowRouter.ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material);
         }
+        // Fallback local idéntico al del Router
         const pts = line._cachedPoints || line.points3D || [];
         if (pts.length < 2) return { added: [], message: '' };
         const added = [];
@@ -185,9 +158,9 @@ const SmartFlowCommands = (function() {
         const dotStart = Math.abs(startDir.dx * toTargetDir.x + startDir.dy * toTargetDir.y + startDir.dz * toTargetDir.z);
         const angleStart = Math.acos(Math.min(1, dotStart)) * 180 / Math.PI;
         if (angleStart > 3) {
-            const elbowType = findElbowForLine(material, diameter, angleStart);
+            const elbowType = findElbowForLineLocal(material, diameter, angleStart);
             if (elbowType) {
-                const fittingLen = getFittingLength(elbowType, diameter);
+                const fittingLen = SmartFlowRouter ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
                 line.components = line.components || [];
                 line.components.push({ type: elbowType, tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, param: 0.0 });
                 added.push({ type: elbowType, position: 'inicio' });
@@ -204,9 +177,9 @@ const SmartFlowCommands = (function() {
         const dotEnd = Math.abs(endDir.dx * fromTargetDir.x + endDir.dy * fromTargetDir.y + endDir.dz * fromTargetDir.z);
         const angleEnd = Math.acos(Math.min(1, dotEnd)) * 180 / Math.PI;
         if (angleEnd > 3) {
-            const elbowType = findElbowForLine(material, diameter, angleEnd);
+            const elbowType = findElbowForLineLocal(material, diameter, angleEnd);
             if (elbowType) {
-                const fittingLen = getFittingLength(elbowType, diameter);
+                const fittingLen = SmartFlowRouter ? SmartFlowRouter.getFittingLength(elbowType, diameter) : 50;
                 line.components = line.components || [];
                 line.components.push({ type: elbowType, tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, param: 1.0 });
                 added.push({ type: elbowType, position: 'fin' });
@@ -227,6 +200,31 @@ const SmartFlowCommands = (function() {
         line.points3D = pts;
         const msg = added.length > 0 ? ' | Accesorios: ' + added.map(a => `${a.type} (${a.position})`).join(', ') : '';
         return { added, message: msg };
+    }
+
+    function findElbowForLineLocal(material, diameter, angleDeg) {
+        const catalog = _catalog || window.SmartFlowCatalog;
+        if (!catalog) return null;
+        const allTypes = catalog.listComponentTypes();
+        const elbowTypes = allTypes.filter(t => t.toUpperCase().startsWith('ELBOW_'));
+        let bestMatch = null, bestDiff = Infinity;
+        for (const type of elbowTypes) {
+            const comp = catalog.getComponent(type);
+            if (!comp || !comp.angulo) continue;
+            const diff = Math.abs(comp.angulo - angleDeg);
+            if (diff < bestDiff && diff < 15) { bestDiff = diff; bestMatch = type; }
+        }
+        if (!bestMatch) {
+            const mat = (material || '').toUpperCase();
+            bestMatch = elbowTypes.find(t => {
+                if (mat.includes('PPR') && t.toUpperCase().includes('PPR')) return true;
+                if (mat.includes('HDPE') && t.toUpperCase().includes('HDPE')) return true;
+                if ((mat.includes('ACERO') || mat.includes('CS')) && (t.toUpperCase().includes('CS') || t.toUpperCase().includes('LR'))) return true;
+                if (mat.includes('INOX') && (t.toUpperCase().includes('SS') || t.toUpperCase().includes('SANITARY'))) return true;
+                return false;
+            });
+        }
+        return bestMatch;
     }
 
     // ==================== COMANDO COORDENADAS / PUNTO ====================
@@ -460,7 +458,6 @@ const SmartFlowCommands = (function() {
         _core.addLine(nuevaLinea);
         if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
         notifyWithVoice(`Línea ${tag} creada`, false);
-        // Ya no llamamos a procesarInterseccionesDeLinea para evitar notificaciones falsas
         return true;
     }
 
@@ -603,7 +600,7 @@ const SmartFlowCommands = (function() {
         return true;
     }
 
-    // --- ROUTE (sí usa el router) ---
+    // --- ROUTE ---
     function parseRoute(cmd) {
         const parts = cmd.split(/\s+/);
         if (parts[0] !== 'route' && parts[0] !== 'ruta') return false;
@@ -758,7 +755,7 @@ const SmartFlowCommands = (function() {
         notifyWithVoice(ayuda, false); return true;
     }
 
-    // --- TAP (línea recta, solo tee) ---
+    // --- TAP ---
     function parseTap(cmd) {
         const parts = cmd.trim().split(/\s+/);
         if (parts[0] !== 'tap') return false;
@@ -1006,7 +1003,7 @@ const SmartFlowCommands = (function() {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
         _voiceFn = voiceFn || null;
-        console.log('✅ SmartFlow Commands v5.9 (ensureFittings en connect, sin falsas notificaciones)');
+        console.log('✅ SmartFlow Commands v5.10 (ensureFittings robusto, sin falsos avisos)');
     }
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
