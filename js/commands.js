@@ -1,11 +1,7 @@
 
 // ============================================================
-// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.7
+// MÓDULO 4: SMARTFLOW COMMANDS (Intent Engine + Legacy) - v5.9
 // Archivo: js/commands.js
-// Cambios: ensureFittings, notificaciones detalladas,
-//          uso de Core.findObjectByTag/getLinePoints,
-//          eliminación de saveState/renderUI manuales,
-//          BOM excluye "colector", delegación de voz externa
 // ============================================================
 
 const SmartFlowCommands = (function() {
@@ -15,7 +11,7 @@ const SmartFlowCommands = (function() {
     let _renderer = null;
     let _notifyUI = (msg, isErr) => console.log(msg);
     let _renderUI = () => {};
-    let _voiceFn = null; // función externa para hablar
+    let _voiceFn = null;
 
     // -------------------- DICCIONARIO DE INTENCIONES --------------------
     const IntentDictionary = {
@@ -464,9 +460,7 @@ const SmartFlowCommands = (function() {
         _core.addLine(nuevaLinea);
         if (_core.setSelected) _core.setSelected({ type: 'line', obj: nuevaLinea });
         notifyWithVoice(`Línea ${tag} creada`, false);
-        if (typeof SmartFlowRouter !== 'undefined' && SmartFlowRouter.procesarInterseccionesDeLinea) {
-            SmartFlowRouter.procesarInterseccionesDeLinea(nuevaLinea);
-        }
+        // Ya no llamamos a procesarInterseccionesDeLinea para evitar notificaciones falsas
         return true;
     }
 
@@ -519,7 +513,6 @@ const SmartFlowCommands = (function() {
         const newTag = `L-${(db.lines?.length || 0) + 1}`;
         let endPos = null, nuevoPuertoId = toNozzleRaw;
         let nzTo = null;
-        const newComponents = [];
 
         // Línea destino sin puerto explícito → tee
         if (isToLine && (!toNozzleRaw || toNozzleRaw === '')) {
@@ -1013,7 +1006,7 @@ const SmartFlowCommands = (function() {
         _core = coreInstance; _catalog = catalogInstance; _renderer = rendererInstance;
         _notifyUI = notifyFn; _renderUI = renderFn;
         _voiceFn = voiceFn || null;
-        console.log('✅ SmartFlow Commands v5.7 (ensureFittings + notificaciones detalladas + BOM sin colector)');
+        console.log('✅ SmartFlow Commands v5.9 (ensureFittings en connect, sin falsas notificaciones)');
     }
 
     return { init, executeCommand, executeBatch, importPCF, getPortDirectionLocal };
