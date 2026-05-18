@@ -1,9 +1,8 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.8
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.9
 // Archivo: js/renderer.js
-// Cambios: cache de renderQueue, ícono de advertencia robusto,
-//          validación de nulidad en project()
+// Cambios: añadida drawPlataforma para equipos tipo 'plataforma'
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -257,6 +256,86 @@ const SmartFlowRenderer = (function() {
         _ctx.beginPath(); _ctx.ellipse(p.x+w, p.y, h, h*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = color; _ctx.fill(); _ctx.stroke();
         drawIsoText(eq.tag, p.x, p.y - h - 5, 'XY');
         drawPuertos(eq);
+    }
+
+    function drawPlataforma(eq) {
+        const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
+        const w = (eq.largo || 6000) * _cam.scale / 2;
+        const d = (eq.ancho || 3000) * _cam.scale / 2;
+        const h = (eq.altura || 400) * _cam.scale;
+        const material = (eq.material || '').toUpperCase();
+        const esConcreto = material.includes('CONCRETO') || material.includes('CEMENTO');
+        const colorBase = esConcreto ? '#9ca3af' : '#6b7280';
+        const colorBorde = esConcreto ? '#6b7280' : '#4b5563';
+        const colorBaranda = esConcreto ? '#d1d5db' : '#9ca3af';
+
+        const topY = p.y - h;
+        const bottomY = p.y;
+
+        // Base superior (losa)
+        _ctx.fillStyle = colorBase;
+        _ctx.strokeStyle = colorBorde;
+        _ctx.lineWidth = 1.5;
+        _ctx.beginPath();
+        _ctx.moveTo(p.x - w, topY);
+        _ctx.lineTo(p.x - w + d * 0.5, topY - d * 0.25);
+        _ctx.lineTo(p.x + d * 0.5, topY - d * 0.25);
+        _ctx.lineTo(p.x + w, topY);
+        _ctx.lineTo(p.x + d * 0.5, topY + d * 0.25);
+        _ctx.lineTo(p.x - w + d * 0.5, topY + d * 0.25);
+        _ctx.closePath();
+        _ctx.fill();
+        _ctx.stroke();
+
+        // Patas (columnas)
+        _ctx.strokeStyle = colorBorde;
+        _ctx.lineWidth = 1.5;
+        const patas = [
+            { x: p.x - w, z: p.z - d * 0.5 },
+            { x: p.x + w, z: p.z - d * 0.5 },
+            { x: p.x + w, z: p.z + d * 0.5 },
+            { x: p.x - w, z: p.z + d * 0.5 }
+        ];
+        patas.forEach(pta => {
+            const top = project({ x: pta.x, y: eq.posY - (eq.altura || 400), z: pta.z });
+            const bot = project({ x: pta.x, y: eq.posY, z: pta.z });
+            _ctx.beginPath();
+            _ctx.moveTo(top.x, top.y);
+            _ctx.lineTo(bot.x, bot.y);
+            _ctx.stroke();
+        });
+
+        // Baranda opcional
+        if (eq.baranda) {
+            const hBaranda = 200 * _cam.scale;
+            const topBarY = topY - hBaranda * 0.5;
+            _ctx.strokeStyle = colorBaranda;
+            _ctx.lineWidth = 0.8;
+            const esquinas = [
+                { x: p.x - w, z: p.z - d * 0.5 },
+                { x: p.x + w, z: p.z - d * 0.5 },
+                { x: p.x + w, z: p.z + d * 0.5 },
+                { x: p.x - w, z: p.z + d * 0.5 }
+            ];
+            for (let i = 0; i < esquinas.length; i++) {
+                const a = esquinas[i];
+                const b = esquinas[(i + 1) % esquinas.length];
+                const projA = project({ x: a.x, y: eq.posY - (eq.altura || 400), z: a.z });
+                const projB = project({ x: b.x, y: eq.posY - (eq.altura || 400), z: b.z });
+                const projATop = project({ x: a.x, y: eq.posY - (eq.altura || 400) - 200, z: a.z });
+                const projBTop = project({ x: b.x, y: eq.posY - (eq.altura || 400) - 200, z: b.z });
+                _ctx.beginPath();
+                _ctx.moveTo(projATop.x, projATop.y);
+                _ctx.lineTo(projBTop.x, projBTop.y);
+                _ctx.stroke();
+                _ctx.beginPath();
+                _ctx.moveTo(projA.x, projA.y);
+                _ctx.lineTo(projATop.x, projATop.y);
+                _ctx.stroke();
+            }
+        }
+
+        drawIsoText(eq.tag, p.x, topY - 25, 'XY');
     }
 
     function drawAccessory(acc, parentEq) {
@@ -1032,6 +1111,7 @@ const SmartFlowRenderer = (function() {
                     case 'bomba':drawBomba(eq);break;
                     case 'colector':drawColector(eq);break;
                     case 'tanque_h':drawCilindroHorizontal(eq,'#2563eb');break;
+                    case 'plataforma':drawPlataforma(eq);break;
                     default:drawRectEquip(eq,'#475569');
                 }
                 if (eq.tag) {
