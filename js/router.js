@@ -269,6 +269,34 @@ const SmartFlowRouter = (function() {
         const inicialCount = lineObj.components.length;
         const addedFittings = [];
 
+        // ==========================================
+        // DETECCIÓN AL INICIO: ¿Codo de salida a 90°?
+        // ==========================================
+        if (fromObj && fromPortId && puntos.length >= 2) {
+            const dirPuerto = getPortDirection(fromObj, fromPortId);
+            const vInicial = { x: puntos[1].x - puntos[0].x, y: puntos[1].y - puntos[0].y, z: puntos[1].z - puntos[0].z };
+            const lenInic = Math.hypot(vInicial.x, vInicial.y, vInicial.z) || 1;
+            const dotInicio = (dirPuerto.x * vInicial.x + dirPuerto.y * vInicial.y + dirPuerto.z * vInicial.z) / lenInic;
+            
+            if (Math.abs(dotInicio) < 0.96) { 
+                const codoInicial = {
+                    type: 'ELBOW_90_LR',
+                    skey: 'ELBW',
+                    tag: `ELBW-${lineObj.tag}-START`,
+                    param: 0.0,
+                    diameter: diameter || 4,
+                    material: material || 'PPR'
+                };
+                if (!lineObj.components.some(c => c.tag === codoInicial.tag)) {
+                    lineObj.components.push(codoInicial);
+                    addedFittings.push(codoInicial.tag);
+                }
+            }
+        }
+
+        // ==========================================
+        // DETECCIÓN EN VÉRTICES INTERMEDIOS
+        // ==========================================
         for (let i = 1; i < puntos.length - 1; i++) {
             const pAnt = puntos[i - 1];
             const pAct = puntos[i];
@@ -279,10 +307,8 @@ const SmartFlowRouter = (function() {
 
             const len1 = Math.hypot(v1.x, v1.y, v1.z) || 1;
             const len2 = Math.hypot(v2.x, v2.y, v2.z) || 1;
-
             const dot = (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z) / (len1 * len2);
-            const acosVal = Math.max(-1, Math.min(1, dot));
-            const angleDeg = Math.acos(acosVal) * (180 / Math.PI);
+            const angleDeg = Math.acos(Math.max(-1, Math.min(1, dot))) * (180 / Math.PI);
 
             if (angleDeg > 15) {
                 let totalLen = 0, accum = 0;
@@ -310,6 +336,9 @@ const SmartFlowRouter = (function() {
             }
         }
 
+        // ==========================================
+        // DETECCIÓN AL FINAL: Filtro de proximidad (Codo vs Tee)
+        // ==========================================
         if (lineObj.destination && lineObj.destination.objType === 'line') {
             const targetLine = _core ? _core.findObjectByTag(lineObj.destination.equipTag) : null;
             const puntosTarget = targetLine ? (_core.getLinePoints(targetLine) || []) : [];
