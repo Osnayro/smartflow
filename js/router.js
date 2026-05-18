@@ -1,7 +1,3 @@
-// ============================================================
-// MÓDULO 6: SMARTFLOW ROUTER (Enrutamiento Automático) - v3.5
-// Archivo: js/router.js
-// ============================================================
 
 const SmartFlowRouter = (function() {
     
@@ -50,8 +46,10 @@ const SmartFlowRouter = (function() {
     function scalePoint(p, factor) { return { x: p.x * factor, y: p.y * factor, z: p.z * factor }; }
     function normalizeVector(v) {
         const len = Math.hypot(v.x, v.y, v.z);
-        if (len === 0) return { x: 1, y: 0, z: 0 };
-        return { x: v.x / len, y: v.y / len, z: v.z / len };
+        if (len === 0) return { x: 1, y: 0, z: 0, dx: 1, dy: 0, dz: 0 };
+        const n = { x: v.x / len, y: v.y / len, z: v.z / len };
+        n.dx = n.x; n.dy = n.y; n.dz = n.z;
+        return n;
     }
     function dotProduct(v1, v2) { return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z; }
     function crossProduct(v1, v2) { return { x: v1.y * v2.z - v1.z * v2.y, y: v1.z * v2.x - v1.x * v2.z, z: v1.x * v2.y - v1.y * v2.x }; }
@@ -90,7 +88,7 @@ const SmartFlowRouter = (function() {
         return {
             intersection,
             lateralVector,
-            lateralDir: lateralDistance > 0 ? normalizeVector(lateralVector) : { dx: 0, dy: 0, dz: 0 },
+            lateralDir: lateralDistance > 0 ? normalizeVector(lateralVector) : { dx: 0, dy: 0, dz: 0, x: 0, y: 0, z: 0 },
             lateralDistance,
             isOrthogonal,
             angleDeg: angleDeg,
@@ -144,23 +142,45 @@ const SmartFlowRouter = (function() {
     }
 
     function getPortDirection(obj, portId) {
-        if (!obj) return { dx: 1, dy: 0, dz: 0 };
+        const defaultDir = { dx: 1, dy: 0, dz: 0, x: 1, y: 0, z: 0 };
+        if (!obj) return defaultDir;
+
         if (obj.posX !== undefined || (obj.pos && obj.pos.x !== undefined)) {
             const puerto = obj.puertos?.find(p => p.id === portId);
             if (puerto) {
-                if (puerto.orientacion) return puerto.orientacion;
-                if (puerto.dir) return puerto.dir;
-                if (puerto.normal) return puerto.normal;
+                const ori = puerto.orientacion || puerto.dir || puerto.normal || puerto.vector;
+                if (ori) {
+                    const x = parseFloat(ori.dx !== undefined ? ori.dx : (ori.x !== undefined ? ori.x : 1));
+                    const y = parseFloat(ori.dy !== undefined ? ori.dy : (ori.y !== undefined ? ori.y : 0));
+                    const z = parseFloat(ori.dz !== undefined ? ori.dz : (ori.z !== undefined ? ori.z : 0));
+                    return { dx: x, dy: y, dz: z, x, y, z };
+                }
             }
-            return { dx: 1, dy: 0, dz: 0 };
+            return defaultDir;
         }
+
         const pts = _core ? _core.getLinePoints(obj) : (obj._cachedPoints || obj.points3D || obj.points);
-        if (pts && pts.length >= 2) {
-            if (portId === '0') return normalizeVector(subtractPoints(pts[1], pts[0]));
-            if (portId === '1') return normalizeVector(subtractPoints(pts[pts.length - 1], pts[pts.length - 2]));
-            return normalizeVector(subtractPoints(pts[1], pts[0]));
+        if (pts && Array.isArray(pts) && pts.length >= 2) {
+            try {
+                let pBase, pSig;
+                if (portId === '0' || portId === 0) {
+                    pBase = pts[0]; pSig = pts[1];
+                } else if (portId === '1' || portId === 1 || portId === String(pts.length - 1)) {
+                    pBase = pts[pts.length - 2]; pSig = pts[pts.length - 1];
+                } else {
+                    pBase = pts[0]; pSig = pts[1];
+                }
+
+                if (pBase && pSig && pBase.x !== undefined && pSig.x !== undefined) {
+                    const vSub = { x: pSig.x - pBase.x, y: pSig.y - pBase.y, z: pSig.z - pBase.z };
+                    const vNorm = normalizeVector(vSub);
+                    return { dx: vNorm.x, dy: vNorm.y, dz: vNorm.z, x: vNorm.x, y: vNorm.y, z: vNorm.z };
+                }
+            } catch (err) {
+                console.warn(`Error de orientación en línea para puerto ${portId}:`, err);
+            }
         }
-        return { dx: 1, dy: 0, dz: 0 };
+        return defaultDir;
     }
 
     function getPortDirectionLocal(obj, portId) {
@@ -205,19 +225,16 @@ const SmartFlowRouter = (function() {
         return null;
     }
 
-    // ==================== NUEVA VERSIÓN ROBUSTECIDA ====================
     function findElbowForLine(material, diameter, angleDeg) {
         const catalog = _catalog || window.SmartFlowCatalog;
         if (!catalog) return null;
         const allTypes = catalog.listComponentTypes();
         
-        // CORRECCIÓN: Filtrar si contiene 'ELBOW' en cualquier parte del nombre (por si es PPR_ELBOW o ELBOW_PPR)
         const elbowTypes = allTypes.filter(t => t.toUpperCase().includes('ELBOW'));
         
         let bestMatch = null, bestDiff = Infinity;
         for (const type of elbowTypes) {
             const comp = catalog.getComponent(type);
-            // Validar que el componente tenga un ángulo definido
             if (!comp || typeof comp.angulo === 'undefined') continue;
             
             const diff = Math.abs(comp.angulo - angleDeg);
@@ -229,7 +246,6 @@ const SmartFlowRouter = (function() {
         
         if (!bestMatch) {
             const mat = (material || '').toUpperCase();
-            // Buscar una coincidencia por material si no se halló por ángulo exacto
             bestMatch = elbowTypes.find(t => {
                 if (mat.includes('PPR') && t.toUpperCase().includes('PPR')) return true;
                 if (mat.includes('HDPE') && t.toUpperCase().includes('HDPE')) return true;
@@ -243,108 +259,79 @@ const SmartFlowRouter = (function() {
         return bestMatch;
     }
 
-    function ensureFittings(line, fromObj, fromPortId, toObj, toPortId, diameter, material) {
-        // Asegurar que trabajamos con una copia limpia de los puntos geométricos
-        const pts = [...(line._cachedPoints || line.points3D || [])];
-        if (pts.length < 2) return { added: [], message: '' };
-        const added = [];
-
-        // 1. EVALUACIÓN DEL CODO DE INICIO
-        const startDir = getPortDirectionLocal(fromObj, fromPortId);
-        const toTarget = { x: pts[1].x - pts[0].x, y: pts[1].y - pts[0].y, z: pts[1].z - pts[0].z };
-        const toTargetLen = Math.hypot(toTarget.x, toTarget.y, toTarget.z) || 1;
-        const toTargetDir = { x: toTarget.x / toTargetLen, y: toTarget.y / toTargetLen, z: toTarget.z / toTargetLen };
+    function ensureFittings(lineObj, fromObj, fromPortId, toObj, toPortId, diameter, material) {
+        if (!lineObj) return { added: [], message: ' | ⚠️ Sin objeto de línea' };
         
-        // CORRECCIÓN: Quitar Math.abs para evaluar rango completo 0-180
-        const dotStart = startDir.dx * toTargetDir.x + startDir.dy * toTargetDir.y + startDir.dz * toTargetDir.z;
-        const angleStart = Math.acos(Math.max(-1, Math.min(1, dotStart))) * 180 / Math.PI;
+        const puntos = lineObj._cachedPoints || lineObj.points3D || [];
+        if (puntos.length < 2) return { added: [], message: ' | ⚠️ Puntos insuficientes' };
 
-        if (angleStart > MIN_ANGLE_FOR_ELBOW && angleStart < 175) {
-            const elbowType = findElbowForLine(material, diameter, angleStart);
-            if (elbowType) {
-                const fittingLen = getFittingLength(elbowType, diameter);
-                line.components = line.components || [];
-                line.components.push({ 
-                    type: elbowType, 
-                    tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, 
-                    param: 0.0 
-                });
-                added.push({ type: elbowType, position: 'inicio' });
-                if (fittingLen > 0) {
-                    pts[0] = { 
-                        x: pts[0].x + toTargetDir.x * fittingLen, 
-                        y: pts[0].y + toTargetDir.y * fittingLen, 
-                        z: pts[0].z + toTargetDir.z * fittingLen 
-                    };
+        lineObj.components = lineObj.components || [];
+        const inicialCount = lineObj.components.length;
+        const addedFittings = [];
+
+        for (let i = 1; i < puntos.length - 1; i++) {
+            const pAnt = puntos[i - 1];
+            const pAct = puntos[i];
+            const pSig = puntos[i + 1];
+
+            const v1 = { x: pAct.x - pAnt.x, y: pAct.y - pAnt.y, z: pAct.z - pAnt.z };
+            const v2 = { x: pSig.x - pAct.x, y: pSig.y - pAct.y, z: pSig.z - pAct.z };
+
+            const len1 = Math.hypot(v1.x, v1.y, v1.z) || 1;
+            const len2 = Math.hypot(v2.x, v2.y, v2.z) || 1;
+
+            const dot = (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z) / (len1 * len2);
+            const acosVal = Math.max(-1, Math.min(1, dot));
+            const angleDeg = Math.acos(acosVal) * (180 / Math.PI);
+
+            if (angleDeg > 15) {
+                let totalLen = 0, accum = 0;
+                for (let j = 0; j < puntos.length - 1; j++) {
+                    totalLen += Math.hypot(puntos[j+1].x - puntos[j].x, puntos[j+1].y - puntos[j].y, puntos[j+1].z - puntos[j].z);
+                }
+                for (let j = 0; j < i; j++) {
+                    accum += Math.hypot(puntos[j+1].x - puntos[j].x, puntos[j+1].y - puntos[j].y, puntos[j+1].z - puntos[j].z);
+                }
+                const paramValue = totalLen > 0 ? (accum / totalLen) : 0.5;
+
+                const codo = {
+                    type: 'ELBOW_90_LR',
+                    skey: 'ELBW',
+                    tag: `ELBW-${lineObj.tag}-${i}`,
+                    param: paramValue,
+                    diameter: diameter || 4,
+                    material: material || 'PPR'
+                };
+                
+                if (!lineObj.components.some(c => c.tag === codo.tag)) {
+                    lineObj.components.push(codo);
+                    addedFittings.push(codo.tag);
                 }
             }
         }
 
-        // 2. EVALUACIÓN DEL CODO DE FIN
-        const endIdx = pts.length - 1;
-        const endDir = getPortDirectionLocal(toObj, toPortId);
-        const fromTarget = { x: pts[endIdx - 1].x - pts[endIdx].x, y: pts[endIdx - 1].y - pts[endIdx].y, z: pts[endIdx - 1].z - pts[endIdx].z };
-        const fromTargetLen = Math.hypot(fromTarget.x, fromTarget.y, fromTarget.z) || 1;
-        const fromTargetDir = { x: fromTarget.x / fromTargetLen, y: fromTarget.y / fromTargetLen, z: fromTarget.z / fromTargetLen };
-        
-        // CORRECCIÓN: Quitar Math.abs
-        const dotEnd = endDir.dx * fromTargetDir.x + endDir.dy * fromTargetDir.y + endDir.dz * fromTargetDir.z;
-        const angleEnd = Math.acos(Math.max(-1, Math.min(1, dotEnd))) * 180 / Math.PI;
+        if (lineObj.destination && lineObj.destination.objType === 'line') {
+            const teeComponent = {
+                type: 'TEE_EQUAL',
+                skey: 'TEES',
+                tag: `TEE-${lineObj.tag}-CONN`,
+                param: 1.0,
+                diameter: diameter || 4,
+                material: material || 'PPR'
+            };
 
-        if (angleEnd > MIN_ANGLE_FOR_ELBOW && angleEnd < 175) {
-            const elbowType = findElbowForLine(material, diameter, angleEnd);
-            if (elbowType) {
-                const fittingLen = getFittingLength(elbowType, diameter);
-                line.components = line.components || [];
-                line.components.push({ 
-                    type: elbowType, 
-                    tag: `${elbowType}-${Date.now().toString(36).slice(-4)}`, 
-                    param: 1.0 
-                });
-                added.push({ type: elbowType, position: 'fin' });
-                if (fittingLen > 0) {
-                    pts[endIdx] = { 
-                        x: pts[endIdx].x + fromTargetDir.x * fittingLen, 
-                        y: pts[endIdx].y + fromTargetDir.y * fittingLen, 
-                        z: pts[endIdx].z + fromTargetDir.z * fittingLen 
-                    };
-                }
+            if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
+                lineObj.components.push(teeComponent);
+                addedFittings.push(teeComponent.tag);
             }
         }
 
-        // 3. EVALUACIÓN DE REDUCCIÓN (CORRECCIÓN: Sanitización con parseFloat)
-        const rawFromDiam = fromObj.diameter || (fromObj.puertos?.find(p => p.id === fromPortId)?.diametro) || diameter;
-        const rawToDiam = toObj.diameter || (toObj.puertos?.find(p => p.id === toPortId)?.diametro) || diameter;
-        
-        const fromDiam = parseFloat(rawFromDiam);
-        const toDiam = parseFloat(rawToDiam);
-
-        if (!isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.05) {
-            const reducerType = findComponentInCatalog('CONCENTRIC_REDUCER', material, []);
-            if (reducerType) {
-                line.components = line.components || [];
-                line.components.push({ 
-                    type: reducerType, 
-                    tag: `${reducerType}-${Date.now().toString(36).slice(-4)}`, 
-                    param: 1.0 
-                });
-                added.push({ type: reducerType, position: 'fin (reductor)' });
-            }
-        }
-
-        // Sincronizar todos los arrays posibles de la entidad de línea para evitar desajustes del Core
-        line._cachedPoints = pts;
-        line.points3D = pts;
-        line.points = pts;
-        if (pts.length > 2) {
-            line.waypoints = pts.slice(1, -1);
-        }
-
-        const msg = added.length > 0 ? ' | Accesorios: ' + added.map(a => `${a.type} (${a.position})`).join(', ') : '';
-        return { added, message: msg };
+        const delta = lineObj.components.length - inicialCount;
+        return {
+            added: addedFittings,
+            message: delta > 0 ? ` | 🛠️ Accesorios inyectados: +${delta}` : ' | 📐 Continuidad geométrica OK'
+        };
     }
-
-    // ==================== RESTO DE FUNCIONES SIN CAMBIOS ====================
 
     function insertarAccesorioEnLinea(lineTag, puntoConexion, diametroNuevaLinea, forzarTee = false) {
         ensureInitialized();
@@ -483,7 +470,7 @@ const SmartFlowRouter = (function() {
         else {
             const ptsTo = _core.getLinePoints(toObj) || toObj._cachedPoints || toObj.points3D || toObj.points;
             if (ptsTo && ptsTo.length >= 2) { endDir = normalizeVector(subtractPoints(ptsTo[ptsTo.length - 1], ptsTo[ptsTo.length - 2])); }
-            else { endDir = { dx: 1, dy: 0, dz: 0 }; }
+            else { endDir = { dx: 1, dy: 0, dz: 0, x: 1, y: 0, z: 0 }; }
         }
 
         const orthoResultStart = calculateOrthogonalIntersection(startPos, startDir, endPos);
@@ -508,12 +495,20 @@ const SmartFlowRouter = (function() {
             components: reductorComponent ? [reductorComponent] : []
         };
 
-        const fittingInfo = ensureFittings(nuevaLinea, fromObj, fromPortId, toObj, nuevoPuertoId, diameter, material);
         _core.addLine(nuevaLinea);
+        
+        const lineaRegistrada = db.lines.find(l => l.tag === tag) || nuevaLinea;
+        const fittingInfo = ensureFittings(lineaRegistrada, fromObj, fromPortId, toObj, nuevoPuertoId, diameter, material);
+        
+        if (_core.updateLine) {
+            _core.updateLine(tag, lineaRegistrada);
+        }
+
         if (fromObj.puertos) { const pFrom = fromObj.puertos.find(p => p.id === fromPortId); if (pFrom) pFrom.connectedLine = tag; }
         if (toObj.puertos) { const pTo = toObj.puertos.find(p => p.id === nuevoPuertoId); if (pTo) pTo.connectedLine = tag; }
+        
         notifyUser(`✅ Ruta: ${tag} (${fromEquipTag}.${fromPortId} → ${toEquipTag}.${nuevoPuertoId})${fittingInfo.message}`, false);
-        return nuevaLinea;
+        return lineaRegistrada;
     }
 
     function handleSnapClick(snapData) {
@@ -541,7 +536,6 @@ const SmartFlowRouter = (function() {
         _catalog = catalogInstance;
         _notifyUI = notifyFn || ((msg, isErr) => console.log(msg));
         _renderUI = renderFn || (() => {});
-        console.log('✅ SmartFlow Router v3.5 (búsqueda de codos flexible, diámetros saneados, sincronización de puntos)');
     }
 
     return {
