@@ -311,18 +311,49 @@ const SmartFlowRouter = (function() {
         }
 
         if (lineObj.destination && lineObj.destination.objType === 'line') {
-            const teeComponent = {
-                type: 'TEE_EQUAL',
-                skey: 'TEES',
-                tag: `TEE-${lineObj.tag}-CONN`,
-                param: 1.0,
-                diameter: diameter || 4,
-                material: material || 'PPR'
-            };
+            const targetLine = _core ? _core.findObjectByTag(lineObj.destination.equipTag) : null;
+            const puntosTarget = targetLine ? (_core.getLinePoints(targetLine) || []) : [];
+            
+            const puntoFinalConexion = puntos[puntos.length - 1];
+            const puntoCeroTarget = puntosTarget[0];
 
-            if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
-                lineObj.components.push(teeComponent);
-                addedFittings.push(teeComponent.tag);
+            let distanciaAPuntoCero = Infinity;
+            if (puntoFinalConexion && puntoCeroTarget) {
+                distanciaAPuntoCero = Math.hypot(
+                    puntoFinalConexion.x - puntoCeroTarget.x,
+                    puntoFinalConexion.y - puntoCeroTarget.y,
+                    puntoFinalConexion.z - puntoCeroTarget.z
+                );
+            }
+
+            if (distanciaAPuntoCero < 10) {
+                const codoTerminal = {
+                    type: 'ELBOW_90_LR',
+                    skey: 'ELBW',
+                    tag: `ELBW-${lineObj.tag}-TERM`,
+                    param: 1.0,
+                    diameter: diameter || 4,
+                    material: material || 'PPR'
+                };
+
+                if (!lineObj.components.some(c => c.tag === codoTerminal.tag)) {
+                    lineObj.components.push(codoTerminal);
+                    addedFittings.push(codoTerminal.tag);
+                }
+            } else {
+                const teeComponent = {
+                    type: 'TEE_EQUAL',
+                    skey: 'TEES',
+                    tag: `TEE-${lineObj.tag}-CONN`,
+                    param: 1.0,
+                    diameter: diameter || 4,
+                    material: material || 'PPR'
+                };
+
+                if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
+                    lineObj.components.push(teeComponent);
+                    addedFittings.push(teeComponent.tag);
+                }
             }
         }
 
