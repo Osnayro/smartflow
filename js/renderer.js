@@ -1,9 +1,9 @@
 
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.5
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.8
 // Archivo: js/renderer.js
-// Adaptable a desktop y móvil, con gestión de anotaciones,
-// centralizado sensible al viewport y símbolos con matrices de plano fijas.
+// Cambios: cache de renderQueue, ícono de advertencia robusto,
+//          validación de nulidad en project()
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -17,7 +17,7 @@ const SmartFlowRenderer = (function() {
     let _cacheDirty = true;
     let _bomItems = [];
     let _allLinePoints = [];
-    let _uiInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    let _renderQueueCache = [];
 
     const COS30 = 0.86602540378;
     const SIN30 = 0.5;
@@ -31,9 +31,6 @@ const SmartFlowRenderer = (function() {
         COLORS: { 'PP': '#10b981', 'CS': '#475569', 'SS': '#94a3b8', 'PE': '#1e293b', 'PV': '#7c3aed' }
     };
 
-    // ---------------------------------------------------------
-    // ANNOTATION MANAGER (Control de saturación y colisiones)
-    // ---------------------------------------------------------
     const AnnotationManager = {
         slots: [],
         occupiedBounds: [],
@@ -95,10 +92,8 @@ const SmartFlowRenderer = (function() {
         }
     };
 
-    // ---------------------------------------------------------
-    // PROYECCIÓN Y MATEMÁTICAS
-    // ---------------------------------------------------------
     function project(p) {
+        if (!p || p.x === undefined || p.y === undefined || p.z === undefined) return { x: 0, y: 0 };
         const x = (p.x - p.z) * COS30;
         const y = (p.x + p.z) * SIN30 - p.y;
         return { x: x * _cam.scale + _cam.panX, y: y * _cam.scale + _cam.panY };
@@ -177,9 +172,6 @@ const SmartFlowRenderer = (function() {
         return fallback[compType] || compType?.substring(0,2) || '??';
     }
 
-    // ---------------------------------------------------------
-    // DIBUJO DE REJILLA Y ORÍGENES
-    // ---------------------------------------------------------
     function drawGrid(elevation = 0) {
         const step = 1000;
         const minX = -10000, maxX = 20000, minZ = -10000, maxZ = 20000;
@@ -211,9 +203,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fillText(`ORIGEN (0,${_currentElevation/1000}m,0)`, o.x + 15, o.y - 8);
     }
 
-    // ---------------------------------------------------------
-    // EQUIPOS
-    // ---------------------------------------------------------
     function drawTank(eq) {
         const p = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
         const w = (eq.diametro / 2) * _cam.scale;
@@ -306,9 +295,38 @@ const SmartFlowRenderer = (function() {
         });
     }
 
-    // ---------------------------------------------------------
-    // TEXTO ISOMÉTRICO
-    // ---------------------------------------------------------
+    function drawNozzleTag(proj2D, nozzle, parentEq) {
+        if (!AnnotationManager.isVisible(2)) return;
+        const diam = nozzle.diametro || parentEq.diametro || '?';
+        const elevation = nozzle.elevation || (parentEq.posY + (nozzle.relY || 0));
+        const label = `${nozzle.id} ${diam}" – EL ${elevation}`;
+        const plane = (nozzle.orientacion && Math.abs(nozzle.orientacion.dx) > Math.abs(nozzle.orientacion.dz)) ? 'LEFT' : 'RIGHT';
+        const prefX = proj2D.x + 35;
+        const prefY = proj2D.y - 25;
+        const box = AnnotationManager.register({ x: prefX, y: prefY - 10, w: 110, h: 22 }, 2);
+
+        _ctx.save();
+        _ctx.setTransform(1, 0, 0, 1, 0, 0);
+        _ctx.strokeStyle = '#f59e0b';
+        _ctx.lineWidth = 1;
+        _ctx.beginPath();
+        _ctx.moveTo(proj2D.x, proj2D.y);
+        _ctx.lineTo(box.x, box.y + 11);
+        _ctx.stroke();
+        _ctx.restore();
+
+        _ctx.save();
+        if (plane === 'LEFT') _ctx.setTransform(1, 0.5, 0, 1, box.x, box.y + 11);
+        else _ctx.setTransform(1, -0.5, 0, 1, box.x, box.y + 11);
+        _ctx.font = 'bold 10px "Courier New", monospace';
+        _ctx.fillStyle = '#ffffff';
+        _ctx.textAlign = 'left';
+        _ctx.textBaseline = 'middle';
+        _ctx.fillText(label, 0, 0);
+        _ctx.restore();
+        _ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
     function drawIsoText(text, x, y, plane = 'XY') {
         if (!text) return;
         _ctx.save();
@@ -331,9 +349,19 @@ const SmartFlowRenderer = (function() {
         _ctx.restore(); _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    // ---------------------------------------------------------
-    // TUBERÍAS
-    // ---------------------------------------------------------
+    function drawFlowArrow(p1, p2, diameter) {
+        if (!p1 || !p2) return;
+        const proj1 = project(p1), proj2 = project(p2);
+        const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x);
+        const midX = (proj1.x + proj2.x) / 2, midY = (proj1.y + proj2.y) / 2;
+        _ctx.save(); _ctx.translate(midX, midY); _ctx.rotate(angle);
+        const arrowSize = 12 * _cam.scale;
+        _ctx.beginPath();
+        _ctx.moveTo(-arrowSize, -arrowSize/2); _ctx.lineTo(0, 0); _ctx.lineTo(-arrowSize, arrowSize/2);
+        _ctx.fillStyle = '#00f2ff'; _ctx.shadowColor = '#00f2ff'; _ctx.shadowBlur = 8;
+        _ctx.fill(); _ctx.shadowBlur = 0; _ctx.restore();
+    }
+
     function getPointAtDistance(from, to, dist) { 
         const d = Math.hypot(to.x-from.x, to.y-from.y, to.z-from.z); 
         if (d === 0) return { ...from };
@@ -348,17 +376,9 @@ const SmartFlowRenderer = (function() {
         return absX >= absZ ? 'X' : 'Z';
     }
 
-    function drawFlowArrow(p1, p2, diameter) {
-        if (!p1 || !p2) return;
-        const proj1 = project(p1), proj2 = project(p2);
-        const angle = Math.atan2(proj2.y - proj1.y, proj2.x - proj1.x);
-        const midX = (proj1.x + proj2.x) / 2, midY = (proj1.y + proj2.y) / 2;
-        _ctx.save(); _ctx.translate(midX, midY); _ctx.rotate(angle);
-        const arrowSize = 12 * _cam.scale;
-        _ctx.beginPath();
-        _ctx.moveTo(-arrowSize, -arrowSize/2); _ctx.lineTo(0, 0); _ctx.lineTo(-arrowSize, arrowSize/2);
-        _ctx.fillStyle = '#00f2ff'; _ctx.shadowColor = '#00f2ff'; _ctx.shadowBlur = 8;
-        _ctx.fill(); _ctx.shadowBlur = 0; _ctx.restore();
+    function getPipeOrientation(p1, p2) {
+        const dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y), dz = Math.abs(p2.z - p1.z);
+        return (dy > dx && dy > dz) ? 'vertical' : 'horizontal';
     }
 
     function isPointCollidingWithEquipment(point, margin = 1500) {
@@ -484,9 +504,10 @@ const SmartFlowRenderer = (function() {
         }
 
         if (hasAuditError && pts.length >= 2) {
-            const midPt = getPointAtDistance(pts[0], pts[pts.length-1], Math.hypot(pts[pts.length-1].x-pts[0].x, pts[pts.length-1].y-pts[0].y, pts[pts.length-1].z-pts[0].z)/2);
-            const projMid = project(midPt);
-            _ctx.save(); _ctx.translate(projMid.x, projMid.y - 30*_cam.scale);
+            const midIndex = Math.floor(pts.length / 2);
+            const alertPt = pts[midIndex];
+            const projAlert = project(alertPt);
+            _ctx.save(); _ctx.translate(projAlert.x, projAlert.y - 30*_cam.scale);
             _ctx.font = `bold ${Math.max(16,20*_cam.scale)}px "Segoe UI"`; _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
             _ctx.shadowColor = '#ef4444'; _ctx.shadowBlur = 10; _ctx.fillStyle = '#ef4444';
             _ctx.fillText('⚠', 0, 0); _ctx.shadowBlur = 0; _ctx.restore();
@@ -511,9 +532,6 @@ const SmartFlowRenderer = (function() {
         if (line.puertos) drawPuertos(line);
     }
 
-    // ---------------------------------------------------------
-    // COMPONENTES EN LÍNEA
-    // ---------------------------------------------------------
     function drawPipeComponents(line) {
         if (!_core) return;
         const pts = _core.getLinePoints(line);
@@ -704,9 +722,6 @@ const SmartFlowRenderer = (function() {
         _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    // ---------------------------------------------------------
-    // ANOTACIONES Y ETIQUETADO INTELIGENTE
-    // ---------------------------------------------------------
     function drawComponentTag(proj2d, index, compType, dir3D) {
         const tagText = `${index}`;
         const leaderX = proj2d.x + 25;
@@ -787,7 +802,7 @@ const SmartFlowRenderer = (function() {
     function drawEquipmentTag2D(projectedCenter, tag, equipmentName) {
         if (!AnnotationManager.isVisible(2)) return;
         const prefX = projectedCenter.x;
-        const prefY = projectedCenter.y - 50;
+        const prefY = projectedCenter.y - 60;
         const box = AnnotationManager.register({ x: prefX + 20, y: prefY, w: 90, h: 24 }, 2);
 
         _ctx.save();
@@ -814,84 +829,6 @@ const SmartFlowRenderer = (function() {
         _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
-    function drawElevationTag(proj2D, elevationValue, plane = 'LEFT') {
-        if (!AnnotationManager.isVisible(2)) return;
-        const prefX = proj2D.x;
-        const prefY = proj2D.y;
-        const box = AnnotationManager.register({ x: prefX + 5, y: prefY - 30, w: 80, h: 20 }, 2);
-
-        _ctx.save();
-        if (plane === 'LEFT') _ctx.setTransform(1, 0.5, 0, 1, box.x, box.y);
-        else _ctx.setTransform(1, -0.5, 0, 1, box.x, box.y);
-
-        _ctx.strokeStyle = '#38bdf8';
-        _ctx.fillStyle = '#38bdf8';
-        _ctx.lineWidth = 1;
-        _ctx.beginPath();
-        _ctx.moveTo(0, 0);
-        _ctx.lineTo(-5, -8);
-        _ctx.lineTo(5, -8);
-        _ctx.closePath();
-        _ctx.fill();
-
-        _ctx.beginPath();
-        _ctx.moveTo(0, -8);
-        _ctx.lineTo(40, -8);
-        _ctx.stroke();
-
-        _ctx.fillStyle = '#ffffff';
-        _ctx.font = '10px monospace';
-        _ctx.textAlign = 'left';
-        _ctx.fillText(`EL +${elevationValue}`, 5, -14);
-
-        _ctx.restore();
-        _ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-
-    function drawInstrumentBubble(proj2D, valArea, valNum) {
-        if (!AnnotationManager.isVisible(4)) return;
-        const prefX = proj2D.x;
-        const prefY = proj2D.y;
-        const radius = 14;
-        const box = AnnotationManager.register({ x: prefX - radius, y: prefY - 35 - radius, w: radius*2, h: radius*2 + 10 }, 4);
-
-        _ctx.save();
-        _ctx.setTransform(1, 0, 0, 1, box.x + radius, box.y + radius);
-        _ctx.strokeStyle = '#22c55e';
-        _ctx.fillStyle = '#0f172a';
-        _ctx.lineWidth = 1.5;
-
-        _ctx.beginPath();
-        _ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        _ctx.fill();
-        _ctx.stroke();
-
-        _ctx.beginPath();
-        _ctx.moveTo(-radius, 0);
-        _ctx.lineTo(radius, 0);
-        _ctx.stroke();
-
-        _ctx.beginPath();
-        _ctx.moveTo(0, radius);
-        _ctx.lineTo(0, 0);
-        _ctx.strokeStyle = '#94a3b8';
-        _ctx.lineWidth = 0.8;
-        _ctx.stroke();
-
-        _ctx.fillStyle = '#ffffff';
-        _ctx.font = 'bold 8px sans-serif';
-        _ctx.textAlign = 'center';
-        _ctx.textBaseline = 'middle';
-        _ctx.fillText(valArea, 0, -6);
-        _ctx.fillText(valNum, 0, 6);
-
-        _ctx.restore();
-        _ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-
-    // ---------------------------------------------------------
-    // SELECCIÓN Y PICKING
-    // ---------------------------------------------------------
     function drawSelection(element) {
         if (!element) return;
         _ctx.save();
@@ -972,9 +909,6 @@ const SmartFlowRenderer = (function() {
         return null;
     }
 
-    // ---------------------------------------------------------
-    // CENTRALIZADO ADAPTATIVO (DESKTOP + MÓVIL)
-    // ---------------------------------------------------------
     function autoCenter(options = {}) {
         if (!_canvas || !_core) return;
         const db = _core.getDb();
@@ -1058,9 +992,9 @@ const SmartFlowRenderer = (function() {
         scheduleRender();
     }
 
-    // ---------------------------------------------------------
-    // RENDER PRINCIPAL
-    // ---------------------------------------------------------
+    function pan(dx, dy) { _cam.panX += dx; _cam.panY += dy; _cacheDirty = true; scheduleRender(); }
+    function zoom(delta) { _cam.scale *= (delta > 0 ? 1.1 : 0.9); _cam.scale = Math.min(Math.max(0.05, _cam.scale), 1.5); _cacheDirty = true; scheduleRender(); }
+
     function render() {
         if (!_ctx || !_canvas) return;
         _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
@@ -1072,21 +1006,25 @@ const SmartFlowRenderer = (function() {
         if (!_core) return;
         const db = _core.getDb(); if (!db) return;
 
+        if (_cacheDirty) {
+            _renderQueueCache = [];
+            (db.equipos||[]).forEach(eq => _renderQueueCache.push({ type:'EQUIPMENT', depth: eq.posX+eq.posZ+(eq.posY*0.1), data: eq }));
+            (db.lines||[]).forEach(line => {
+                const pts = _core.getLinePoints(line);
+                if (pts && pts.length >= 2) {
+                    const avgDepth = pts.reduce((acc,p) => acc+(p.x+p.z), 0)/pts.length;
+                    _renderQueueCache.push({ type:'LINE', depth: avgDepth, data: line });
+                    _allLinePoints.push({ tag:line.tag, pts });
+                }
+            });
+            _renderQueueCache.sort((a,b) => a.depth-b.depth);
+            _cacheDirty = false;
+        }
+
         AnnotationManager.reset();
         _bomItems = []; _allLinePoints = [];
 
-        let renderQueue = [];
-        (db.equipos||[]).forEach(eq => renderQueue.push({ type:'EQUIPMENT', depth: eq.posX+eq.posZ+(eq.posY*0.1), data: eq }));
-        (db.lines||[]).forEach(line => {
-            const pts = _core.getLinePoints(line);
-            if (pts && pts.length >= 2) {
-                const avgDepth = pts.reduce((acc,p) => acc+(p.x+p.z), 0)/pts.length;
-                renderQueue.push({ type:'LINE', depth: avgDepth, data: line });
-                _allLinePoints.push({ tag:line.tag, pts });
-            }
-        });
-        renderQueue.sort((a,b) => a.depth-b.depth);
-        renderQueue.forEach(item => {
+        _renderQueueCache.forEach(item => {
             if (item.type==='EQUIPMENT') {
                 const eq=item.data;
                 switch(eq.tipo) {
@@ -1102,11 +1040,10 @@ const SmartFlowRenderer = (function() {
                 }
                 if (eq.puertos) {
                     eq.puertos.forEach(p => {
-                        if (p.status === 'open' && p.elevation !== undefined) {
-                            const worldPos = { x: eq.posX + (p.relX||0), y: eq.posY + (p.relY||0), z: eq.posZ + (p.relZ||0) };
-                            const proj = project(worldPos);
-                            const plane = (p.orientacion?.dx > p.orientacion?.dz) ? 'LEFT' : 'RIGHT';
-                            drawElevationTag(proj, p.elevation, plane);
+                        const worldPos = { x: eq.posX + (p.relX||0), y: eq.posY + (p.relY||0), z: eq.posZ + (p.relZ||0) };
+                        const proj = project(worldPos);
+                        if (p.elevation !== undefined || p.status === 'open') {
+                            drawNozzleTag(proj, p, eq);
                         }
                     });
                 }
@@ -1149,9 +1086,6 @@ const SmartFlowRenderer = (function() {
         }
     }
 
-    // ---------------------------------------------------------
-    // OTRAS FUNCIONES DE DIBUJO
-    // ---------------------------------------------------------
     function drawFitting(fitting) {
         if (!fitting || !fitting.puertos) return;
         const center = project({ x: fitting.posX, y: fitting.posY, z: fitting.posZ });
@@ -1206,9 +1140,6 @@ const SmartFlowRenderer = (function() {
         ctx.restore();
     }
 
-    // ---------------------------------------------------------
-    // BOM
-    // ---------------------------------------------------------
     function renderBOM() {
         if (_bomItems.length === 0) return;
         const x = 20, padding = 15, rowHeight = 18, headerHeight = 25, tableWidth = 240;
@@ -1230,9 +1161,6 @@ const SmartFlowRenderer = (function() {
         _ctx.restore();
     }
 
-    // ---------------------------------------------------------
-    // EXPORTACIÓN
-    // ---------------------------------------------------------
     function exportPDF() {
         if (!_canvas) return;
         if (typeof window.jspdf === 'undefined') { _notifyUI("Error: jsPDF no disponible.", true); return; }
@@ -1244,7 +1172,7 @@ const SmartFlowRenderer = (function() {
         _notifyUI("PDF generado correctamente.", false);
     }
 
-    function exportPCF() { /* ... código existente sin cambios ... */
+    function exportPCF() {
         if (!_core) { _notifyUI("Error: Core no inicializado.", true); return; }
         const db = _core.getDb(); const lines = db?.lines || [];
         if (lines.length === 0) { _notifyUI("No hay líneas para exportar.", true); return; }
@@ -1261,7 +1189,19 @@ const SmartFlowRenderer = (function() {
         _notifyUI("Archivo PCF exportado correctamente con vectores de orientación.", false);
     }
 
-    const skeyMap = { /* ... sin cambios ... */ };
+    const skeyMap = {
+        'GATE_VALVE': 'VAGF', 'GLOBE_VALVE': 'VGLF', 'BUTTERFLY_VALVE': 'VBAF', 'BALL_VALVE': 'VBAL',
+        'VALVE_BALL': 'VBAL', 'CHECK_VALVE': 'VCFF', 'DIAPHRAGM_VALVE': 'VDIA', 'CONTROL_VALVE': 'VCON',
+        'PRESSURE_RELIEF': 'VPRV', 'SAFETY_VALVE': 'VSFT', 'WELD_NECK_FLANGE': 'FLWN', 'SLIP_ON_FLANGE': 'FLSO',
+        'BLIND_FLANGE': 'FLBL', 'LAP_JOINT_FLANGE': 'FLLJ', 'ELBOW_90_LR': 'ELBW', 'ELBOW_90_SR': 'ELBS',
+        'ELBOW_45': 'ELL4', 'ELBOW_90_PPR': 'ELBW', 'ELBOW_45_PPR': 'ELL4', 'CODO_90_ACERO_3IN': 'ELBW',
+        'CONCENTRIC_REDUCER': 'RECN', 'ECCENTRIC_REDUCER': 'REEC', 'TEE_EQUAL': 'TEE', 'TEE_REDUCING': 'TEER',
+        'TEE_PPR': 'TEE', 'CROSS': 'CROS', 'CAP': 'CAPF', 'PIPE_SHOE': 'SHOE', 'U_BOLT': 'UBOL',
+        'GUIDE': 'GUID', 'ANCHOR': 'ANCH', 'TRANSITION': 'TRAN', 'UNION': 'UNIO', 'BULKHEAD': 'BULK',
+        'Y_STRAINER': 'STRY', 'PRESSURE_GAUGE': 'INPG', 'TEMPERATURE_GAUGE': 'INTG', 'FLOW_METER': 'INFM',
+        'LEVEL_SWITCH_RANA': 'INSLS'
+    };
+
     function calculateComponentPosition(line, param) {
         const pts = _core ? _core.getLinePoints(line) : (line._cachedPoints || line.points3D);
         if (!pts || pts.length < 2) return null;
@@ -1275,14 +1215,18 @@ const SmartFlowRenderer = (function() {
         const dirVec = { dx: p2.x - p1.x, dy: p2.y - p1.y, dz: p2.z - p1.z }; const len = Math.hypot(dirVec.dx, dirVec.dy, dirVec.dz) || 1;
         return { p1: compPos, p2: compPos, dir: { dx: dirVec.dx/len, dy: dirVec.dy/len, dz: dirVec.dz/len } };
     }
-    function generatePCFHeader(line) { /* ... sin cambios ... */ return ""; }
-    function formatComponentPCF(comp, pos, diameterMM, dirVec) { /* ... sin cambios ... */ return ""; }
 
-    // ---------------------------------------------------------
-    // GESTOS Y EVENTOS
-    // ---------------------------------------------------------
-    function pan(dx, dy) { _cam.panX += dx; _cam.panY += dy; _cacheDirty = true; scheduleRender(); }
-    function zoom(delta) { _cam.scale *= (delta > 0 ? 1.1 : 0.9); _cam.scale = Math.min(Math.max(0.05, _cam.scale), 1.5); _cacheDirty = true; scheduleRender(); }
+    function generatePCFHeader(line) {
+        const db = _core.getDb(); const projectName = window.currentProjectName || db?.projectName || 'ACQ-PROJECT';
+        return [`ISOGEN-FILES PCF.STYLE`, `UNITS-BORMM             MM`, `UNITS-COOR              MM`, `UNITS-WEIGHT            KG`, `PIPELINE-REFERENCE      ${line.tag}`, `REVISION                ${line.revision || '0'}`, `PROJECT-IDENTIFIER      ${projectName}`, `ATTRIBUTE1              ${line.service || 'PROCESS'}`, `ATTRIBUTE2              ${line.spec || 'UNSPECIFIED'}`, `END-POSITION-CHECK      OFF`].join('\n');
+    }
+
+    function formatComponentPCF(comp, pos, diameterMM, dirVec) {
+        const skey = skeyMap[comp.type] || 'MISC';
+        let lines = [`${comp.type}`, `    END-POINT           ${pos.p1.x.toFixed(2)} ${pos.p1.y.toFixed(2)} ${pos.p1.z.toFixed(2)}  ${diameterMM.toFixed(2)}`, `    END-POINT           ${pos.p2.x.toFixed(2)} ${pos.p2.y.toFixed(2)} ${pos.p2.z.toFixed(2)}  ${diameterMM.toFixed(2)}`, `    SKEY                ${skey}`, `    ITEM-CODE           ${comp.itemCode || comp.type}`, `    ITEM-DESCRIPTION    ${comp.description || comp.nombre || comp.type}`];
+        if (dirVec) { lines.push(`    ENTRY               ${dirVec.dx.toFixed(3)} ${dirVec.dy.toFixed(3)} ${dirVec.dz.toFixed(3)}`); lines.push(`    EXIT                ${dirVec.dx.toFixed(3)} ${dirVec.dy.toFixed(3)} ${dirVec.dz.toFixed(3)}`); }
+        lines.push(`    FABRICATION-ITEM`); return lines.join('\n');
+    }
 
     function init(canvasElement, coreInstance, notifyFn) {
         _canvas = canvasElement;
@@ -1292,9 +1236,7 @@ const SmartFlowRenderer = (function() {
         _currentElevation = 0;
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
-        window.addEventListener('orientationchange', () => {
-            setTimeout(resizeCanvas, 100);
-        });
+        window.addEventListener('orientationchange', () => { setTimeout(resizeCanvas, 100); });
         if (_core && _core.on) {
             _core.on('modelChanged', () => {
                 _cacheDirty = true;
@@ -1325,32 +1267,21 @@ const SmartFlowRenderer = (function() {
                 const rect = _canvas.getBoundingClientRect();
                 const mX = e.touches[0].clientX - rect.left, mY = e.touches[0].clientY - rect.top;
                 const touched = pickComponent(mX, mY);
-                if (touched) {
-                    _hoveredComponent = { comp: touched };
-                    _hoveredComponentScreenPos = touched._screenPos || {x:mX, y:mY};
-                    scheduleRender();
-                }
+                if (touched) { _hoveredComponent = { comp: touched }; _hoveredComponentScreenPos = touched._screenPos || {x:mX, y:mY}; scheduleRender(); }
             }
         });
-        _canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            zoom(e.deltaY < 0 ? 1 : -1);
-        });
+        _canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1 : -1); });
         let lastTouchDist = 0;
         _canvas.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2) {
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 const dist = Math.hypot(dx, dy);
-                if (lastTouchDist) {
-                    const delta = dist - lastTouchDist;
-                    zoom(delta > 0 ? 1 : -1);
-                }
+                if (lastTouchDist) { const delta = dist - lastTouchDist; zoom(delta > 0 ? 1 : -1); }
                 lastTouchDist = dist;
             }
         });
         _canvas.addEventListener('touchend', () => { lastTouchDist = 0; });
-
         const isMobile = /Mobi|Android/i.test(navigator.userAgent) || _canvas.width < 600;
         autoCenter(isMobile ? { padding: 20, minScale: 0.06, maxScale: 0.5 } : {});
         scheduleRender();
