@@ -369,10 +369,6 @@ const SmartFlowRouter = (function() {
                 );
             }
 
-            const fromDiam = parseFloat(lineObj.diameter || diameter);
-            const toDiam = targetLine ? parseFloat(targetLine.diameter || diameter) : fromDiam;
-            const diffDiam = !isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.1;
-
             if (distanciaAPuntoCero < 10) {
                 const codoTerminal = {
                     type: 'ELBOW_90_LR',
@@ -386,34 +382,6 @@ const SmartFlowRouter = (function() {
                 if (!lineObj.components.some(c => c.tag === codoTerminal.tag)) {
                     lineObj.components.push(codoTerminal);
                     addedFittings.push(codoTerminal.tag);
-                }
-            } else {
-                if (diffDiam) {
-                    const teeReducing = {
-                        type: 'TEE_REDUCING',
-                        skey: 'TEER',
-                        tag: `TEER-${lineObj.tag}-CONN`,
-                        param: 1.0,
-                        diameter: diameter || 4,
-                        material: material || 'PPR'
-                    };
-                    if (!lineObj.components.some(c => c.tag === teeReducing.tag)) {
-                        lineObj.components.push(teeReducing);
-                        addedFittings.push(teeReducing.tag);
-                    }
-                } else {
-                    const teeComponent = {
-                        type: 'TEE_EQUAL',
-                        skey: 'TEES',
-                        tag: `TEE-${lineObj.tag}-CONN`,
-                        param: 1.0,
-                        diameter: diameter || 4,
-                        material: material || 'PPR'
-                    };
-                    if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
-                        lineObj.components.push(teeComponent);
-                        addedFittings.push(teeComponent.tag);
-                    }
                 }
             }
         }
