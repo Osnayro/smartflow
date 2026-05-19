@@ -289,6 +289,29 @@ const SmartFlowRouter = (function() {
                     addedFittings.push(codoInicial.tag);
                 }
             }
+
+            if (fromObj && fromObj._cachedPoints) {
+                const fromDiam = parseFloat(lineObj.diameter || diameter);
+                const toDiam = parseFloat(fromObj.diameter || diameter);
+                if (!isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.1) {
+                    const reducerType = findComponentInCatalog('CONCENTRIC_REDUCER', material, []);
+                    if (reducerType) {
+                        const reducer = {
+                            type: reducerType,
+                            skey: 'REDC',
+                            tag: `REDC-${lineObj.tag}-START`,
+                            param: 0.0,
+                            diameterLarge: Math.max(fromDiam, toDiam),
+                            diameterSmall: Math.min(fromDiam, toDiam),
+                            material: material || 'PPR'
+                        };
+                        if (!lineObj.components.some(c => c.tag === reducer.tag)) {
+                            lineObj.components.push(reducer);
+                            addedFittings.push(reducer.tag);
+                        }
+                    }
+                }
+            }
         }
 
         for (let i = 1; i < puntos.length - 1; i++) {
@@ -346,6 +369,10 @@ const SmartFlowRouter = (function() {
                 );
             }
 
+            const fromDiam = parseFloat(lineObj.diameter || diameter);
+            const toDiam = targetLine ? parseFloat(targetLine.diameter || diameter) : fromDiam;
+            const diffDiam = !isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.1;
+
             if (distanciaAPuntoCero < 10) {
                 const codoTerminal = {
                     type: 'ELBOW_90_LR',
@@ -361,40 +388,31 @@ const SmartFlowRouter = (function() {
                     addedFittings.push(codoTerminal.tag);
                 }
             } else {
-                const teeComponent = {
-                    type: 'TEE_EQUAL',
-                    skey: 'TEES',
-                    tag: `TEE-${lineObj.tag}-CONN`,
-                    param: 1.0,
-                    diameter: diameter || 4,
-                    material: material || 'PPR'
-                };
-
-                if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
-                    lineObj.components.push(teeComponent);
-                    addedFittings.push(teeComponent.tag);
-                }
-            }
-
-            if (targetLine) {
-                const fromDiam = parseFloat(lineObj.diameter || diameter);
-                const toDiam = parseFloat(targetLine.diameter || diameter);
-                if (!isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.1) {
-                    const reducerType = findComponentInCatalog('CONCENTRIC_REDUCER', material, []);
-                    if (reducerType) {
-                        const reducer = {
-                            type: reducerType,
-                            skey: 'REDC',
-                            tag: `REDC-${lineObj.tag}-CONN`,
-                            param: 1.0,
-                            diameterLarge: Math.max(fromDiam, toDiam),
-                            diameterSmall: Math.min(fromDiam, toDiam),
-                            material: material || 'PPR'
-                        };
-                        if (!lineObj.components.some(c => c.tag === reducer.tag)) {
-                            lineObj.components.push(reducer);
-                            addedFittings.push(reducer.tag);
-                        }
+                if (diffDiam) {
+                    const teeReducing = {
+                        type: 'TEE_REDUCING',
+                        skey: 'TEER',
+                        tag: `TEER-${lineObj.tag}-CONN`,
+                        param: 1.0,
+                        diameter: diameter || 4,
+                        material: material || 'PPR'
+                    };
+                    if (!lineObj.components.some(c => c.tag === teeReducing.tag)) {
+                        lineObj.components.push(teeReducing);
+                        addedFittings.push(teeReducing.tag);
+                    }
+                } else {
+                    const teeComponent = {
+                        type: 'TEE_EQUAL',
+                        skey: 'TEES',
+                        tag: `TEE-${lineObj.tag}-CONN`,
+                        param: 1.0,
+                        diameter: diameter || 4,
+                        material: material || 'PPR'
+                    };
+                    if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
+                        lineObj.components.push(teeComponent);
+                        addedFittings.push(teeComponent.tag);
                     }
                 }
             }
