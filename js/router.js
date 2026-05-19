@@ -269,6 +269,9 @@ const SmartFlowRouter = (function() {
         const inicialCount = lineObj.components.length;
         const addedFittings = [];
 
+        // ==========================================
+        // DETECCIÓN AL INICIO: ¿Codo de salida a 90°?
+        // ==========================================
         if (fromObj && fromPortId && puntos.length >= 2) {
             const dirPuerto = getPortDirection(fromObj, fromPortId);
             const vInicial = { x: puntos[1].x - puntos[0].x, y: puntos[1].y - puntos[0].y, z: puntos[1].z - puntos[0].z };
@@ -291,6 +294,9 @@ const SmartFlowRouter = (function() {
             }
         }
 
+        // ==========================================
+        // DETECCIÓN EN VÉRTICES INTERMEDIOS
+        // ==========================================
         for (let i = 1; i < puntos.length - 1; i++) {
             const pAnt = puntos[i - 1];
             const pAct = puntos[i];
@@ -330,6 +336,9 @@ const SmartFlowRouter = (function() {
             }
         }
 
+        // ==========================================
+        // DETECCIÓN AL FINAL: Filtro de proximidad (Codo vs Tee)
+        // ==========================================
         if (lineObj.destination && lineObj.destination.objType === 'line') {
             const targetLine = _core ? _core.findObjectByTag(lineObj.destination.equipTag) : null;
             const puntosTarget = targetLine ? (_core.getLinePoints(targetLine) || []) : [];
@@ -463,7 +472,7 @@ const SmartFlowRouter = (function() {
         }
     }
 
-    function routeBetweenPorts(fromEquipTag, fromPortId, toEquipTag, toPortId, diameter = 3, material = 'PPR', spec = 'PPR_PN12_5', customWaypoints = null, exactPoint = null) {
+    function routeBetweenPorts(fromEquipTag, fromPortId, toEquipTag, toPortId, diameter = 3, material = 'PPR', spec = 'PPR_PN12_5') {
         ensureInitialized();
         if (!_core) { notifyUser('Core no inicializado', true); return null; }
         const db = _core.getDb();
@@ -478,51 +487,15 @@ const SmartFlowRouter = (function() {
         let endPos, nuevoPuertoId = toPortId;
         let reductorComponent = null;
 
-        const isToLine = _core.getLinePoints(toObj) || toObj._cachedPoints || toObj.points3D || toObj.points;
-        if (isToLine) {
+        if (_core.getLinePoints(toObj) || toObj._cachedPoints || toObj.points3D || toObj.points) {
             const pts = _core.getLinePoints(toObj) || toObj._cachedPoints || toObj.points3D || toObj.points;
             if (!pts || pts.length < 2) { notifyUser(`La línea ${toEquipTag} no tiene geometría`, true); return null; }
-            
-            if (exactPoint !== null) {
-                const numPos = parseFloat(exactPoint);
-                if (!isNaN(numPos) && numPos >= 0 && numPos <= 1) {
-                    const paramPos = Math.min(1, Math.max(0, numPos));
-                    let totalLen = 0, lengths = [];
-                    for (let i = 0; i < pts.length - 1; i++) { const d = distance(pts[i], pts[i+1]); lengths.push(d); totalLen += d; }
-                    const targetLen = totalLen * paramPos;
-                    let accum = 0, segIdx = 0, t = 0;
-                    for (let i = 0; i < lengths.length; i++) { if (accum + lengths[i] >= targetLen || i === lengths.length - 1) { segIdx = i; t = (targetLen - accum) / (lengths[i] || 1); break; } accum += lengths[i]; }
-                    const pA = pts[segIdx], pB = pts[segIdx + 1];
-                    const puntoExacto = { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t, z: pA.z + (pB.z - pA.z) * t };
-                    endPos = puntoExacto;
-                    if (paramPos <= 0.01 || paramPos >= 0.99) {
-                        nuevoPuertoId = paramPos <= 0.01 ? '0' : '1';
-                    } else {
-                        const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoExacto, diameter, true);
-                        if (puertoInsertado) { nuevoPuertoId = puertoInsertado; toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag); }
-                        else { notifyUser('No se pudo insertar el accesorio en el punto exacto', true); return null; }
-                    }
-                } else if (exactPoint === '0' || exactPoint === '1') {
-                    nuevoPuertoId = exactPoint;
-                    endPos = exactPoint === '0' ? { ...pts[0] } : { ...pts[pts.length - 1] };
-                } else {
-                    const puertoExistente = toObj.puertos?.find(p => p.id === exactPoint);
-                    if (puertoExistente) {
-                        nuevoPuertoId = exactPoint;
-                        endPos = getPortPosition(toObj, exactPoint);
-                    } else {
-                        const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, getPortPosition(toObj, '0') || pts[0], diameter, true);
-                        if (puertoInsertado) { nuevoPuertoId = puertoInsertado; toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag); }
-                        else { notifyUser('No se pudo insertar el accesorio', true); return null; }
-                    }
-                }
-            } else if (!toPortId || toPortId === '') {
+            if (!toPortId || toPortId === '') {
                 let minDist = Infinity, bestPoint = pts[0];
                 for (let i = 0; i < pts.length - 1; i++) { const proj = projectPointOnSegment(startPos, pts[i], pts[i+1]); if (proj.distance < minDist) { minDist = proj.distance; bestPoint = proj.point; } }
                 const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, bestPoint, diameter, true);
                 if (!puertoInsertado) return null;
                 nuevoPuertoId = puertoInsertado;
-                endPos = bestPoint;
                 toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag);
             } else {
                 let puntoConexion;
@@ -532,47 +505,45 @@ const SmartFlowRouter = (function() {
                 if (!puntoConexion) { notifyUser(`Puerto destino no encontrado`, true); return null; }
                 const esExtremo = (toPortId === '0' || toPortId === '1');
                 const diffDiam = Math.abs(diameter - (toObj.diameter || 4)) > 0.1;
-                if (esExtremo && !diffDiam) { nuevoPuertoId = toPortId; endPos = puntoConexion; }
+                if (esExtremo && !diffDiam) { nuevoPuertoId = toPortId; }
                 else if (esExtremo && diffDiam) {
                     const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoConexion, diameter, false);
                     if (puertoInsertado) { nuevoPuertoId = puertoInsertado; toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag); }
                     else { const reductorId = findComponentInCatalog('CONCENTRIC_REDUCER', material, []); if (reductorId) { reductorComponent = { type: reductorId, tag: reductorId + '-' + Date.now().toString().slice(-6), param: 1.0 }; } nuevoPuertoId = toPortId; }
-                    endPos = puntoConexion;
                 } else {
                     const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoConexion, diameter, true);
                     if (!puertoInsertado) return null;
                     nuevoPuertoId = puertoInsertado;
-                    endPos = puntoConexion;
                     toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag);
                 }
             }
-        } else {
-            endPos = getPortPosition(toObj, nuevoPuertoId);
         }
+
+        endPos = getPortPosition(toObj, nuevoPuertoId);
         if (!endPos) { notifyUser(`Puerto destino no encontrado`, true); return null; }
 
-        const waypoints = [startPos];
-        if (customWaypoints && Array.isArray(customWaypoints) && customWaypoints.length > 0) {
-            for (const wp of customWaypoints) {
-                if (wp && typeof wp.x === 'number' && typeof wp.y === 'number' && typeof wp.z === 'number') {
-                    waypoints.push({ x: wp.x, y: wp.y, z: wp.z });
-                }
-            }
-        } else {
-            const startDirRaw = getPortDirection(fromObj, fromPortId);
-            const startDir = normalizeVector(startDirRaw);
-            const orthoResultStart = calculateOrthogonalIntersection(startPos, startDir, endPos);
-            const extStart = addPoints(startPos, scalePoint(startDir, EXTENSION_DISTANCE));
-            if (orthoResultStart.isOrthogonal) { waypoints.push(extStart); waypoints.push(orthoResultStart.intersection); }
-            else { waypoints.push(extStart); const breakPoint = orthoResultStart.intersection; waypoints.push(breakPoint); }
+        const startDirRaw = getPortDirection(fromObj, fromPortId);
+        const startDir = normalizeVector(startDirRaw);
+        let endDirRaw, endDir;
+        const isEquipoDest = toObj.posX !== undefined || (toObj.pos && toObj.pos.x !== undefined);
+        if (isEquipoDest) { endDirRaw = getPortDirection(toObj, nuevoPuertoId); endDir = normalizeVector(endDirRaw); }
+        else {
+            const ptsTo = _core.getLinePoints(toObj) || toObj._cachedPoints || toObj.points3D || toObj.points;
+            if (ptsTo && ptsTo.length >= 2) { endDir = normalizeVector(subtractPoints(ptsTo[ptsTo.length - 1], ptsTo[ptsTo.length - 2])); }
+            else { endDir = { dx: 1, dy: 0, dz: 0, x: 1, y: 0, z: 0 }; }
         }
-        waypoints.push(endPos);
-        
+
+        const orthoResultStart = calculateOrthogonalIntersection(startPos, startDir, endPos);
+        const endDirInverted = scalePoint(endDir, -1);
+        const orthoResultEnd = calculateOrthogonalIntersection(endPos, endDirInverted, startPos);
+        const waypoints = [startPos];
+        const extStart = addPoints(startPos, scalePoint(startDir, EXTENSION_DISTANCE));
+        if (orthoResultStart.isOrthogonal) { waypoints.push(extStart); waypoints.push(orthoResultStart.intersection); }
+        else { waypoints.push(extStart); const breakPoint = orthoResultStart.intersection; waypoints.push(breakPoint); waypoints.push(endPos); }
         let uniqueWaypoints = waypoints.filter((pt, i, arr) => i === 0 || distance(pt, arr[i-1]) > 1);
         if (uniqueWaypoints.length < 2) uniqueWaypoints = [startPos, endPos];
 
         const tag = `L-${db.lines.length + 1}`;
-        const isEquipoDest = toObj.posX !== undefined || (toObj.pos && toObj.pos.x !== undefined);
         const nuevaLinea = {
             tag, diameter, material, spec,
             origin: { objType: (fromObj.posX !== undefined || (fromObj.pos && fromObj.pos.x !== undefined)) ? 'equipment' : 'line', equipTag: fromEquipTag, portId: fromPortId },
