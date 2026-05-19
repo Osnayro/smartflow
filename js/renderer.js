@@ -1,8 +1,7 @@
-
 // ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.9
+// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.10
 // Archivo: js/renderer.js
-// Cambios: añadida drawPlataforma para equipos tipo 'plataforma'
+// Cambios: drawPlataforma mejorada con detalles metálicos
 // ============================================================
 
 const SmartFlowRenderer = (function() {
@@ -265,6 +264,7 @@ const SmartFlowRenderer = (function() {
         const h = (eq.altura || 400) * _cam.scale;
         const material = (eq.material || '').toUpperCase();
         const esConcreto = material.includes('CONCRETO') || material.includes('CEMENTO');
+        const esAcero = material.includes('ACERO') || material.includes('STEEL') || material.includes('METAL');
         const colorBase = esConcreto ? '#9ca3af' : '#6b7280';
         const colorBorde = esConcreto ? '#6b7280' : '#4b5563';
         const colorBaranda = esConcreto ? '#d1d5db' : '#9ca3af';
@@ -272,8 +272,30 @@ const SmartFlowRenderer = (function() {
         const topY = p.y - h;
         const bottomY = p.y;
 
-        // Base superior (losa)
-        _ctx.fillStyle = colorBase;
+        // Sombra inferior de la losa
+        _ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        _ctx.beginPath();
+        _ctx.moveTo(p.x - w + 2, topY + 2);
+        _ctx.lineTo(p.x - w + d * 0.5 + 2, topY - d * 0.25 + 2);
+        _ctx.lineTo(p.x + d * 0.5 + 2, topY - d * 0.25 + 2);
+        _ctx.lineTo(p.x + w + 2, topY + 2);
+        _ctx.lineTo(p.x + d * 0.5 + 2, topY + d * 0.25 + 2);
+        _ctx.lineTo(p.x - w + d * 0.5 + 2, topY + d * 0.25 + 2);
+        _ctx.closePath();
+        _ctx.fill();
+
+        // Base superior (losa) con degradado metálico si es acero
+        if (esAcero) {
+            const grad = _ctx.createLinearGradient(p.x - w, topY, p.x + w, topY);
+            grad.addColorStop(0, '#4b5563');
+            grad.addColorStop(0.3, '#9ca3af');
+            grad.addColorStop(0.5, '#d1d5db');
+            grad.addColorStop(0.7, '#9ca3af');
+            grad.addColorStop(1, '#4b5563');
+            _ctx.fillStyle = grad;
+        } else {
+            _ctx.fillStyle = colorBase;
+        }
         _ctx.strokeStyle = colorBorde;
         _ctx.lineWidth = 1.5;
         _ctx.beginPath();
@@ -287,14 +309,73 @@ const SmartFlowRenderer = (function() {
         _ctx.fill();
         _ctx.stroke();
 
+        // Líneas de panel (juntas de dilatación) para acero
+        if (esAcero && _cam.scale > 0.15) {
+            _ctx.strokeStyle = '#374151';
+            _ctx.lineWidth = 0.5;
+            const panelSize = 2000 * _cam.scale;
+            const largoTotal = w * 2;
+            const panelesX = Math.floor(largoTotal / panelSize);
+            for (let i = 1; i < panelesX; i++) {
+                const offsetX = -w + i * panelSize;
+                const p1 = { x: p.x + offsetX, y: topY, z: eq.posZ - (eq.ancho || 3000) / 2 };
+                const p2 = { x: p.x + offsetX, y: topY, z: eq.posZ + (eq.ancho || 3000) / 2 };
+                const proj1 = project(p1);
+                const proj2 = project(p2);
+                _ctx.beginPath();
+                _ctx.moveTo(proj1.x, proj1.y);
+                _ctx.lineTo(proj2.x, proj2.y);
+                _ctx.stroke();
+            }
+            const anchoTotal = d * 2;
+            const panelesZ = Math.floor(anchoTotal / panelSize);
+            for (let i = 1; i < panelesZ; i++) {
+                const offsetZ = -d * 0.5 + i * panelSize * 0.5;
+                const p1 = { x: eq.posX - (eq.largo || 6000) / 2, y: topY, z: eq.posZ + offsetZ };
+                const p2 = { x: eq.posX + (eq.largo || 6000) / 2, y: topY, z: eq.posZ + offsetZ };
+                const proj1 = project(p1);
+                const proj2 = project(p2);
+                _ctx.beginPath();
+                _ctx.moveTo(proj1.x, proj1.y);
+                _ctx.lineTo(proj2.x, proj2.y);
+                _ctx.stroke();
+            }
+        }
+
+        // Textura diamond plate (solo acero, con zoom suficiente)
+        if (esAcero && _cam.scale > 0.3 && w * d < 50000) {
+            _ctx.strokeStyle = '#9ca3af';
+            _ctx.lineWidth = 0.3;
+            const stepX = 150 * _cam.scale;
+            const stepZ = 150 * _cam.scale;
+            for (let ix = -w + stepX; ix < w; ix += stepX) {
+                for (let iz = -d * 0.4; iz < d * 0.4; iz += stepZ) {
+                    const cx = p.x + ix;
+                    const cy = topY + iz * 0.5;
+                    const p1 = { x: cx - stepX * 0.3, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz };
+                    const p2 = { x: cx, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz - stepZ * 0.3 };
+                    const p3 = { x: cx + stepX * 0.3, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz };
+                    const p4 = { x: cx, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz + stepZ * 0.3 };
+                    const pr1 = project(p1), pr2 = project(p2), pr3 = project(p3), pr4 = project(p4);
+                    _ctx.beginPath();
+                    _ctx.moveTo(pr1.x, pr1.y);
+                    _ctx.lineTo(pr2.x, pr2.y);
+                    _ctx.lineTo(pr3.x, pr3.y);
+                    _ctx.lineTo(pr4.x, pr4.y);
+                    _ctx.closePath();
+                    _ctx.stroke();
+                }
+            }
+        }
+
         // Patas (columnas)
         _ctx.strokeStyle = colorBorde;
         _ctx.lineWidth = 1.5;
         const patas = [
-            { x: p.x - w, z: p.z - d * 0.5 },
-            { x: p.x + w, z: p.z - d * 0.5 },
-            { x: p.x + w, z: p.z + d * 0.5 },
-            { x: p.x - w, z: p.z + d * 0.5 }
+            { x: eq.posX - (eq.largo || 6000) / 2, z: eq.posZ - (eq.ancho || 3000) / 2 },
+            { x: eq.posX + (eq.largo || 6000) / 2, z: eq.posZ - (eq.ancho || 3000) / 2 },
+            { x: eq.posX + (eq.largo || 6000) / 2, z: eq.posZ + (eq.ancho || 3000) / 2 },
+            { x: eq.posX - (eq.largo || 6000) / 2, z: eq.posZ + (eq.ancho || 3000) / 2 }
         ];
         patas.forEach(pta => {
             const top = project({ x: pta.x, y: eq.posY - (eq.altura || 400), z: pta.z });
@@ -308,14 +389,13 @@ const SmartFlowRenderer = (function() {
         // Baranda opcional
         if (eq.baranda) {
             const hBaranda = 200 * _cam.scale;
-            const topBarY = topY - hBaranda * 0.5;
             _ctx.strokeStyle = colorBaranda;
             _ctx.lineWidth = 0.8;
             const esquinas = [
-                { x: p.x - w, z: p.z - d * 0.5 },
-                { x: p.x + w, z: p.z - d * 0.5 },
-                { x: p.x + w, z: p.z + d * 0.5 },
-                { x: p.x - w, z: p.z + d * 0.5 }
+                { x: eq.posX - (eq.largo || 6000) / 2, z: eq.posZ - (eq.ancho || 3000) / 2 },
+                { x: eq.posX + (eq.largo || 6000) / 2, z: eq.posZ - (eq.ancho || 3000) / 2 },
+                { x: eq.posX + (eq.largo || 6000) / 2, z: eq.posZ + (eq.ancho || 3000) / 2 },
+                { x: eq.posX - (eq.largo || 6000) / 2, z: eq.posZ + (eq.ancho || 3000) / 2 }
             ];
             for (let i = 0; i < esquinas.length; i++) {
                 const a = esquinas[i];
