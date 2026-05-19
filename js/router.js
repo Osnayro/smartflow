@@ -269,9 +269,6 @@ const SmartFlowRouter = (function() {
         const inicialCount = lineObj.components.length;
         const addedFittings = [];
 
-        // ==========================================
-        // DETECCIÓN AL INICIO: ¿Codo de salida a 90°?
-        // ==========================================
         if (fromObj && fromPortId && puntos.length >= 2) {
             const dirPuerto = getPortDirection(fromObj, fromPortId);
             const vInicial = { x: puntos[1].x - puntos[0].x, y: puntos[1].y - puntos[0].y, z: puntos[1].z - puntos[0].z };
@@ -294,9 +291,6 @@ const SmartFlowRouter = (function() {
             }
         }
 
-        // ==========================================
-        // DETECCIÓN EN VÉRTICES INTERMEDIOS
-        // ==========================================
         for (let i = 1; i < puntos.length - 1; i++) {
             const pAnt = puntos[i - 1];
             const pAct = puntos[i];
@@ -336,9 +330,6 @@ const SmartFlowRouter = (function() {
             }
         }
 
-        // ==========================================
-        // DETECCIÓN AL FINAL: Filtro de proximidad (Codo vs Tee)
-        // ==========================================
         if (lineObj.destination && lineObj.destination.objType === 'line') {
             const targetLine = _core ? _core.findObjectByTag(lineObj.destination.equipTag) : null;
             const puntosTarget = targetLine ? (_core.getLinePoints(targetLine) || []) : [];
@@ -382,6 +373,29 @@ const SmartFlowRouter = (function() {
                 if (!lineObj.components.some(c => c.tag === teeComponent.tag)) {
                     lineObj.components.push(teeComponent);
                     addedFittings.push(teeComponent.tag);
+                }
+            }
+
+            if (targetLine) {
+                const fromDiam = parseFloat(lineObj.diameter || diameter);
+                const toDiam = parseFloat(targetLine.diameter || diameter);
+                if (!isNaN(fromDiam) && !isNaN(toDiam) && Math.abs(fromDiam - toDiam) > 0.1) {
+                    const reducerType = findComponentInCatalog('CONCENTRIC_REDUCER', material, []);
+                    if (reducerType) {
+                        const reducer = {
+                            type: reducerType,
+                            skey: 'REDC',
+                            tag: `REDC-${lineObj.tag}-CONN`,
+                            param: 1.0,
+                            diameterLarge: Math.max(fromDiam, toDiam),
+                            diameterSmall: Math.min(fromDiam, toDiam),
+                            material: material || 'PPR'
+                        };
+                        if (!lineObj.components.some(c => c.tag === reducer.tag)) {
+                            lineObj.components.push(reducer);
+                            addedFittings.push(reducer.tag);
+                        }
+                    }
                 }
             }
         }
@@ -496,6 +510,7 @@ const SmartFlowRouter = (function() {
                 const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, bestPoint, diameter, true);
                 if (!puertoInsertado) return null;
                 nuevoPuertoId = puertoInsertado;
+                endPos = bestPoint;
                 toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag);
             } else {
                 let puntoConexion;
@@ -505,21 +520,23 @@ const SmartFlowRouter = (function() {
                 if (!puntoConexion) { notifyUser(`Puerto destino no encontrado`, true); return null; }
                 const esExtremo = (toPortId === '0' || toPortId === '1');
                 const diffDiam = Math.abs(diameter - (toObj.diameter || 4)) > 0.1;
-                if (esExtremo && !diffDiam) { nuevoPuertoId = toPortId; }
+                if (esExtremo && !diffDiam) { nuevoPuertoId = toPortId; endPos = puntoConexion; }
                 else if (esExtremo && diffDiam) {
                     const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoConexion, diameter, false);
                     if (puertoInsertado) { nuevoPuertoId = puertoInsertado; toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag); }
                     else { const reductorId = findComponentInCatalog('CONCENTRIC_REDUCER', material, []); if (reductorId) { reductorComponent = { type: reductorId, tag: reductorId + '-' + Date.now().toString().slice(-6), param: 1.0 }; } nuevoPuertoId = toPortId; }
+                    endPos = puntoConexion;
                 } else {
                     const puertoInsertado = insertarAccesorioEnLinea(toEquipTag, puntoConexion, diameter, true);
                     if (!puertoInsertado) return null;
                     nuevoPuertoId = puertoInsertado;
+                    endPos = puntoConexion;
                     toObj = _core.findObjectByTag(toEquipTag) || db.lines.find(l => l.tag === toEquipTag);
                 }
             }
+        } else {
+            endPos = getPortPosition(toObj, nuevoPuertoId);
         }
-
-        endPos = getPortPosition(toObj, nuevoPuertoId);
         if (!endPos) { notifyUser(`Puerto destino no encontrado`, true); return null; }
 
         const startDirRaw = getPortDirection(fromObj, fromPortId);
