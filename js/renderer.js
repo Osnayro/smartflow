@@ -1,8 +1,3 @@
-// ============================================================
-// MÓDULO 3: SMARTFLOW RENDERER (Motor de Dibujo Isométrico) - v20.10
-// Archivo: js/renderer.js
-// Cambios: drawPlataforma mejorada con detalles metálicos
-// ============================================================
 
 const SmartFlowRenderer = (function() {
     let _canvas = null;
@@ -207,10 +202,21 @@ const SmartFlowRenderer = (function() {
         const h = eq.altura * _cam.scale;
         const topY = p.y - h/2;
         const bottomY = p.y + h/2;
-        _ctx.beginPath(); _ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = '#2563eb'; _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.stroke();
+
+        _ctx.beginPath(); _ctx.ellipse(p.x, bottomY, w, w*0.5, 0, 0, 2*Math.PI);
+        const grad = _ctx.createLinearGradient(p.x - w, 0, p.x + w, 0);
+        grad.addColorStop(0, '#1e40af');
+        grad.addColorStop(0.3, '#3b82f6');
+        grad.addColorStop(0.7, '#60a5fa');
+        grad.addColorStop(1, '#1e40af');
+        _ctx.fillStyle = grad; _ctx.fill(); _ctx.strokeStyle = '#fff'; _ctx.stroke();
+
         _ctx.fillStyle = '#1e40af'; _ctx.fillRect(p.x - w, topY, w, h);
         _ctx.fillStyle = '#3b82f6'; _ctx.fillRect(p.x, topY, w, h);
-        _ctx.beginPath(); _ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI); _ctx.fillStyle = '#60a5fa'; _ctx.fill(); _ctx.stroke();
+
+        _ctx.beginPath(); _ctx.ellipse(p.x, topY, w, w*0.5, 0, 0, 2*Math.PI);
+        _ctx.fillStyle = '#60a5fa'; _ctx.fill(); _ctx.stroke();
+
         drawIsoText(eq.tag, p.x, topY - 10, 'XY');
         drawPuertos(eq);
         if (eq.accessories) eq.accessories.forEach(acc => drawAccessory(acc, eq));
@@ -265,14 +271,11 @@ const SmartFlowRenderer = (function() {
         const material = (eq.material || '').toUpperCase();
         const esConcreto = material.includes('CONCRETO') || material.includes('CEMENTO');
         const esAcero = material.includes('ACERO') || material.includes('STEEL') || material.includes('METAL');
-        const colorBase = esConcreto ? '#9ca3af' : '#6b7280';
         const colorBorde = esConcreto ? '#6b7280' : '#4b5563';
         const colorBaranda = esConcreto ? '#d1d5db' : '#9ca3af';
 
         const topY = p.y - h;
-        const bottomY = p.y;
 
-        // Sombra inferior de la losa
         _ctx.fillStyle = 'rgba(0,0,0,0.15)';
         _ctx.beginPath();
         _ctx.moveTo(p.x - w + 2, topY + 2);
@@ -284,7 +287,6 @@ const SmartFlowRenderer = (function() {
         _ctx.closePath();
         _ctx.fill();
 
-        // Base superior (losa) con degradado metálico si es acero
         if (esAcero) {
             const grad = _ctx.createLinearGradient(p.x - w, topY, p.x + w, topY);
             grad.addColorStop(0, '#4b5563');
@@ -294,7 +296,7 @@ const SmartFlowRenderer = (function() {
             grad.addColorStop(1, '#4b5563');
             _ctx.fillStyle = grad;
         } else {
-            _ctx.fillStyle = colorBase;
+            _ctx.fillStyle = esConcreto ? '#9ca3af' : '#6b7280';
         }
         _ctx.strokeStyle = colorBorde;
         _ctx.lineWidth = 1.5;
@@ -309,7 +311,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fill();
         _ctx.stroke();
 
-        // Líneas de panel (juntas de dilatación) para acero
         if (esAcero && _cam.scale > 0.15) {
             _ctx.strokeStyle = '#374151';
             _ctx.lineWidth = 0.5;
@@ -327,48 +328,8 @@ const SmartFlowRenderer = (function() {
                 _ctx.lineTo(proj2.x, proj2.y);
                 _ctx.stroke();
             }
-            const anchoTotal = d * 2;
-            const panelesZ = Math.floor(anchoTotal / panelSize);
-            for (let i = 1; i < panelesZ; i++) {
-                const offsetZ = -d * 0.5 + i * panelSize * 0.5;
-                const p1 = { x: eq.posX - (eq.largo || 6000) / 2, y: topY, z: eq.posZ + offsetZ };
-                const p2 = { x: eq.posX + (eq.largo || 6000) / 2, y: topY, z: eq.posZ + offsetZ };
-                const proj1 = project(p1);
-                const proj2 = project(p2);
-                _ctx.beginPath();
-                _ctx.moveTo(proj1.x, proj1.y);
-                _ctx.lineTo(proj2.x, proj2.y);
-                _ctx.stroke();
-            }
         }
 
-        // Textura diamond plate (solo acero, con zoom suficiente)
-        if (esAcero && _cam.scale > 0.3 && w * d < 50000) {
-            _ctx.strokeStyle = '#9ca3af';
-            _ctx.lineWidth = 0.3;
-            const stepX = 150 * _cam.scale;
-            const stepZ = 150 * _cam.scale;
-            for (let ix = -w + stepX; ix < w; ix += stepX) {
-                for (let iz = -d * 0.4; iz < d * 0.4; iz += stepZ) {
-                    const cx = p.x + ix;
-                    const cy = topY + iz * 0.5;
-                    const p1 = { x: cx - stepX * 0.3, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz };
-                    const p2 = { x: cx, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz - stepZ * 0.3 };
-                    const p3 = { x: cx + stepX * 0.3, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz };
-                    const p4 = { x: cx, y: eq.posY - (eq.altura || 400), z: eq.posZ + iz + stepZ * 0.3 };
-                    const pr1 = project(p1), pr2 = project(p2), pr3 = project(p3), pr4 = project(p4);
-                    _ctx.beginPath();
-                    _ctx.moveTo(pr1.x, pr1.y);
-                    _ctx.lineTo(pr2.x, pr2.y);
-                    _ctx.lineTo(pr3.x, pr3.y);
-                    _ctx.lineTo(pr4.x, pr4.y);
-                    _ctx.closePath();
-                    _ctx.stroke();
-                }
-            }
-        }
-
-        // Patas (columnas)
         _ctx.strokeStyle = colorBorde;
         _ctx.lineWidth = 1.5;
         const patas = [
@@ -386,9 +347,7 @@ const SmartFlowRenderer = (function() {
             _ctx.stroke();
         });
 
-        // Baranda opcional
         if (eq.baranda) {
-            const hBaranda = 200 * _cam.scale;
             _ctx.strokeStyle = colorBaranda;
             _ctx.lineWidth = 0.8;
             const esquinas = [
@@ -1152,10 +1111,23 @@ const SmartFlowRenderer = (function() {
     }
 
     function pan(dx, dy) { _cam.panX += dx; _cam.panY += dy; _cacheDirty = true; scheduleRender(); }
-    function zoom(delta) { _cam.scale *= (delta > 0 ? 1.1 : 0.9); _cam.scale = Math.min(Math.max(0.05, _cam.scale), 1.5); _cacheDirty = true; scheduleRender(); }
+
+    function zoom(delta, mouseX, mouseY) {
+        const zoomFactor = delta > 0 ? 1.1 : 0.9;
+        const newScale = _cam.scale * zoomFactor;
+        const clampedScale = Math.min(Math.max(0.05, newScale), 1.5);
+        if (mouseX !== undefined && mouseY !== undefined && clampedScale !== _cam.scale) {
+            _cam.panX = mouseX - (mouseX - _cam.panX) * (clampedScale / _cam.scale);
+            _cam.panY = mouseY - (mouseY - _cam.panY) * (clampedScale / _cam.scale);
+        }
+        _cam.scale = clampedScale;
+        _cacheDirty = true;
+        scheduleRender();
+    }
 
     function render() {
         if (!_ctx || !_canvas) return;
+        _renderScheduled = false;
         _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
         const bgGrad = _ctx.createRadialGradient(_canvas.width/2, _canvas.height/2, _canvas.width*0.1, _canvas.width/2, _canvas.height/2, _canvas.width*0.9);
         bgGrad.addColorStop(0, '#0f172a'); bgGrad.addColorStop(1, '#020617');
@@ -1176,7 +1148,14 @@ const SmartFlowRenderer = (function() {
                     _allLinePoints.push({ tag:line.tag, pts });
                 }
             });
-            _renderQueueCache.sort((a,b) => a.depth-b.depth);
+            _renderQueueCache.sort((a, b) => {
+                const order = { 'PLATFORM': 0, 'EQUIPMENT': 1, 'LINE': 2 };
+                const typeA = a.data?.tipo === 'plataforma' ? 'PLATFORM' : a.type;
+                const typeB = b.data?.tipo === 'plataforma' ? 'PLATFORM' : b.type;
+                const orderDiff = (order[typeA] || 1) - (order[typeB] || 1);
+                if (orderDiff !== 0) return orderDiff;
+                return a.depth - b.depth;
+            });
             _cacheDirty = false;
         }
 
@@ -1194,7 +1173,7 @@ const SmartFlowRenderer = (function() {
                     case 'plataforma':drawPlataforma(eq);break;
                     default:drawRectEquip(eq,'#475569');
                 }
-                if (eq.tag) {
+                if (eq.tag && eq.tipo !== 'plataforma') {
                     const projCenter = project({ x: eq.posX, y: eq.posY, z: eq.posZ });
                     drawEquipmentTag2D(projCenter, eq.tag, eq.tipo || 'EQUIPO');
                 }
@@ -1235,8 +1214,6 @@ const SmartFlowRenderer = (function() {
         if (_hoveredComponent && _hoveredComponentScreenPos) drawTechnicalTooltip(_ctx, _hoveredComponent, _hoveredComponentScreenPos);
 
         if (_canvas.width >= 400) renderBOM();
-
-        _renderScheduled = false;
     }
 
     function scheduleRender() {
@@ -1430,14 +1407,25 @@ const SmartFlowRenderer = (function() {
                 if (touched) { _hoveredComponent = { comp: touched }; _hoveredComponentScreenPos = touched._screenPos || {x:mX, y:mY}; scheduleRender(); }
             }
         });
-        _canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1 : -1); });
+        _canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = _canvas.getBoundingClientRect();
+            const mX = e.clientX - rect.left;
+            const mY = e.clientY - rect.top;
+            zoom(e.deltaY < 0 ? 1 : -1, mX, mY);
+        });
         let lastTouchDist = 0;
         _canvas.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2) {
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 const dist = Math.hypot(dx, dy);
-                if (lastTouchDist) { const delta = dist - lastTouchDist; zoom(delta > 0 ? 1 : -1); }
+                if (lastTouchDist) {
+                    const delta = dist - lastTouchDist;
+                    const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - _canvas.getBoundingClientRect().left;
+                    const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - _canvas.getBoundingClientRect().top;
+                    zoom(delta > 0 ? 1 : -1, midX, midY);
+                }
                 lastTouchDist = dist;
             }
         });
@@ -1450,7 +1438,14 @@ const SmartFlowRenderer = (function() {
     function resizeCanvas() {
         if (!_canvas) return;
         const container = _canvas.parentElement;
-        if (container) { _canvas.width = container.clientWidth; _canvas.height = container.clientHeight; }
+        const dpr = window.devicePixelRatio || 1;
+        if (container) {
+            _canvas.width = container.clientWidth * dpr;
+            _canvas.height = container.clientHeight * dpr;
+            _canvas.style.width = container.clientWidth + 'px';
+            _canvas.style.height = container.clientHeight + 'px';
+            _ctx.scale(dpr, dpr);
+        }
         _cacheDirty = true;
         const isMobile = /Mobi|Android/i.test(navigator.userAgent) || _canvas.width < 600;
         autoCenter(isMobile ? { padding: 20, minScale: 0.06, maxScale: 0.5 } : {});
