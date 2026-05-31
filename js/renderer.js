@@ -1,17 +1,9 @@
-// ============================================================
-// SMARTFLOW COMPLETE REALISTIC RENDERER v5.0
-// Archivo: js/renderer.js
-// Compatible: SmartFlowCore v5.5 + SmartFlowCatalog v4.1
-// Renderizado fotorrealista para TODOS los elementos del isométrico
-// ============================================================
 
 const SmartFlowRenderer = (function() {
     
-    // ============ DEPENDENCIAS ============
     const Catalog = window.SmartFlowCatalog;
     const Core = window.SmartFlowCore;
     
-    // ============ ESTADO INTERNO ============
     let _canvas = null;
     let _ctx = null;
     let _cam = { scale: 0.5, panX: 0, panY: 0 };
@@ -23,7 +15,6 @@ const SmartFlowRenderer = (function() {
     let _renderQueueCache = [];
     let _bomItems = [];
     
-    // ============ CONSTANTES ISOMÉTRICAS ============
     const COS30 = 0.86602540378;
     const SIN30 = 0.5;
     const SNAP_THRESHOLD = 15;
@@ -31,7 +22,6 @@ const SmartFlowRenderer = (function() {
     let _hoveredComponent = null;
     let _hoveredComponentScreenPos = null;
     
-    // ============ 1. SISTEMA DE COLORES POR ESPECIFICACIÓN ============
     const SPEC_COLORS = {
         'PPR_PN12_5':          { body: '#10b981', flange: '#059669', gasket: '#34d399', bolt: '#064e3b', type: 'polymer' },
         'ACERO_SCH80':         { body: '#575757', flange: '#787878', gasket: '#cc3333', bolt: '#3a3a3a', type: 'metal' },
@@ -66,7 +56,6 @@ const SmartFlowRenderer = (function() {
         return SPEC_COLORS[specId] || SPEC_COLORS['default'];
     }
     
-    // ============ 2. PROYECCIÓN ISOMÉTRICA ============
     function project(p) {
         if (!p || p.x === undefined || p.y === undefined || p.z === undefined) return { x: 0, y: 0 };
         const x = (p.x - p.z) * COS30;
@@ -86,7 +75,6 @@ const SmartFlowRenderer = (function() {
     function getScale() { return _cam.scale; }
     function getCam() { return _cam; }
     
-    // ============ 3. UTILIDADES GRÁFICAS ============
     function _darken(hex, factor) {
         const rgb = _hexToRgb(hex);
         return _rgbToHex(
@@ -119,7 +107,6 @@ const SmartFlowRenderer = (function() {
         return (dist / 1000).toFixed(2) + "m";
     }
     
-    // ============ 4. SISTEMA DE DIBUJO DE SOMBRAS Y EFECTOS ============
     const Effects = {
         groundShadow(ctx, x, y, width, height, opacity = 0.25) {
             ctx.save();
@@ -195,14 +182,12 @@ const SmartFlowRenderer = (function() {
         }
     };
     
-    // ============ 5. RENDERIZADO DE TUBERÍAS ============
     function drawPipeWithElbows(line) {
         const originalPts = Core ? Core.getLinePoints(line) : (line._cachedPoints || line.points3D);
         if (!originalPts || originalPts.length < 2) return;
         
         const pts = originalPts.map(p => ({ ...p }));
         
-        // Sincronizar con puertos de equipos
         if (line.origin && Core) {
             const obj = Core.findObjectByTag(line.origin.objTag);
             if (obj) {
@@ -235,7 +220,6 @@ const SmartFlowRenderer = (function() {
         _ctx.lineCap = 'round';
         _ctx.lineJoin = 'round';
         
-        // Sombra
         _ctx.strokeStyle = 'rgba(0,0,0,0.25)';
         _ctx.lineWidth = visualWidth + 4;
         _ctx.beginPath();
@@ -243,7 +227,6 @@ const SmartFlowRenderer = (function() {
         for (let i = 1; i < projected.length; i++) _ctx.lineTo(projected[i].x, projected[i].y + 3);
         _ctx.stroke();
         
-        // Tubería principal
         _ctx.strokeStyle = colors.body;
         _ctx.lineWidth = visualWidth;
         _ctx.beginPath();
@@ -251,7 +234,6 @@ const SmartFlowRenderer = (function() {
         for (let i = 1; i < projected.length; i++) _ctx.lineTo(projected[i].x, projected[i].y);
         _ctx.stroke();
         
-        // Brillo especular
         _ctx.strokeStyle = 'rgba(255,255,255,0.2)';
         _ctx.lineWidth = visualWidth * 0.3;
         _ctx.beginPath();
@@ -259,7 +241,6 @@ const SmartFlowRenderer = (function() {
         for (let i = 1; i < projected.length; i++) _ctx.lineTo(projected[i].x, projected[i].y - visualWidth * 0.2);
         _ctx.stroke();
         
-        // Soldaduras en acero
         if (colors.type === 'metal' || colors.type === 'stainless') {
             const weldInterval = 6000;
             let accumDist = 0;
@@ -283,7 +264,6 @@ const SmartFlowRenderer = (function() {
             }
         }
         
-        // Etiqueta de línea
         if (getScale() > 0.2 && line.tag) {
             const midIdx = Math.floor(pts.length / 2);
             const midPoint = project(pts[midIdx]);
@@ -295,7 +275,6 @@ const SmartFlowRenderer = (function() {
             _ctx.restore();
         }
         
-        // Flecha de flujo
         if (pts.length >= 2 && getScale() > 0.15) {
             const midX = (projected[0].x + projected[projected.length-1].x) / 2;
             const midY = (projected[0].y + projected[projected.length-1].y) / 2;
@@ -319,7 +298,6 @@ const SmartFlowRenderer = (function() {
         
         ctxRestore();
         
-        // Codos automáticos
         for (let i = 1; i < pts.length - 1; i++) {
             const v1 = { x: pts[i].x - pts[i-1].x, y: pts[i].y - pts[i-1].y, z: pts[i].z - pts[i-1].z };
             const v2 = { x: pts[i+1].x - pts[i].x, y: pts[i+1].y - pts[i].y, z: pts[i+1].z - pts[i].z };
@@ -339,11 +317,9 @@ const SmartFlowRenderer = (function() {
             }
         }
         
-        // Componentes inline
         drawPipeComponents(line);
     }
     
-    // ============ 6. RENDERIZADO DE COMPONENTES ============
     function drawPipeComponents(line) {
         if (!Core) return;
         const pts = Core.getLinePoints(line);
@@ -412,47 +388,29 @@ const SmartFlowRenderer = (function() {
         else if (dir3D === 'Y') _ctx.setTransform(0, 1, -1, 0, x, y);
         
         switch (comp.type) {
-            case 'GATE_VALVE':
-                drawGateValveSymbol(s, colors); break;
-            case 'GLOBE_VALVE':
-                drawGlobeValveSymbol(s, colors); break;
-            case 'BUTTERFLY_VALVE':
-                drawButterflyValveSymbol(s, colors); break;
-            case 'BALL_VALVE': case 'VALVE_BALL':
-                drawBallValveSymbol(s, colors); break;
-            case 'CHECK_VALVE':
-                drawCheckValveSymbol(s, colors); break;
-            case 'CONCENTRIC_REDUCER': case 'ECCENTRIC_REDUCER':
-                drawReducerSymbol(s, colors, comp.type); break;
-            case 'WELD_NECK_FLANGE': case 'SLIP_ON_FLANGE': case 'BLIND_FLANGE': case 'LAP_JOINT_FLANGE':
-                drawFlangeSymbol(s, colors, comp.type); break;
-            case 'TEE_EQUAL': case 'TEE_REDUCING':
-                drawTeeSymbol(s, colors); break;
-            case 'ELBOW_90_LR': case 'ELBOW_90_SR': case 'ELBOW_90_PPR': case 'ELBOW_90_HDPE': case 'ELBOW_90_PVC':
-                drawElbow90Symbol(s, colors); break;
-            case 'ELBOW_45': case 'ELBOW_45_PPR': case 'ELBOW_45_HDPE': case 'ELBOW_45_PVC':
-                drawElbow45Symbol(s, colors); break;
-            case 'CAP':
-                drawCapSymbol(s, colors); break;
-            case 'UNION': case 'UNION_ACERO':
-                drawUnionSymbol(s, colors); break;
-            case 'Y_STRAINER':
-                drawStrainerSymbol(s, colors); break;
-            case 'EXPANSION_JOINT':
-                drawExpansionJointSymbol(s, colors); break;
-            case 'NIPPLE':
-                drawNippleSymbol(s, colors); break;
-            default:
-                drawGenericComponent(s, colors, comp);
+            case 'GATE_VALVE': drawGateValveSymbol(s, colors); break;
+            case 'GLOBE_VALVE': drawGlobeValveSymbol(s, colors); break;
+            case 'BUTTERFLY_VALVE': drawButterflyValveSymbol(s, colors); break;
+            case 'BALL_VALVE': case 'VALVE_BALL': drawBallValveSymbol(s, colors); break;
+            case 'CHECK_VALVE': drawCheckValveSymbol(s, colors); break;
+            case 'CONCENTRIC_REDUCER': case 'ECCENTRIC_REDUCER': drawReducerSymbol(s, colors, comp.type); break;
+            case 'WELD_NECK_FLANGE': case 'SLIP_ON_FLANGE': case 'BLIND_FLANGE': case 'LAP_JOINT_FLANGE': drawFlangeSymbol(s, colors, comp.type); break;
+            case 'TEE_EQUAL': case 'TEE_REDUCING': drawTeeSymbol(s, colors); break;
+            case 'ELBOW_90_LR': case 'ELBOW_90_SR': case 'ELBOW_90_PPR': case 'ELBOW_90_HDPE': case 'ELBOW_90_PVC': drawElbow90Symbol(s, colors); break;
+            case 'ELBOW_45': case 'ELBOW_45_PPR': case 'ELBOW_45_HDPE': case 'ELBOW_45_PVC': drawElbow45Symbol(s, colors); break;
+            case 'CAP': drawCapSymbol(s, colors); break;
+            case 'UNION': case 'UNION_ACERO': drawUnionSymbol(s, colors); break;
+            case 'Y_STRAINER': drawStrainerSymbol(s, colors); break;
+            case 'EXPANSION_JOINT': drawExpansionJointSymbol(s, colors); break;
+            case 'NIPPLE': drawNippleSymbol(s, colors); break;
+            default: drawGenericComponent(s, colors, comp);
         }
         
         ctxRestore();
         _ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     
-    // ============ 7. SÍMBOLOS DE COMPONENTES ============
     function drawGateValveSymbol(s, colors) {
-        // Cuerpo octogonal
         _ctx.beginPath();
         _ctx.moveTo(-s*0.8, -s*0.5); _ctx.lineTo(s*0.8, -s*0.5);
         _ctx.lineTo(s*1.1, -s*0.1); _ctx.lineTo(s*1.1, s*0.1);
@@ -460,13 +418,9 @@ const SmartFlowRenderer = (function() {
         _ctx.lineTo(-s*1.1, s*0.1); _ctx.lineTo(-s*1.1, -s*0.1);
         _ctx.closePath();
         _ctx.fill(); _ctx.stroke();
-        
-        // Vástago
         _ctx.fillStyle = '#94a3b8';
         _ctx.fillRect(-s*0.12, -s*1.5, s*0.24, s*1.0);
         _ctx.strokeRect(-s*0.12, -s*1.5, s*0.24, s*1.0);
-        
-        // Volante
         const hwY = -s * 1.6, hwR = s * 0.65;
         _ctx.fillStyle = '#dc2626';
         _ctx.beginPath();
@@ -542,7 +496,6 @@ const SmartFlowRenderer = (function() {
             _ctx.beginPath(); _ctx.moveTo(-s*0.3, -s*0.8); _ctx.lineTo(s*0.3, s*0.8);
             _ctx.moveTo(s*0.3, -s*0.8); _ctx.lineTo(-s*0.3, s*0.8); _ctx.stroke();
         }
-        // Pernos
         for (let py = -0.7; py <= 0.7; py += 0.35) {
             Effects.hexBolt(_ctx, -s*0.5, py*s, s*0.12);
             Effects.hexBolt(_ctx, s*0.5, py*s, s*0.12);
@@ -592,7 +545,6 @@ const SmartFlowRenderer = (function() {
         _ctx.beginPath();
         _ctx.moveTo(-s, 0); _ctx.lineTo(s, 0);
         _ctx.strokeStyle = colors.gasket; _ctx.lineWidth = 2; _ctx.stroke();
-        // Mirilla
         _ctx.fillStyle = '#bae6fd';
         _ctx.beginPath(); _ctx.arc(0, -s*0.5, s*0.15, 0, Math.PI*2); _ctx.fill(); _ctx.stroke();
     }
@@ -607,7 +559,6 @@ const SmartFlowRenderer = (function() {
     
     function drawNippleSymbol(s, colors) {
         _ctx.fillRect(-s*0.9, -s*0.45, s*1.8, s*0.9); _ctx.strokeRect(-s*0.9, -s*0.45, s*1.8, s*0.9);
-        DrawUtils.threadPattern(_ctx, 0, 0, s*1.8, s*0.9, 0);
     }
     
     function drawGenericComponent(s, colors, comp) {
@@ -616,8 +567,7 @@ const SmartFlowRenderer = (function() {
         _ctx.fillStyle = '#ffffff'; _ctx.font = `bold ${Math.max(8, s*0.7)}px Inter`; _ctx.textAlign = 'center'; _ctx.textBaseline = 'middle';
         _ctx.fillText(lbl, 0, 0);
     }
-    
-    // ============ 8. RENDERIZADO DE EQUIPOS ============
+
     function drawEquipment(eq) {
         const colors = getSpecColors(eq.spec || 'default');
         const categoria = eq.categoria || 'proceso';
@@ -666,10 +616,7 @@ const SmartFlowRenderer = (function() {
                 drawGenericEquipment(eq, colors); break;
         }
         
-        // Puertos y boquillas
         drawPuertos(eq);
-        
-        // Etiqueta
         drawEquipmentTag(eq);
     }
     
@@ -683,18 +630,14 @@ const SmartFlowRenderer = (function() {
         const bottomY = p.y + h/2;
         
         ctxSave();
-        
-        // Sombra
         Effects.groundShadow(_ctx, p.x, p.y, r * 2, h, 0.3);
         
-        // Faldón
         if (altura > 2000) {
             const skirtH = Math.min(500 * getScale(), h * 0.15);
             _ctx.fillStyle = _darken(colors.body, 0.3);
             _ctx.fillRect(p.x - r * 0.95, bottomY - skirtH, r * 1.9, skirtH);
         }
         
-        // Cuerpo
         _ctx.fillStyle = colors.body;
         _ctx.strokeStyle = _darken(colors.body, 0.4);
         _ctx.lineWidth = 1.5;
@@ -706,17 +649,14 @@ const SmartFlowRenderer = (function() {
         _ctx.fill();
         _ctx.stroke();
         
-        // Tapa superior
         _ctx.fillStyle = _lighten(colors.body, 0.2);
         _ctx.beginPath();
         _ctx.ellipse(p.x, topY, r, r * 0.45, 0, Math.PI, Math.PI * 2);
         _ctx.fill();
         _ctx.stroke();
         
-        // Brillo
         Effects.specularGlow(_ctx, p.x - r * 0.3, topY + h * 0.2, r * 0.8, h * 0.4);
         
-        // Anillos de refuerzo
         if (altura > 5000 && getScale() > 0.2) {
             const numRings = Math.floor(altura / 3000);
             for (let i = 1; i < numRings; i++) {
@@ -740,17 +680,14 @@ const SmartFlowRenderer = (function() {
         const l = (largo / 2) * getScale();
         
         ctxSave();
-        
         Effects.groundShadow(_ctx, p.x, p.y, l * 2, r * 2, 0.3);
         
-        // Cuerpo
         _ctx.fillStyle = colors.body;
         _ctx.strokeStyle = _darken(colors.body, 0.4);
         _ctx.lineWidth = 1.5;
         _ctx.fillRect(p.x - l, p.y - r, l * 2, r * 2);
         _ctx.strokeRect(p.x - l, p.y - r, l * 2, r * 2);
         
-        // Cabezales
         [-l, l].forEach(hx => {
             _ctx.fillStyle = _lighten(colors.body, 0.2);
             _ctx.beginPath();
@@ -759,7 +696,6 @@ const SmartFlowRenderer = (function() {
             _ctx.stroke();
         });
         
-        // Sillines
         [-l * 0.6, l * 0.6].forEach(sx => {
             _ctx.fillStyle = _darken(colors.body, 0.2);
             _ctx.fillRect(p.x + sx - r * 0.15, p.y + r * 0.3, r * 0.3, r * 0.5);
@@ -773,7 +709,6 @@ const SmartFlowRenderer = (function() {
         const size = 35 * getScale();
         
         ctxSave();
-        
         Effects.groundShadow(_ctx, p.x, p.y, size * 2, size, 0.3);
         
         _ctx.fillStyle = colors.body;
@@ -803,7 +738,6 @@ const SmartFlowRenderer = (function() {
         const l = (largo / 2) * getScale();
         
         ctxSave();
-        
         Effects.groundShadow(_ctx, p.x, p.y, l * 2, r * 2, 0.3);
         
         _ctx.fillStyle = colors.body;
@@ -820,7 +754,6 @@ const SmartFlowRenderer = (function() {
             _ctx.stroke();
         });
         
-        // Flechas de flujo
         if (getScale() > 0.2) {
             _ctx.fillStyle = '#ef4444';
             _ctx.beginPath();
@@ -874,7 +807,6 @@ const SmartFlowRenderer = (function() {
         ctxSave();
         Effects.groundShadow(_ctx, p.x, p.y, w * 2, h, 0.2);
         
-        // Superficie
         _ctx.fillStyle = colors.body;
         _ctx.strokeStyle = _darken(colors.body, 0.4);
         _ctx.lineWidth = 1.5;
@@ -889,7 +821,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fill();
         _ctx.stroke();
         
-        // Patrón grating
         if (getScale() > 0.3) {
             _ctx.strokeStyle = 'rgba(255,255,255,0.1)';
             _ctx.lineWidth = 0.5;
@@ -901,7 +832,6 @@ const SmartFlowRenderer = (function() {
             }
         }
         
-        // Patas
         const patas = [
             { x: eq.posX - (eq.largo || 6000) / 2, z: eq.posZ - (eq.ancho || 3000) / 2 },
             { x: eq.posX + (eq.largo || 6000) / 2, z: eq.posZ - (eq.ancho || 3000) / 2 },
@@ -919,7 +849,6 @@ const SmartFlowRenderer = (function() {
             _ctx.stroke();
         });
         
-        // Baranda
         if (eq.baranda && getScale() > 0.3) {
             _ctx.strokeStyle = colors.flange;
             _ctx.lineWidth = 0.8;
@@ -961,14 +890,12 @@ const SmartFlowRenderer = (function() {
         
         ctxSave();
         
-        // Torre
         _ctx.fillStyle = colors.body;
         _ctx.strokeStyle = _darken(colors.body, 0.4);
         _ctx.lineWidth = 1.5;
         _ctx.fillRect(p.x - r * 0.3, p.y - h, r * 0.6, h);
         _ctx.strokeRect(p.x - r * 0.3, p.y - h, r * 0.6, h);
         
-        // Llama (parte superior)
         const flameGrad = _ctx.createLinearGradient(p.x, p.y - h, p.x, p.y - h - r * 4);
         flameGrad.addColorStop(0, '#fbbf24');
         flameGrad.addColorStop(0.3, '#f59e0b');
@@ -994,14 +921,12 @@ const SmartFlowRenderer = (function() {
         ctxSave();
         Effects.groundShadow(_ctx, p.x, p.y, w * 2, h * 2, 0.3);
         
-        // Bastidor
         _ctx.fillStyle = colors.body;
         _ctx.strokeStyle = _darken(colors.body, 0.4);
         _ctx.lineWidth = 2;
         _ctx.fillRect(p.x - w, p.y - h, w * 2, h * 2);
         _ctx.strokeRect(p.x - w, p.y - h, w * 2, h * 2);
         
-        // Placas (líneas verticales)
         if (getScale() > 0.3) {
             _ctx.strokeStyle = _darken(colors.body, 0.2);
             _ctx.lineWidth = 1;
@@ -1015,7 +940,6 @@ const SmartFlowRenderer = (function() {
             }
         }
         
-        // Pistón hidráulico
         _ctx.fillStyle = '#94a3b8';
         _ctx.fillRect(p.x + w, p.y - h * 0.3, w * 0.3, h * 0.6);
         
@@ -1036,7 +960,6 @@ const SmartFlowRenderer = (function() {
         _ctx.fillRect(p.x - w, p.y - h, w * 2, h * 2);
         _ctx.strokeRect(p.x - w, p.y - h, w * 2, h * 2);
         
-        // Boquillas de llenado (círculos arriba)
         const numNozzles = 6;
         for (let i = 0; i < numNozzles; i++) {
             const nx = p.x - w + (w * 2 * (i + 0.5) / numNozzles);
@@ -1075,7 +998,6 @@ const SmartFlowRenderer = (function() {
             const pos = { x: posBase.x + (nz.relX || nz.relPos?.x || 0), y: posBase.y + (nz.relY || nz.relPos?.y || 0), z: posBase.z + (nz.relZ || nz.relPos?.z || 0) };
             const proj = project(pos);
             
-            // Flecha de orientación
             if (nz.orientacion) {
                 const dir = nz.orientacion;
                 const endPos = { x: pos.x + dir.dx * 250, y: pos.y + dir.dy * 250, z: pos.z + dir.dz * 250 };
@@ -1084,14 +1006,12 @@ const SmartFlowRenderer = (function() {
                 _ctx.strokeStyle = '#ffaa00'; _ctx.lineWidth = 2; _ctx.stroke();
             }
             
-            // Círculo del puerto
             _ctx.beginPath();
             _ctx.arc(proj.x, proj.y, 5 * getScale(), 0, 2 * Math.PI);
             _ctx.fillStyle = nz.connectedLine || nz.status === 'connected' ? '#4ade80' : '#ff8800';
             _ctx.fill();
             _ctx.strokeStyle = '#fff'; _ctx.lineWidth = 1; _ctx.stroke();
             
-            // Etiqueta
             if (getScale() > 0.3) {
                 _ctx.fillStyle = '#ffffff';
                 _ctx.font = `${Math.max(8, 10 * getScale())}px monospace`;
@@ -1114,7 +1034,6 @@ const SmartFlowRenderer = (function() {
         ctxRestore();
     }
     
-    // ============ 9. FUNCIONES AUXILIARES ============
     function getSegmentDirection(p1, p2) {
         const dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y), dz = Math.abs(p2.z - p1.z);
         if (dy > dx && dy > dz) return 'Y';
@@ -1207,14 +1126,12 @@ const SmartFlowRenderer = (function() {
     function ctxSave() { if (_ctx) _ctx.save(); }
     function ctxRestore() { if (_ctx) _ctx.restore(); }
     
-    // ============ 10. RENDERIZADO PRINCIPAL ============
     function render() {
         if (!_ctx || !_canvas) return;
         _renderScheduled = false;
         
         _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
         
-        // Fondo
         const bgGrad = _ctx.createRadialGradient(_canvas.width/2, _canvas.height/2, _canvas.width*0.1, _canvas.width/2, _canvas.height/2, _canvas.width*0.9);
         bgGrad.addColorStop(0, '#0f172a');
         bgGrad.addColorStop(1, '#020617');
@@ -1228,7 +1145,6 @@ const SmartFlowRenderer = (function() {
         const db = Core.getDb();
         if (!db) return;
         
-        // Reconstruir caché si es necesario
         if (_cacheDirty) {
             _renderQueueCache = [];
             (db.equipos || []).forEach(eq => _renderQueueCache.push({ type: 'EQUIPMENT', depth: eq.posX + eq.posZ + (eq.posY * 0.1), data: eq }));
@@ -1264,13 +1180,11 @@ const SmartFlowRenderer = (function() {
             }
         });
         
-        // Selección resaltada
         const selected = Core.getSelected();
         if (selected) {
             drawSelection(selected);
         }
         
-        // BOM
         if (_canvas.width >= 400 && _bomItems.length > 0) {
             renderBOM();
         }
@@ -1367,7 +1281,6 @@ const SmartFlowRenderer = (function() {
         }
     }
     
-    // ============ 11. INTERACCIÓN ============
     function pickElement(mouseCanvas) {
         if (!Core) return null;
         const db = Core.getDb();
@@ -1435,7 +1348,6 @@ const SmartFlowRenderer = (function() {
         return Math.hypot(p.x - projX, p.y - projY);
     }
     
-    // ============ 12. CONTROL DE VISTA ============
     function autoCenter(options = {}) {
         if (!_canvas || !Core) return;
         const db = Core.getDb();
@@ -1521,7 +1433,6 @@ const SmartFlowRenderer = (function() {
         autoCenter();
     }
     
-    // ============ 13. EXPORTACIONES ============
     function exportPNG() {
         render();
         return _canvas.toDataURL('image/png');
@@ -1557,7 +1468,6 @@ const SmartFlowRenderer = (function() {
         _notifyUI("PCF exportado correctamente.", false);
     }
     
-    // ============ 14. INICIALIZACIÓN ============
     function init(canvasElement, coreInstance, notifyFn) {
         _canvas = canvasElement;
         _ctx = _canvas.getContext('2d');
@@ -1575,12 +1485,10 @@ const SmartFlowRenderer = (function() {
             });
         }
         
-        // Eventos de ratón
         _canvas.addEventListener('mousemove', (e) => {
             const rect = _canvas.getBoundingClientRect();
             const mX = e.clientX - rect.left, mY = e.clientY - rect.top;
             
-            // Snapping a puertos
             const snapped = pickPort(mX, mY);
             if (snapped) {
                 _activeSnap = snapped;
@@ -1609,7 +1517,6 @@ const SmartFlowRenderer = (function() {
             zoom(e.deltaY < 0 ? 1 : -1, e.clientX - rect.left, e.clientY - rect.top);
         });
         
-        // Touch para móviles
         let lastTouchDist = 0;
         _canvas.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2) {
@@ -1650,7 +1557,6 @@ const SmartFlowRenderer = (function() {
         return null;
     }
     
-    // ============ 15. API PÚBLICA ============
     return {
         init,
         render: scheduleRender,
@@ -1667,109 +1573,17 @@ const SmartFlowRenderer = (function() {
         getScale,
         pickElement,
         getActiveSnap: () => _activeSnap,
-        
-        // Para compatibilidad con extensiones
         get canvas() { return _canvas; },
         get ctx() { return _ctx; }
     };
 })();
 
-// ============ EXPORTACIÓN GLOBAL ============
 if (typeof window !== 'undefined') {
     window.SmartFlowRenderer = SmartFlowRenderer;
 }
 
 console.log('✅ SmartFlow Complete Realistic Renderer v5.0 cargado');
-console.log('   🏭 Equipos: Tanques, Torres, Bombas, Intercambiadores, Calderas, Reactores, +30 tipos');
-console.log('   🔧 Componentes: Válvulas, Bridas, Codos, Tees, Reductores, Filtros, +60 tipos');
-console.log('   🎨 Materiales:', Object.keys(SPEC_COLORS).length, 'especificaciones');
-console.log('   ✨ Efectos: Sombras PBR, brillos especulares, soldaduras, texturas');
-```
-
----
-
-ARCHIVO COMPLEMENTARIO: renderer-extensions.js
-
-```javascript
-// ============================================================
-// SMARTFLOW RENDERER EXTENSIONS v1.0
-// Archivo: js/renderer-extensions.js
-// Extensiones: Pisos, Animaciones, Revisiones, Reportes
-// ============================================================
-
-(function() {
-    const R = window.SmartFlowRenderer;
-    if (!R) return;
-    
-    // Sistema de Pisos
-    const FloorSystem = {
-        floors: [],
-        activeFloor: 0,
-        
-        addFloor(elevation, name, color = '#334155') {
-            this.floors.push({ elevation, name, color, visible: true });
-            this.floors.sort((a, b) => a.elevation - b.elevation);
-        },
-        
-        setActiveFloor(index) {
-            this.activeFloor = index;
-            if (this.floors[index]) R.setElevation(this.floors[index].elevation);
-        }
-    };
-    
-    // Sistema de Animaciones
-    const AnimationSystem = {
-        flyTo(targetX, targetY, targetScale, duration = 600) {
-            const cam = R.getCam();
-            const start = { panX: cam.panX, panY: cam.panY, scale: cam.scale };
-            const startTime = performance.now();
-            
-            function animStep(time) {
-                const elapsed = time - startTime;
-                const t = Math.min(1, elapsed / duration);
-                const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-                
-                cam.panX = start.panX + (targetX - start.panX) * ease;
-                cam.panY = start.panY + (targetY - start.panY) * ease;
-                cam.scale = start.scale + (targetScale - start.scale) * ease;
-                
-                R.render();
-                
-                if (t < 1) requestAnimationFrame(animStep);
-            }
-            
-            requestAnimationFrame(animStep);
-        }
-    };
-    
-    // Sistema de Revisiones
-    const RevisionSystem = {
-        revisions: [],
-        
-        saveRevision(name) {
-            const core = window.SmartFlowCore;
-            if (!core) return;
-            const state = core.exportProject();
-            this.revisions.push({
-                name: name || `Rev ${this.revisions.length + 1}`,
-                timestamp: new Date().toISOString(),
-                state: JSON.parse(state)
-            });
-        },
-        
-        loadRevision(index) {
-            const core = window.SmartFlowCore;
-            if (!core || !this.revisions[index]) return;
-            core.importState(this.revisions[index].state);
-            R.render();
-        }
-    };
-    
-    window.SmartFlowExtensions = {
-        FloorSystem,
-        AnimationSystem,
-        RevisionSystem
-    };
-    
-    console.log('✅ Renderer Extensions cargadas');
-})();
+console.log('   Equipos: Tanques, Torres, Bombas, Intercambiadores, Calderas, Reactores, +30 tipos');
+console.log('   Componentes: Válvulas, Bridas, Codos, Tees, Reductores, Filtros, +60 tipos');
+console.log('   Materiales:', Object.keys(SPEC_COLORS).length, 'especificaciones');
+console.log('   Efectos: Sombras PBR, brillos especulares, soldaduras, texturas');
