@@ -1,7 +1,9 @@
 
 // ============================================================
-// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.11
+// MÓDULO 5: SMARTFLOW MAIN (Punto de Entrada Principal) - v2.12
 // Archivo: js/main.js
+// Novedades v2.12: Integración de extensiones (FloorSystem,
+// AnimationSystem, RevisionSystem, ReportingSystem)
 // ============================================================
 
 (function() {
@@ -79,7 +81,8 @@
     }
     
     // -------------------- 4. FUNCIONES DE UI --------------------
-    function notify(msg, isErr = false) {
+    function notify(msg, isErr) {
+        if (isErr === undefined) isErr = false;
         if (notificationEl) {
             notificationEl.textContent = msg;
             notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
@@ -91,10 +94,10 @@
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(msg);
             u.lang = 'es-ES';
-            setTimeout(() => window.speechSynthesis.speak(u), 50);
+            setTimeout(function() { window.speechSynthesis.speak(u); }, 50);
         }
         
-        setTimeout(() => { if (notificationEl) notificationEl.style.display = 'none'; }, 4000);
+        setTimeout(function() { if (notificationEl) notificationEl.style.display = 'none'; }, 4000);
     }
     
     function voiceFn(msg) {
@@ -168,11 +171,37 @@
             <div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">${info.diametro || 'N/A'}</span></div>
             <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
             <div class="prop-group"><span class="prop-label">PUERTOS</span>
-                ${info.puertos && info.puertos.length ? info.puertos.map(p => `
+                ${info.puertos && info.puertos.length ? info.puertos.map(function(p) { return `
                     <div class="port-item"><span>${p.id}</span><span class="${p.status === 'open' ? 'port-open' : 'port-connected'}">${p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO a ' + (p.connectedTo || '')}</span></div>
-                `).join('') : '<p>Sin puertos</p>'}
+                `; }).join('') : '<p>Sin puertos</p>'}
             </div>
         `;
+    }
+    
+    // -------------------- 4.5 INICIALIZACIÓN DE EXTENSIONES --------------------
+    function initExtensions() {
+        if (typeof SmartFlowExtensions === 'undefined') return;
+
+        SmartFlowExtensions.init({
+            renderer: window.SmartFlowRenderer,
+            core: SmartFlowCore,
+            notify: notify,
+            scheduleRender: scheduleRender
+        });
+
+        if (typeof FloorSystem !== 'undefined') {
+            FloorSystem.addFloor(0, 'Nivel 0 - Planta Baja', '#334155');
+            FloorSystem.addFloor(3000, 'Nivel +3.00 - Operaciones', '#475569');
+            FloorSystem.addFloor(6000, 'Nivel +6.00 - Estructural', '#64748b');
+            FloorSystem.addFloor(9000, 'Nivel +9.00 - Techo', '#94a3b8');
+            FloorSystem.setActiveFloor(0);
+        }
+
+        if (typeof RevisionSystem !== 'undefined') {
+            RevisionSystem.startAutoSave(300000);
+        }
+
+        console.log('Extensiones integradas: FloorSystem, AnimationSystem, RevisionSystem, ReportingSystem');
     }
     
     // -------------------- 5. INICIALIZACIÓN DE MÓDULOS --------------------
@@ -190,6 +219,8 @@
         SmartFlowCommands.init(SmartFlowCore, SmartFlowCatalog, SmartFlowRenderer, notify, scheduleRender, voiceFn);
         
         SmartFlowCore.setVoice(voiceEnabled);
+        
+        initExtensions();
         
         notify("Smart Engineering - Sistema listo", false);
     }
@@ -231,11 +262,11 @@
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';
-        input.onchange = (e) => {
+        input.onchange = function(e) {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = (ev) => {
+            reader.onload = function(ev) {
                 try {
                     const state = JSON.parse(ev.target.result);
                     SmartFlowCore.importState(state.data || state);
@@ -278,14 +309,14 @@
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
         let items = [];
-        equipos.forEach(eq => { if (eq.tipo !== 'colector') items.push([eq.tag, eq.tipo, "Und", 1]); });
-        lines.forEach(line => {
+        equipos.forEach(function(eq) { if (eq.tipo !== 'colector') items.push([eq.tag, eq.tipo, "Und", 1]); });
+        lines.forEach(function(line) {
             let length = 0;
             const pts = SmartFlowCore.getLinePoints(line);
             if (pts) for (let i = 0; i < pts.length - 1; i++) length += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y, pts[i+1].z - pts[i].z);
             items.push([line.tag, `Tubería ${line.material || 'PPR'} ${line.diameter}"`, "m", (length / 1000).toFixed(2)]);
             if (line.components) {
-                line.components.forEach(comp => {
+                line.components.forEach(function(comp) {
                     items.push([comp.tag || `ACC-${line.tag}`, comp.type, "Und", 1]);
                 });
             }
@@ -301,12 +332,12 @@
     function resumenProyecto() {
         const equipos = SmartFlowCore.getEquipos();
         const lines = SmartFlowCore.getLines();
-        const tanques = equipos.filter(e => e.tipo === 'tanque_v' || e.tipo === 'tanque_h');
-        const bombas = equipos.filter(e => e.tipo && e.tipo.includes('bomba'));
+        const tanques = equipos.filter(function(e) { return e.tipo === 'tanque_v' || e.tipo === 'tanque_h'; });
+        const bombas = equipos.filter(function(e) { return e.tipo && e.tipo.includes('bomba'); });
         let totalCodos = 0, totalTees = 0, totalReducciones = 0, totalValvulas = 0;
-        lines.forEach(l => {
+        lines.forEach(function(l) {
             if (l.components) {
-                l.components.forEach(c => {
+                l.components.forEach(function(c) {
                     const type = c.type || '';
                     if (type.includes('ELBOW')) totalCodos++;
                     else if (type.includes('TEE')) totalTees++;
@@ -328,7 +359,7 @@
             editPipe: document.getElementById('toolEditPipe'),
             addPoint: document.getElementById('toolAddPoint')
         };
-        Object.values(buttons).forEach(btn => { if (btn) btn.classList.remove('active'); });
+        Object.values(buttons).forEach(function(btn) { if (btn) btn.classList.remove('active'); });
         if (buttons[mode]) buttons[mode].classList.add('active');
     }
     
@@ -364,6 +395,47 @@
                     case 'E': e.preventDefault(); if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) { SmartFlowRenderer.exportPCF(); notify("✅ Archivo PCF exportado correctamente.", false); } break;
                     case 'S': e.preventDefault(); guardarProyecto(); break;
                 }
+            }
+            
+            if (typeof FloorSystem !== 'undefined') {
+                if (e.key === '1' && !e.ctrlKey && !e.shiftKey) {
+                    FloorSystem.setActiveFloor(0);
+                    notify('Nivel 0 activado', false);
+                }
+                if (e.key === '2' && !e.ctrlKey && !e.shiftKey) {
+                    FloorSystem.setActiveFloor(1);
+                    notify('Nivel +3.00 activado', false);
+                }
+                if (e.key === '3' && !e.ctrlKey && !e.shiftKey) {
+                    FloorSystem.setActiveFloor(2);
+                    notify('Nivel +6.00 activado', false);
+                }
+                if (e.key === '4' && !e.ctrlKey && !e.shiftKey) {
+                    FloorSystem.setActiveFloor(3);
+                    notify('Nivel +9.00 activado', false);
+                }
+                if (e.key === 'ArrowUp' && !e.ctrlKey && !e.shiftKey) {
+                    e.preventDefault();
+                    FloorSystem.previousFloor();
+                    notify('Nivel ' + (FloorSystem.activeFloor + 1) + ' activado', false);
+                }
+                if (e.key === 'ArrowDown' && !e.ctrlKey && !e.shiftKey) {
+                    e.preventDefault();
+                    FloorSystem.nextFloor();
+                    notify('Nivel ' + (FloorSystem.activeFloor + 1) + ' activado', false);
+                }
+            }
+
+            if (typeof AnimationSystem !== 'undefined' && e.key === 'g' && !e.ctrlKey && !e.shiftKey) {
+                e.preventDefault();
+                var tag = prompt('Tag del equipo a buscar:');
+                if (tag) AnimationSystem.flyToEquipment(tag);
+            }
+
+            if (typeof RevisionSystem !== 'undefined' && e.ctrlKey && e.key === 's' && !e.shiftKey) {
+                e.preventDefault();
+                RevisionSystem.saveRevision('Quick Save');
+                notify('Revision guardada', false);
             }
         });
     }
@@ -448,16 +520,13 @@
         const textoCompleto = commandText.value.trim();
         if (!textoCompleto) return;
         
-        // Dividir en líneas y filtrar vacías
-        const lineas = textoCompleto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const lineas = textoCompleto.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
         
         let success = true;
         if (lineas.length === 1) {
-            // Un solo comando
             const resultado = SmartFlowCommands.executeCommand(lineas[0]);
             success = (resultado !== false);
         } else {
-            // Múltiples comandos (lote)
             const ejecutados = SmartFlowCommands.executeBatch(lineas.join('\n'));
             success = ejecutados > 0;
         }
@@ -469,7 +538,6 @@
         commandText.value = '';
         _historyIndex = _commandHistory.length;
         
-        // Ocultar panel tras ejecutar (excepto comandos informativos)
         const primeraLinea = lineas[0].toLowerCase();
         if (!primeraLinea.startsWith('info') && !primeraLinea.startsWith('coordenadas') && 
             !primeraLinea.startsWith('nodos') && !primeraLinea.startsWith('listar') && 
@@ -481,13 +549,13 @@
     }
     
     function bindEvents() {
-        const vincular = (id, accion) => {
+        const vincular = function(id, accion) {
             const el = document.getElementById(id);
             if (el) el.onclick = accion;
         };
         
-        vincular('welcome-new-project', () => { if (projectModal) projectModal.style.display = 'flex'; });
-        vincular('welcome-open-project', () => {
+        vincular('welcome-new-project', function() { if (projectModal) projectModal.style.display = 'flex'; });
+        vincular('welcome-open-project', function() {
             cargarProyecto();
             if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
         });
@@ -506,32 +574,32 @@
         vincular('btnTogglePanels', toggleAllPanels);
         
         vincular('btnCommand', abrirPanelComandos);
-        vincular('closeCommand', () => { if (commandPanel) commandPanel.style.display = 'none'; });
-        vincular('clearCommand', () => { if (commandText) { commandText.value = ''; _historyIndex = _commandHistory.length; } });
+        vincular('closeCommand', function() { if (commandPanel) commandPanel.style.display = 'none'; });
+        vincular('clearCommand', function() { if (commandText) { commandText.value = ''; _historyIndex = _commandHistory.length; } });
         vincular('runCommands', ejecutarComando);
         
-        vincular('btnAddTank', () => {
+        vincular('btnAddTank', function() {
             const equipos = SmartFlowCore.getEquipos();
-            const tag = `TK-${equipos.filter(e => e.tipo === 'tanque_v').length + 1}`;
+            const tag = `TK-${equipos.filter(function(e) { return e.tipo === 'tanque_v'; }).length + 1}`;
             const ult = equipos[equipos.length - 1];
             const x = ult ? ult.posX + 3000 : 0;
             SmartFlowCommands.executeCommand(`create tanque_v ${tag} at (${x},1450,0) diam 2380 height 2900 material PE`);
             notify(`✅ Equipo ${tag} creado.`, false);
         });
-        vincular('btnAddPump', () => {
+        vincular('btnAddPump', function() {
             const equipos = SmartFlowCore.getEquipos();
-            const tag = `B-${equipos.filter(e => e.tipo && e.tipo.includes('bomba')).length + 1}`;
+            const tag = `B-${equipos.filter(function(e) { return e.tipo && e.tipo.includes('bomba'); }).length + 1}`;
             const ult = equipos[equipos.length - 1];
             const x = ult ? ult.posX + 3000 : 5000;
             SmartFlowCommands.executeCommand(`create bomba ${tag} at (${x},800,0) diam 800 height 800`);
             notify(`✅ Equipo ${tag} creado.`, false);
         });
         
-        vincular('toolSelect', () => setTool('select'));
-        vincular('toolMoveEq', () => setTool('moveEq'));
-        vincular('toolEditPipe', () => setTool('editPipe'));
-        vincular('toolAddPoint', () => setTool('addPoint'));
-        vincular('toolToggleHide', () => {
+        vincular('toolSelect', function() { setTool('select'); });
+        vincular('toolMoveEq', function() { setTool('moveEq'); });
+        vincular('toolEditPipe', function() { setTool('editPipe'); });
+        vincular('toolAddPoint', function() { setTool('addPoint'); });
+        vincular('toolToggleHide', function() {
             const panel = document.getElementById('toolsPanel');
             const buttons = document.getElementById('toolsButtons');
             const toggleBtn = document.getElementById('toolToggleHide');
@@ -549,45 +617,77 @@
         });
         
         vincular('btnMTO', exportarMTO);
-        vincular('btnPDF', () => { 
+        vincular('btnPDF', function() { 
             if (SmartFlowRenderer && SmartFlowRenderer.exportPDF) {
                 SmartFlowRenderer.exportPDF();
                 notify("✅ PDF generado correctamente.", false);
             }
         });
-        vincular('btnExportPCF', () => { 
+        vincular('btnExportPCF', function() { 
             if (SmartFlowRenderer && SmartFlowRenderer.exportPCF) {
                 SmartFlowRenderer.exportPCF();
                 notify("✅ Archivo PCF exportado correctamente.", false);
             }
         });
-        vincular('btnImportPCF', () => {
+        vincular('btnImportPCF', function() {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = '.pcf,.txt';
-            input.onchange = (e) => {
+            input.onchange = function(e) {
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onload = (ev) => { SmartFlowCommands.importPCF(ev.target.result); };
+                    reader.onload = function(ev) { SmartFlowCommands.importPCF(ev.target.result); };
                     reader.readAsText(file);
                 }
             };
             input.click();
         });
         
-        vincular('btnUndo', () => { SmartFlowCore.undo(); scheduleRender(); notify("✅ Acción deshecha.", false); });
-        vincular('btnRedo', () => { SmartFlowCore.redo(); scheduleRender(); notify("✅ Acción rehecha.", false); });
+        vincular('btnUndo', function() { SmartFlowCore.undo(); scheduleRender(); notify("✅ Acción deshecha.", false); });
+        vincular('btnRedo', function() { SmartFlowCore.redo(); scheduleRender(); notify("✅ Acción rehecha.", false); });
         vincular('btnVoice', toggleVoice);
         vincular('btnSpeakSummary', resumenProyecto);
-        vincular('btnRecalc', () => { SmartFlowCore.syncPhysicalData(); scheduleRender(); notify("✅ Recálculo completado.", false); });
-        vincular('btnSetElev', () => {
-            const val = parseInt(customElev?.value);
+        vincular('btnRecalc', function() { SmartFlowCore.syncPhysicalData(); scheduleRender(); notify("✅ Recálculo completado.", false); });
+        vincular('btnSetElev', function() {
+            const val = parseInt(customElev ? customElev.value : 0);
             if (!isNaN(val)) window.setElevation(val);
         });
-        vincular('btnApplyNorm', () => notify("Función de normas en desarrollo.", false));
+        vincular('btnApplyNorm', function() { notify("Función de normas en desarrollo.", false); });
         
-        // ---- MENÚS DROPDOWN (Archivo y ⚙️ +) ----
+        vincular('btnFullReport', function() {
+            if (typeof ReportingSystem !== 'undefined' && ReportingSystem.exportFullReport) {
+                ReportingSystem.exportFullReport();
+                notify("Reporte completo exportado", false);
+            }
+        });
+        vincular('btnRevisionSave', function() {
+            if (typeof RevisionSystem !== 'undefined') {
+                var name = prompt('Nombre de la revisión:');
+                if (name) {
+                    RevisionSystem.saveRevision(name);
+                    notify('Revisión guardada: ' + name, false);
+                }
+            }
+        });
+        vincular('btnRevisionLoad', function() {
+            if (typeof RevisionSystem !== 'undefined') {
+                var revs = RevisionSystem.listRevisions();
+                if (revs.length === 0) {
+                    notify('No hay revisiones guardadas', true);
+                    return;
+                }
+                var msg = 'Revisiones disponibles:\n';
+                revs.forEach(function(r, i) {
+                    msg += (i + 1) + '. ' + r.name + ' (' + new Date(r.timestamp).toLocaleString() + ')\n';
+                });
+                var num = prompt(msg + '\nIngrese el número de revisión a cargar:');
+                if (num && revs[parseInt(num) - 1]) {
+                    RevisionSystem.loadRevision(revs[parseInt(num) - 1].id);
+                }
+            }
+        });
+        
         function setupDropdown(buttonId) {
             const btn = document.getElementById(buttonId);
             if (!btn) return;
@@ -602,7 +702,7 @@
         
         document.addEventListener('click', function(e) {
             if (!e.target.closest('.dropdown')) {
-                document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+                document.querySelectorAll('.dropdown.open').forEach(function(d) { d.classList.remove('open'); });
             }
         });
         
@@ -618,7 +718,7 @@
             });
         }
         
-        window.addEventListener('resize', () => {
+        window.addEventListener('resize', function() {
             if (window.SmartFlowRenderer) window.SmartFlowRenderer.resizeCanvas();
             autoCenter();
         });
@@ -638,7 +738,7 @@
             "¡SmartEngp Activo!"
         ];
         let msgIndex = 0;
-        const interval = setInterval(() => {
+        const interval = setInterval(function() {
             if (msgIndex < messages.length && splashStatus) {
                 splashStatus.textContent = messages[msgIndex];
                 msgIndex++;
@@ -652,12 +752,12 @@
         setTool('select');
         window.setElevation(0);
         
-        setTimeout(() => {
+        setTimeout(function() {
             if (splashScreen) splashScreen.classList.add('splash-hidden');
             clearInterval(interval);
         }, 4500);
         
-        setTimeout(() => {
+        setTimeout(function() {
             if (welcomePanel) welcomePanel.classList.remove('welcome-hidden');
         }, 4800);
         
@@ -665,7 +765,7 @@
             togglePanel(false);
         }
         
-        setTimeout(() => {
+        setTimeout(function() {
             if (window.SmartFlowRenderer) window.SmartFlowRenderer.resizeCanvas();
             autoCenter();
         }, 100);
