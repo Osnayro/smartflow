@@ -1,14 +1,13 @@
 
 // ============================================================
-// SMARTFLOW CORE v6.0 - Motor de Datos de Ingeniería Unificado
+// SMARTFLOW CORE v7.0 - Motor de Datos de Ingeniería Unificado
 // Archivo: js/core.js
 // Soporte: Isométrico 3D/2D + PFD + DTI + Lazos de Control
-// Novedades v6.0:
-//   - Nuevas entidades: streams, instruments, loops
-//   - Índices ampliados: _streamsMap, _instrumentsMap, _loopsMap
-//   - Compatible 100% con v5.6 (todas las APIs existentes)
-//   - undo/redo incluye las nuevas entidades
-//   - importState/exportProject incluye streams, instruments, loops
+// Novedades v7.0:
+//   - Activos Inline como objetos reales (no accesorios fantasma)
+//   - Protección activa de integridad referencial
+//   - Solver de Balance de Masa para PFD
+//   - Clasificación ISA 5.1 automática para instrumentos
 // ============================================================
 
 const SmartFlowCore = (function() {
@@ -60,10 +59,13 @@ const SmartFlowCore = (function() {
             }
         },
         
-        // ===== NUEVAS ENTIDADES v6.0 =====
+        // ===== ENTIDADES v6.0 =====
         streams: [],        // Corrientes de proceso (PFD)
         instruments: [],    // Instrumentos (DTI)
         loops: [],          // Lazos de control (DTI)
+        
+        // ===== NUEVO v7.0: Activos Inline Reales =====
+        inlineAssets: [],   // Válvulas, Filtros, Placas Orificio, etc.
         
         // Metadatos del proyecto
         project: {
@@ -78,16 +80,79 @@ const SmartFlowCore = (function() {
     };
 
     // ================================================================
-    //  ÍNDICES UNIFICADOS (Ampliados v6.0)
+    //  ÍNDICES UNIFICADOS (Ampliados v7.0)
     // ================================================================
     let _equiposMap = new Map();
     let _linesMap = new Map();
     let _allObjectsMap = new Map();
     
-    // NUEVOS ÍNDICES
+    // v6.0
     let _streamsMap = new Map();
     let _instrumentsMap = new Map();
     let _loopsMap = new Map();
+    
+    // v7.0 NUEVO
+    let _inlineAssetsMap = new Map();
+
+    // ================================================================
+    //  CLASIFICACIÓN ISA 5.1 PARA INSTRUMENTOS (NUEVO v7.0)
+    // ================================================================
+    const ISA_CLASSIFICATION = {
+        // Presión
+        'PRESSURE_GAUGE':        { measured: 'P', function: 'I', symbol: 'PI' },
+        'PRESSURE_TRANSMITTER':  { measured: 'P', function: 'T', symbol: 'PT' },
+        'PRESSURE_SWITCH':       { measured: 'P', function: 'S', symbol: 'PS' },
+        'PRESSURE_CONTROLLER':   { measured: 'P', function: 'C', symbol: 'PIC' },
+        'DIFF_PRESSURE':         { measured: 'PD', function: 'I', symbol: 'PDI' },
+        'DIFF_PRESSURE_TX':      { measured: 'PD', function: 'T', symbol: 'PDT' },
+        
+        // Temperatura
+        'TEMP_GAUGE':            { measured: 'T', function: 'I', symbol: 'TI' },
+        'TEMP_TRANSMITTER':      { measured: 'T', function: 'T', symbol: 'TT' },
+        'TEMP_SWITCH':           { measured: 'T', function: 'S', symbol: 'TS' },
+        'TEMP_CONTROLLER':       { measured: 'T', function: 'C', symbol: 'TIC' },
+        
+        // Nivel
+        'LEVEL_GAUGE':           { measured: 'L', function: 'I', symbol: 'LI' },
+        'LEVEL_TRANSMITTER':     { measured: 'L', function: 'T', symbol: 'LT' },
+        'LEVEL_SWITCH':          { measured: 'L', function: 'S', symbol: 'LS' },
+        'LEVEL_CONTROLLER':      { measured: 'L', function: 'C', symbol: 'LIC' },
+        
+        // Flujo
+        'FLOW_GAUGE':            { measured: 'F', function: 'I', symbol: 'FI' },
+        'FLOW_TRANSMITTER':      { measured: 'F', function: 'T', symbol: 'FT' },
+        'FLOW_SWITCH':           { measured: 'F', function: 'S', symbol: 'FS' },
+        'FLOW_CONTROLLER':       { measured: 'F', function: 'C', symbol: 'FIC' },
+        'FLOW_ORIFICE':          { measured: 'FE', function: 'O', symbol: 'FO' },
+        
+        // Válvulas de Control
+        'CONTROL_VALVE':         { measured: '',  function: 'V', symbol: 'CV' },
+        'ON_OFF_VALVE':          { measured: '',  function: 'V', symbol: 'XV' },
+        'SAFETY_VALVE':          { measured: '',  function: 'V', symbol: 'PSV' },
+        
+        // Analíticos
+        'PH_METER':              { measured: 'A', function: 'I', symbol: 'AI' },
+        'CONDUCTIVITY_METER':    { measured: 'A', function: 'I', symbol: 'CI' }
+    };
+
+    function getIsaSymbol(type, location) {
+        const classification = ISA_CLASSIFICATION[type];
+        if (!classification) return { measured: '?', function: '?', symbol: '??' };
+        
+        // Ajustar por ubicación (ISA 5.1)
+        const result = { ...classification };
+        
+        if (location === 'CONTROL_ROOM' || location === 'DCS') {
+            // En sala de control: círculo con línea horizontal (o sin cambios en símbolo base)
+            result.location = 'CONTROL_ROOM';
+        } else if (location === 'FIELD_PANEL') {
+            result.location = 'FIELD_PANEL';
+        } else {
+            result.location = 'FIELD';
+        }
+        
+        return result;
+    }
 
     function rebuildIndexes() {
         // Limpiar todos los índices
@@ -97,6 +162,7 @@ const SmartFlowCore = (function() {
         _streamsMap.clear();
         _instrumentsMap.clear();
         _loopsMap.clear();
+        _inlineAssetsMap.clear();
         
         // Equipos
         if (_db.equipos) _db.equipos.forEach(function(e) {
@@ -110,17 +176,27 @@ const SmartFlowCore = (function() {
             _allObjectsMap.set(l.tag, l);
         });
         
-        // Streams (NUEVO)
+        // Activos Inline (NUEVO v7.0)
+        if (_db.inlineAssets) _db.inlineAssets.forEach(function(a) {
+            _inlineAssetsMap.set(a.tag, a);
+            _allObjectsMap.set(a.tag, a);
+        });
+        
+        // Streams
         if (_db.streams) _db.streams.forEach(function(s) {
             _streamsMap.set(s.tag, s);
         });
         
-        // Instruments (NUEVO)
+        // Instruments
         if (_db.instruments) _db.instruments.forEach(function(inst) {
             _instrumentsMap.set(inst.tag, inst);
+            // Calcular símbolo ISA automáticamente
+            if (!inst.isaSymbol) {
+                inst.isaSymbol = getIsaSymbol(inst.type, inst.location);
+            }
         });
         
-        // Loops (NUEVO)
+        // Loops
         if (_db.loops) _db.loops.forEach(function(loop) {
             _loopsMap.set(loop.tag, loop);
         });
@@ -175,7 +251,7 @@ const SmartFlowCore = (function() {
     };
 
     // ================================================================
-    //  UTILIDADES GEOMÉTRICAS (Sin cambios)
+    //  UTILIDADES GEOMÉTRICAS (Sin cambios de v6.0)
     // ================================================================
     
     function getLinePoints(line) {
@@ -329,11 +405,16 @@ const SmartFlowCore = (function() {
         return count;
     }
 
+    // ================================================================
+    //  AUDITORÍAS (Actualizadas v7.0)
+    // ================================================================
+
     function auditCollisions() {
         const collisions = [];
         _db.lines.forEach(function(line) {
             const pts = getLinePoints(line); 
             if (!pts || pts.length < 2) return;
+            // Contra equipos
             _db.equipos.forEach(function(eq) {
                 if ((line.origin && line.origin.objTag === eq.tag) || (line.destination && line.destination.objTag === eq.tag)) return;
                 let box;
@@ -354,7 +435,20 @@ const SmartFlowCore = (function() {
                     }
                 }
             });
+            // Contra activos inline (NUEVO v7.0)
+            _db.inlineAssets.forEach(function(asset) {
+                if ((line.origin && line.origin.objTag === asset.tag) || (line.destination && line.destination.objTag === asset.tag)) return;
+                const r = (asset.diametro || 50) / 2;
+                const box = { xMin: asset.posX-r, xMax: asset.posX+r, yMin: asset.posY-r, yMax: asset.posY+r, zMin: asset.posZ-r, zMax: asset.posZ+r };
+                for (let i = 0; i < pts.length-1; i++) {
+                    if (segmentIntersectsBox(pts[i], pts[i+1], box)) { 
+                        collisions.push({ line1: line.tag, equipment: asset.tag, type: 'LINE_INLINE_ASSET' }); 
+                        break; 
+                    }
+                }
+            });
         });
+        // Línea vs Línea
         for (let i = 0; i < _db.lines.length; i++) {
             const lineA = _db.lines[i], ptsA = getLinePoints(lineA); 
             if (!ptsA || ptsA.length < 2) continue;
@@ -390,6 +484,7 @@ const SmartFlowCore = (function() {
             const pts = getLinePoints(line);
             if (!pts || pts.length < 2) return;
             const joints = [];
+            // Componentes inline (activos reales)
             if (line.components) {
                 line.components.forEach(function(comp) {
                     if (comp.param !== undefined && comp.param >= 0 && comp.param <= 1) {
@@ -413,10 +508,6 @@ const SmartFlowCore = (function() {
         return issues;
     }
 
-    // ================================================================
-    //  AUDITORÍA DE INTEGRIDAD PFD ↔ 3D (NUEVO v6.0)
-    // ================================================================
-    
     function auditPFDIntegrity() {
         const issues = [];
         
@@ -440,6 +531,55 @@ const SmartFlowCore = (function() {
         return issues;
     }
 
+    // ================================================================
+    //  NUEVO v7.0: SOLVER DE BALANCE DE MASA (PFD)
+    // ================================================================
+    
+    function auditMassBalance() {
+        const issues = [];
+        const equiposPFD = new Map();
+        
+        // Agrupar streams por equipo
+        _db.streams.forEach(function(stream) {
+            if (stream.from) {
+                if (!equiposPFD.has(stream.from)) equiposPFD.set(stream.from, { inflows: [], outflows: [] });
+                equiposPFD.get(stream.from).outflows.push(stream);
+            }
+            if (stream.to) {
+                if (!equiposPFD.has(stream.to)) equiposPFD.set(stream.to, { inflows: [], outflows: [] });
+                equiposPFD.get(stream.to).inflows.push(stream);
+            }
+        });
+        
+        equiposPFD.forEach(function(flows, equipTag) {
+            const eq = findObjectByTag(equipTag);
+            if (!eq) return; // Ya reportado en auditPFDIntegrity
+            
+            // Solo auditar equipos que no sean bombas (las bombas añaden energía, no masa)
+            const isPump = eq.tipo === 'bomba' || eq.tipo === 'bomba_centrifuga' || eq.tipo === 'compresor';
+            const isTank = eq.tipo === 'tanque_v' || eq.tipo === 'tanque_h';
+            
+            if (!isPump && !isTank && flows.inflows.length > 0 && flows.outflows.length > 0) {
+                let totalIn = 0, totalOut = 0;
+                flows.inflows.forEach(function(s) { totalIn += (s.flow || 0); });
+                flows.outflows.forEach(function(s) { totalOut += (s.flow || 0); });
+                
+                if (totalIn > 0 && totalOut > 0) {
+                    const diff = Math.abs(totalIn - totalOut) / Math.max(totalIn, totalOut);
+                    if (diff > 0.05) { // 5% de tolerancia
+                        issues.push({
+                            equipment: equipTag,
+                            type: 'MASS_BALANCE',
+                            msg: 'Desbalance en ' + equipTag + ': Entrada=' + totalIn.toFixed(1) + ' Salida=' + totalOut.toFixed(1) + ' (' + (diff*100).toFixed(1) + '%)'
+                        });
+                    }
+                }
+            }
+        });
+        
+        return issues;
+    }
+
     let _auditDebounceTimer = null;
     let _lastAuditResults = null;
 
@@ -448,7 +588,8 @@ const SmartFlowCore = (function() {
         const collisions = auditCollisions();
         const jointIssues = auditJointSpacing(50);
         const pfdIssues = auditPFDIntegrity();
-        _lastAuditResults = { collisions: collisions, jointIssues: jointIssues, pfdIssues: pfdIssues, timestamp: Date.now() };
+        const massBalanceIssues = auditMassBalance(); // NUEVO v7.0
+        _lastAuditResults = { collisions: collisions, jointIssues: jointIssues, pfdIssues: pfdIssues, massBalanceIssues: massBalanceIssues, timestamp: Date.now() };
         
         let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n";
         let errors = 0, warnings = 0;
@@ -480,6 +621,7 @@ const SmartFlowCore = (function() {
         
         collisions.forEach(function(c) {
             if (c.type === 'LINE_EQUIPMENT') report += "⚠️ COLISIÓN: Línea " + c.line1 + " interfiere con equipo " + c.equipment + "\n";
+            else if (c.type === 'LINE_INLINE_ASSET') report += "⚠️ COLISIÓN: Línea " + c.line1 + " interfiere con activo " + c.equipment + "\n";
             else report += "⚠️ COLISIÓN: Línea " + c.line1 + " interfiere con línea " + c.line2 + "\n";
             warnings++;
         });
@@ -491,12 +633,16 @@ const SmartFlowCore = (function() {
             report += "⚠️ PFD/DTI [" + (p.stream || p.instrument) + "]: " + p.msg + "\n";
             warnings++;
         });
+        massBalanceIssues.forEach(function(m) {
+            report += "⚠️ BALANCE DE MASA [" + m.equipment + "]: " + m.msg + "\n";
+            warnings++;
+        });
         
         if (errors === 0 && warnings === 0) report += "✅ Modelo íntegro. Sin discrepancias.";
         else report += "Se encontraron " + errors + " errores y " + warnings + " advertencias.";
         
         if (!silent) _notifyUI(report, errors > 0);
-        return { collisions: collisions, jointIssues: jointIssues, pfdIssues: pfdIssues, report: report };
+        return { collisions: collisions, jointIssues: jointIssues, pfdIssues: pfdIssues, massBalanceIssues: massBalanceIssues, report: report };
     }
 
     function scheduleAudit() {
@@ -507,6 +653,10 @@ const SmartFlowCore = (function() {
         }, 500);
     }
 
+    // ================================================================
+    //  SPOOL REPORT (Actualizado v7.0 para incluir activos inline)
+    // ================================================================
+    
     function getSpoolReport(lineTag) {
         const line = _linesMap.get(lineTag);
         if (!line) return null;
@@ -514,26 +664,40 @@ const SmartFlowCore = (function() {
         if (!pts || pts.length < 2) return null;
         let totalLen = 0;
         for (let i = 0; i < pts.length-1; i++) totalLen += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z);
+        
+        // Contar accesorios reales (v7.0)
+        let valvesInline = 0, flangesInline = 0, otrosInline = 0;
+        if (line.components) {
+            line.components.forEach(function(comp) {
+                if (comp.tag && _inlineAssetsMap.has(comp.tag)) {
+                    const asset = _inlineAssetsMap.get(comp.tag);
+                    if (asset.type && asset.type.includes('VALVE')) valvesInline++;
+                    else if (asset.type && asset.type.includes('FLANGE')) flangesInline++;
+                    else otrosInline++;
+                }
+            });
+        }
+        
         const manualElbows = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('ELBOW'); }).length) || 0;
         const autoElbows = _countAutoElbows(pts);
         const codos = manualElbows + autoElbows;
         const tees = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('TEE'); }).length) || 0;
         const reducers = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('REDUCER'); }).length) || 0;
-        const flanges = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('FLANGE'); }).length) || 0;
-        const valves = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('VALVE'); }).length) || 0;
-        const otros = (line.components ? line.components.length : 0) - manualElbows - tees - reducers - flanges - valves;
         const connectionType = (_db.specs[line.spec] && _db.specs[line.spec].connectionType) || 'BUTT_WELD';
         const fittingNorm = (_db.specs[line.spec] && _db.specs[line.spec].fittingNorm) || 'ASME B16.9';
+        
         const bomItems = [];
         let itemNum = 1;
         bomItems.push({ item: itemNum++, qty: (totalLen/1000).toFixed(2), unit: "m", desc: "Tubería " + (line.material||'N/D') + " " + (line.diameter||'?') + "\" " + (line.spec||'STD') });
         if (codos > 0) bomItems.push({ item: itemNum++, qty: codos, unit: "und", desc: "Codo 90° " + (line.material||'N/D') + " " + connectionType });
         if (tees > 0) bomItems.push({ item: itemNum++, qty: tees, unit: "und", desc: "Tee " + (line.material||'N/D') + " " + connectionType });
         if (reducers > 0) bomItems.push({ item: itemNum++, qty: reducers, unit: "und", desc: "Reductor " + (line.material||'N/D') + " " + connectionType });
-        if (flanges > 0) bomItems.push({ item: itemNum++, qty: flanges, unit: "und", desc: "Brida " + (line.material||'N/D') });
-        if (valves > 0) bomItems.push({ item: itemNum++, qty: valves, unit: "und", desc: "Válvula " + (line.material||'N/D') });
-        if (otros > 0) bomItems.push({ item: itemNum++, qty: otros, unit: "und", desc: "Otros " + (line.material||'N/D') });
-        const juntas = codos*2 + tees*3 + reducers*2 + flanges*2 + valves*2 + (line.origin?1:0) + (line.destination?1:0);
+        if (flangesInline > 0) bomItems.push({ item: itemNum++, qty: flangesInline, unit: "und", desc: "Brida " + (line.material||'N/D') });
+        if (valvesInline > 0) bomItems.push({ item: itemNum++, qty: valvesInline, unit: "und", desc: "Válvula " + (line.material||'N/D') });
+        if (otrosInline > 0) bomItems.push({ item: itemNum++, qty: otrosInline, unit: "und", desc: "Otros accesorios " + (line.material||'N/D') });
+        
+        const juntas = codos*2 + tees*3 + reducers*2 + flangesInline*2 + valvesInline*2 + (line.origin?1:0) + (line.destination?1:0);
+        
         return {
             tag: lineTag,
             longitudTotalM: (totalLen/1000).toFixed(2),
@@ -557,7 +721,7 @@ const SmartFlowCore = (function() {
     }
 
     // ================================================================
-    //  NUEVOS MÉTODOS v6.0: STREAMS (PFD)
+    //  STREAMS (PFD) - Sin cambios de v6.0
     // ================================================================
     
     function addStream(streamData) {
@@ -587,6 +751,7 @@ const SmartFlowCore = (function() {
         this._saveState();
         _notifyUI("Corriente " + stream.tag + ": " + stream.from + " → " + stream.to + " | " + stream.fluid, false);
         emit('modelChanged', { type: 'addStream', tag: stream.tag });
+        scheduleAudit();
         return true;
     }
     
@@ -596,6 +761,7 @@ const SmartFlowCore = (function() {
         Object.assign(stream, datos);
         this._saveState();
         emit('modelChanged', { type: 'updateStream', tag: tag });
+        scheduleAudit();
         return true;
     }
     
@@ -607,6 +773,7 @@ const SmartFlowCore = (function() {
         _streamsMap.delete(tag);
         _notifyUI("Corriente " + tag + " eliminada.", false);
         emit('modelChanged', { type: 'removeStream', tag: tag });
+        scheduleAudit();
         return true;
     }
     
@@ -629,7 +796,7 @@ const SmartFlowCore = (function() {
     function getStreamByTag(tag) { return _streamsMap.get(tag) || null; }
 
     // ================================================================
-    //  NUEVOS MÉTODOS v6.0: INSTRUMENTS (DTI)
+    //  INSTRUMENTS (DTI) - Refinados v7.0 con clasificación ISA
     // ================================================================
     
     function addInstrument(instData) {
@@ -646,13 +813,15 @@ const SmartFlowCore = (function() {
             signal: instData.signal || '4-20mA',
             service: instData.service || '',
             location: instData.location || 'FIELD',
-            loopTag: instData.loopTag || ''
+            loopTag: instData.loopTag || '',
+            // NUEVO v7.0: Símbolo ISA calculado automáticamente
+            isaSymbol: getIsaSymbol(instData.type || 'PRESSURE_GAUGE', instData.location || 'FIELD')
         };
         
         _db.instruments.push(instrument);
         _instrumentsMap.set(instrument.tag, instrument);
         
-        // Si está vinculado a una línea, agregarlo como componente
+        // Si está vinculado a una línea, agregarlo como componente de referencia
         if (instrument.lineTag && _linesMap.has(instrument.lineTag)) {
             const line = _linesMap.get(instrument.lineTag);
             if (!line.components) line.components = [];
@@ -660,13 +829,14 @@ const SmartFlowCore = (function() {
                 type: instrument.type,
                 tag: instrument.tag,
                 param: instrument.position,
-                description: 'Instrumento ' + instrument.tag + ' - ' + (instrument.service || instrument.type)
+                description: instrument.isaSymbol.symbol + ' - ' + (instrument.service || instrument.type)
             });
         }
         
         this._saveState();
-        _notifyUI("Instrumento " + instrument.tag + " (" + instrument.type + ") creado.", false);
+        _notifyUI("Instrumento " + instrument.tag + " (" + instrument.isaSymbol.symbol + ") creado.", false);
         emit('modelChanged', { type: 'addInstrument', tag: instrument.tag });
+        scheduleAudit();
         return true;
     }
     
@@ -674,19 +844,32 @@ const SmartFlowCore = (function() {
         const inst = _instrumentsMap.get(tag);
         if (!inst) return _notifyUI("Instrumento " + tag + " no encontrado.", true);
         Object.assign(inst, datos);
+        // Recalcular ISA si cambió tipo o ubicación
+        if (datos.type || datos.location) {
+            inst.isaSymbol = getIsaSymbol(inst.type, inst.location);
+        }
         this._saveState();
         emit('modelChanged', { type: 'updateInstrument', tag: tag });
+        scheduleAudit();
         return true;
     }
     
     function removeInstrument(tag) {
         const inst = _instrumentsMap.get(tag);
-        if (!inst) return _notifyUI("Instrumento " + tag + " no encontrada.", true);
+        if (!inst) return _notifyUI("Instrumento " + tag + " no encontrado.", true);
         this._saveState();
         _db.instruments = _db.instruments.filter(function(i) { return i.tag !== tag; });
         _instrumentsMap.delete(tag);
+        // Limpiar referencia en la línea
+        if (inst.lineTag && _linesMap.has(inst.lineTag)) {
+            const line = _linesMap.get(inst.lineTag);
+            if (line.components) {
+                line.components = line.components.filter(function(c) { return c.tag !== tag; });
+            }
+        }
         _notifyUI("Instrumento " + tag + " eliminado.", false);
         emit('modelChanged', { type: 'removeInstrument', tag: tag });
+        scheduleAudit();
         return true;
     }
     
@@ -694,7 +877,7 @@ const SmartFlowCore = (function() {
     function getInstrumentByTag(tag) { return _instrumentsMap.get(tag) || null; }
 
     // ================================================================
-    //  NUEVOS MÉTODOS v6.0: LOOPS (DTI - Lazos de Control)
+    //  LOOPS (DTI) - Sin cambios de v6.0
     // ================================================================
     
     function addLoop(loopData) {
@@ -724,7 +907,99 @@ const SmartFlowCore = (function() {
     function getLoopByTag(tag) { return _loopsMap.get(tag) || null; }
 
     // ================================================================
-    //  API PÚBLICA (COMPLETA - v5.6 + v6.0)
+    //  NUEVO v7.0: ACTIVOS INLINE COMO OBJETOS REALES
+    // ================================================================
+    
+    function addInlineAsset(assetData) {
+        if (!assetData.tag) return _notifyUI("Error: Tag de activo requerido.", true);
+        if (_inlineAssetsMap.has(assetData.tag)) return _notifyUI("Error: El activo " + assetData.tag + " ya existe.", true);
+        if (!assetData.lineTag || !_linesMap.has(assetData.lineTag)) return _notifyUI("Error: Línea " + (assetData.lineTag || '?') + " no encontrada.", true);
+        
+        const line = _linesMap.get(assetData.lineTag);
+        const position = assetData.position || 0.5;
+        const result = _splitLineSegment(assetData.lineTag, position);
+        if (!result) return _notifyUI("Error: No se pudo calcular posición en la línea.", true);
+        
+        const punto = result.punto;
+        const spec = assetData.spec || line.spec || 'A1A';
+        
+        const newAsset = {
+            tag: assetData.tag,
+            type: assetData.type || 'VALVE_GATE',
+            subtype: assetData.subtype || '',
+            posX: punto.x,
+            posY: punto.y,
+            posZ: punto.z,
+            diametro: assetData.diametro || line.diameter || 4,
+            material: assetData.material || line.material || 'CS',
+            spec: spec,
+            rating: assetData.rating || (_db.specs[spec] && _db.specs[spec].rating) || 150,
+            lineTag: assetData.lineTag,
+            position: position,
+            status: 'inline',
+            service: assetData.service || line.service || '',
+            puertos: [
+                { id: 'P1', relX: 0, relY: 0, relZ: 0, orientacion: { dx: 1, dy: 0, dz: 0 }, status: 'connected', connectedTo: { tag: assetData.lineTag, portId: assetData.tag + '_IN' }, diametro: assetData.diametro || line.diameter || 4, flow: 'in', constraints: { spec: spec, diametro: assetData.diametro || line.diameter || 4 } },
+                { id: 'P2', relX: 0, relY: 0, relZ: 0, orientacion: { dx: -1, dy: 0, dz: 0 }, status: 'connected', connectedTo: { tag: assetData.lineTag, portId: assetData.tag + '_OUT' }, diametro: assetData.diametro || line.diameter || 4, flow: 'out', constraints: { spec: spec, diametro: assetData.diametro || line.diameter || 4 } }
+            ],
+            properties: assetData.properties || {}
+        };
+        
+        _db.inlineAssets.push(newAsset);
+        _inlineAssetsMap.set(newAsset.tag, newAsset);
+        _allObjectsMap.set(newAsset.tag, newAsset);
+        
+        // Registrar en la línea como componente
+        if (!line.components) line.components = [];
+        line.components.push({
+            type: newAsset.type,
+            tag: newAsset.tag,
+            param: position,
+            description: newAsset.type + ' ' + newAsset.tag
+        });
+        
+        this._saveState();
+        _notifyUI("Activo inline " + newAsset.tag + " (" + newAsset.type + ") insertado en " + assetData.lineTag, false);
+        emit('modelChanged', { type: 'addInlineAsset', tag: newAsset.tag });
+        scheduleAudit();
+        return true;
+    }
+    
+    function removeInlineAsset(tag) {
+        const asset = _inlineAssetsMap.get(tag);
+        if (!asset) return _notifyUI("Activo " + tag + " no encontrado.", true);
+        
+        // Verificar dependencias (instrumentos vinculados)
+        const linkedInstruments = _db.instruments.filter(function(i) { return i.lineTag === asset.lineTag && Math.abs(i.position - asset.position) < 0.01; });
+        if (linkedInstruments.length > 0) {
+            return _notifyUI("No se puede eliminar: " + linkedInstruments.length + " instrumento(s) vinculado(s) a esta posición.", true);
+        }
+        
+        this._saveState();
+        
+        // Limpiar referencia en la línea
+        if (asset.lineTag && _linesMap.has(asset.lineTag)) {
+            const line = _linesMap.get(asset.lineTag);
+            if (line.components) {
+                line.components = line.components.filter(function(c) { return c.tag !== tag; });
+            }
+        }
+        
+        _db.inlineAssets = _db.inlineAssets.filter(function(a) { return a.tag !== tag; });
+        _inlineAssetsMap.delete(tag);
+        _allObjectsMap.delete(tag);
+        
+        _notifyUI("Activo inline " + tag + " eliminado.", false);
+        emit('modelChanged', { type: 'removeInlineAsset', tag: tag });
+        scheduleAudit();
+        return true;
+    }
+    
+    function getInlineAssets() { return _db.inlineAssets; }
+    function getInlineAssetByTag(tag) { return _inlineAssetsMap.get(tag) || null; }
+
+    // ================================================================
+    //  API PÚBLICA (COMPLETA - v7.0)
     // ================================================================
     return {
         init: function(notifyFn, renderFn, propertyPanelFn) {
@@ -740,16 +1015,17 @@ const SmartFlowCore = (function() {
         emit: emit,
 
         // ============================================================
-        //  MÉTODOS EXISTENTES (v5.6 - SIN CAMBIOS)
+        //  GESTIÓN DE ESTADO
         // ============================================================
         
         _saveState: function() {
             const state = _deepClone({ 
                 equipos: _db.equipos, 
                 lines: _db.lines,
-                streams: _db.streams,      // NUEVO
-                instruments: _db.instruments, // NUEVO
-                loops: _db.loops           // NUEVO
+                streams: _db.streams,
+                instruments: _db.instruments,
+                loops: _db.loops,
+                inlineAssets: _db.inlineAssets  // NUEVO v7.0
             });
             _history.past.push(state);
             if (_history.past.length > _history.maxSize) _history.past.shift();
@@ -757,6 +1033,10 @@ const SmartFlowCore = (function() {
         },
         
         rebuildIndexes: rebuildIndexes,
+
+        // ============================================================
+        //  EQUIPOS
+        // ============================================================
 
         addEquipment: function(equipo) {
             if (!equipo.tag) return _notifyUI("Error: Tag requerido.", true);
@@ -776,6 +1056,73 @@ const SmartFlowCore = (function() {
             scheduleAudit();
             return true;
         },
+        
+        updateEquipment: function(tag, datos) {
+            const eq = _equiposMap.get(tag);
+            if (!eq) return _notifyUI("Equipo " + tag + " no encontrado.", true);
+            Object.assign(eq, datos);
+            syncPhysicalData();
+            this._saveState();
+            _renderUI();
+            emit('modelChanged', { type: 'updateEquipment', tag: tag });
+            scheduleAudit();
+            return true;
+        },
+
+        // ============================================================
+        //  PROTECCIÓN ACTIVA DE INTEGRIDAD (NUEVO v7.0)
+        // ============================================================
+        
+        removeEquipment: function(tag) {
+            const eq = _equiposMap.get(tag);
+            if (!eq) { _notifyUI("Equipo " + tag + " no encontrado.", true); return false; }
+            
+            // *** BLOQUEO ACTIVO v7.0: Verificar dependencias PFD/DTI ***
+            const streamsAfectados = _db.streams.filter(function(s) { return s.from === tag || s.to === tag; });
+            const instsAfectados = _db.instruments.filter(function(i) { return i.equipmentTag === tag; });
+            const linesAfectadas = _db.lines.filter(function(line) {
+                return (line.origin && line.origin.objTag === tag) ||
+                       (line.destination && line.destination.objTag === tag);
+            });
+            
+            if (streamsAfectados.length > 0 || instsAfectados.length > 0) {
+                let msg = "⚠️ No se puede eliminar " + tag + ". Dependencias activas: ";
+                if (streamsAfectados.length) msg += streamsAfectados.length + " corrientes PFD. ";
+                if (instsAfectados.length) msg += instsAfectados.length + " instrumentos DTI. ";
+                _notifyUI(msg, true);
+                return false;
+            }
+            
+            this._saveState();
+            
+            // Liberar puertos de líneas conectadas
+            linesAfectadas.forEach(function(linea) {
+                const otroExtremo = (linea.origin && linea.origin.objTag === tag) ? 
+                    linea.destination : linea.origin;
+                if (otroExtremo && otroExtremo.objTag) {
+                    const otroObj = findObjectByTag(otroExtremo.objTag);
+                    if (otroObj && otroObj.puertos) {
+                        const puerto = otroObj.puertos.find(function(p) { return p.id === otroExtremo.portId; });
+                        if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; }
+                    }
+                }
+            });
+            
+            // Eliminar líneas y equipo
+            _db.lines = _db.lines.filter(function(line) { return !linesAfectadas.includes(line); });
+            _db.equipos = _db.equipos.filter(function(e) { return e.tag !== tag; });
+            rebuildIndexes();
+            syncPhysicalData();
+            _renderUI();
+            _notifyUI("Equipo " + tag + " eliminado" + (linesAfectadas.length > 0 ? " + " + linesAfectadas.length + " línea(s)" : "") + ".", false);
+            emit('modelChanged', { type: 'removeEquipment', tag: tag });
+            scheduleAudit();
+            return true;
+        },
+        
+        // ============================================================
+        //  LÍNEAS
+        // ============================================================
         
         addLine: function(linea) {
             if (!linea.tag) return _notifyUI("Error: Tag de línea requerido.", true);
@@ -814,20 +1161,6 @@ const SmartFlowCore = (function() {
             return true;
         },
         
-        syncPhysicalData: syncPhysicalData,
-
-        updateEquipment: function(tag, datos) {
-            const eq = _equiposMap.get(tag);
-            if (!eq) return _notifyUI("Equipo " + tag + " no encontrado.", true);
-            Object.assign(eq, datos);
-            syncPhysicalData();
-            this._saveState();
-            _renderUI();
-            emit('modelChanged', { type: 'updateEquipment', tag: tag });
-            scheduleAudit();
-            return true;
-        },
-        
         updateLine: function(tag, datos) {
             const line = _linesMap.get(tag);
             if (!line) return _notifyUI("Línea " + tag + " no encontrada.", true);
@@ -839,6 +1172,59 @@ const SmartFlowCore = (function() {
             return true;
         },
         
+        removeLine: function(tag) {
+            const line = _linesMap.get(tag);
+            if (!line) { _notifyUI("Línea " + tag + " no encontrada.", true); return false; }
+            
+            // *** BLOQUEO ACTIVO v7.0 ***
+            const instsAfectados = _db.instruments.filter(function(i) { return i.lineTag === tag; });
+            const assetsAfectados = _db.inlineAssets.filter(function(a) { return a.lineTag === tag; });
+            
+            if (instsAfectados.length > 0 || assetsAfectados.length > 0) {
+                let msg = "⚠️ No se puede eliminar " + tag + ". Primero elimine: ";
+                if (instsAfectados.length) msg += instsAfectados.length + " instrumento(s). ";
+                if (assetsAfectados.length) msg += assetsAfectados.length + " activo(s) inline. ";
+                _notifyUI(msg, true);
+                return false;
+            }
+            
+            this._saveState();
+            
+            // Liberar puertos conectados
+            if (line.origin && line.origin.objTag) {
+                const objOrigen = findObjectByTag(line.origin.objTag);
+                if (objOrigen && objOrigen.puertos) {
+                    const puerto = objOrigen.puertos.find(function(p) { return p.id === line.origin.portId; });
+                    if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; }
+                }
+            }
+            if (line.destination && line.destination.objTag) {
+                const objDestino = findObjectByTag(line.destination.objTag);
+                if (objDestino && objDestino.puertos) {
+                    const puerto = objDestino.puertos.find(function(p) { return p.id === line.destination.portId; });
+                    if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; }
+                }
+            }
+            
+            // Desvincular streams
+            _db.streams.forEach(function(s) {
+                if (s.linkedLineTags) {
+                    s.linkedLineTags = s.linkedLineTags.filter(function(lt) { return lt !== tag; });
+                }
+            });
+            
+            _db.lines = _db.lines.filter(function(l) { return l.tag !== tag; });
+            rebuildIndexes();
+            syncPhysicalData();
+            _renderUI();
+            _notifyUI("Línea " + tag + " eliminada. Puertos liberados.", false);
+            emit('modelChanged', { type: 'removeLine', tag: tag });
+            scheduleAudit();
+            return true;
+        },
+
+        syncPhysicalData: syncPhysicalData,
+
         updatePuerto: function(ownerTag, puertoId, cambios) {
             const owner = findObjectByTag(ownerTag);
             if (!owner) return _notifyUI("Objeto " + ownerTag + " no encontrado.", true);
@@ -866,7 +1252,7 @@ const SmartFlowCore = (function() {
             const oldSpecs = _db.specs;
             _db = { 
                 equipos: [], lines: [], specs: oldSpecs,
-                streams: [], instruments: [], loops: [],
+                streams: [], instruments: [], loops: [], inlineAssets: [],
                 project: {
                     name: '', client: '', plantLocation: '',
                     designCode: 'ASME B31.3', unitsSystem: 'METRIC',
@@ -890,16 +1276,19 @@ const SmartFlowCore = (function() {
             let streams = data.streams || (data.data && data.data.streams) || [];
             let instruments = data.instruments || (data.data && data.data.instruments) || [];
             let loops = data.loops || (data.data && data.data.loops) || [];
+            let inlineAssets = data.inlineAssets || (data.data && data.data.inlineAssets) || [];
             if (!Array.isArray(equipos)) equipos = [];
             if (!Array.isArray(lines)) lines = [];
             if (!Array.isArray(streams)) streams = [];
             if (!Array.isArray(instruments)) instruments = [];
             if (!Array.isArray(loops)) loops = [];
+            if (!Array.isArray(inlineAssets)) inlineAssets = [];
             _db.equipos = _deepClone(equipos);
             _db.lines = _deepClone(lines);
             _db.streams = _deepClone(streams);
             _db.instruments = _deepClone(instruments);
             _db.loops = _deepClone(loops);
+            _db.inlineAssets = _deepClone(inlineAssets);
             _selectedElement = null;
             _lastAuditResults = null;
             rebuildIndexes();
@@ -919,79 +1308,17 @@ const SmartFlowCore = (function() {
                 streams: _db.streams,
                 instruments: _db.instruments,
                 loops: _db.loops,
+                inlineAssets: _db.inlineAssets,
                 project: _db.project
             });
-        },
-
-        removeEquipment: function(tag) {
-            const eq = _equiposMap.get(tag);
-            if (!eq) { _notifyUI("Equipo " + tag + " no encontrado.", true); return false; }
-            this._saveState();
-            const lineasConectadas = _db.lines.filter(function(line) {
-                return (line.origin && line.origin.equipTag === tag) ||
-                       (line.destination && line.destination.equipTag === tag) ||
-                       (line.origin && line.origin.objTag === tag) ||
-                       (line.destination && line.destination.objTag === tag);
-            });
-            lineasConectadas.forEach(function(linea) {
-                const otroExtremo = (linea.origin && (linea.origin.equipTag === tag || linea.origin.objTag === tag)) ? 
-                    linea.destination : linea.origin;
-                if (otroExtremo && (otroExtremo.equipTag || otroExtremo.objTag)) {
-                    const otroTag = otroExtremo.equipTag || otroExtremo.objTag;
-                    const otroObj = findObjectByTag(otroTag);
-                    if (otroObj && otroObj.puertos) {
-                        const puerto = otroObj.puertos.find(function(p) { return p.id === otroExtremo.portId; });
-                        if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; delete puerto.connectedLine; }
-                    }
-                }
-            });
-            _db.lines = _db.lines.filter(function(line) { return !lineasConectadas.includes(line); });
-            _db.equipos = _db.equipos.filter(function(e) { return e.tag !== tag; });
-            rebuildIndexes();
-            syncPhysicalData();
-            _renderUI();
-            var count = lineasConectadas.length;
-            _notifyUI("Equipo " + tag + " eliminado" + (count > 0 ? " + " + count + " línea(s) conectada(s)" : "") + ".", false);
-            emit('modelChanged', { type: 'removeEquipment', tag: tag });
-            scheduleAudit();
-            return true;
-        },
-        
-        removeLine: function(tag) {
-            const line = _linesMap.get(tag);
-            if (!line) { _notifyUI("Línea " + tag + " no encontrada.", true); return false; }
-            this._saveState();
-            if (line.origin && (line.origin.equipTag || line.origin.objTag)) {
-                const origenTag = line.origin.equipTag || line.origin.objTag;
-                const objOrigen = findObjectByTag(origenTag);
-                if (objOrigen && objOrigen.puertos) {
-                    const puerto = objOrigen.puertos.find(function(p) { return p.id === line.origin.portId; });
-                    if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; delete puerto.connectedLine; }
-                }
-            }
-            if (line.destination && (line.destination.equipTag || line.destination.objTag)) {
-                const destinoTag = line.destination.equipTag || line.destination.objTag;
-                const objDestino = findObjectByTag(destinoTag);
-                if (objDestino && objDestino.puertos) {
-                    const puerto = objDestino.puertos.find(function(p) { return p.id === line.destination.portId; });
-                    if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; delete puerto.connectedLine; }
-                }
-            }
-            _db.lines = _db.lines.filter(function(l) { return l.tag !== tag; });
-            rebuildIndexes();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Línea " + tag + " eliminada. Puertos liberados.", false);
-            emit('modelChanged', { type: 'removeLine', tag: tag });
-            scheduleAudit();
-            return true;
         },
 
         undo: function() {
             if (_history.past.length <= 1) return _notifyUI("Nada que deshacer.", true);
             const current = _deepClone({ 
                 equipos: _db.equipos, lines: _db.lines,
-                streams: _db.streams, instruments: _db.instruments, loops: _db.loops
+                streams: _db.streams, instruments: _db.instruments, 
+                loops: _db.loops, inlineAssets: _db.inlineAssets
             });
             _history.future.push(current);
             _history.past.pop();
@@ -1001,6 +1328,7 @@ const SmartFlowCore = (function() {
             _db.streams = _deepClone(prev.streams || []);
             _db.instruments = _deepClone(prev.instruments || []);
             _db.loops = _deepClone(prev.loops || []);
+            _db.inlineAssets = _deepClone(prev.inlineAssets || []);
             _selectedElement = null;
             rebuildIndexes();
             syncPhysicalData();
@@ -1019,6 +1347,7 @@ const SmartFlowCore = (function() {
             _db.streams = _deepClone(next.streams || []);
             _db.instruments = _deepClone(next.instruments || []);
             _db.loops = _deepClone(next.loops || []);
+            _db.inlineAssets = _deepClone(next.inlineAssets || []);
             _selectedElement = null;
             rebuildIndexes();
             syncPhysicalData();
@@ -1033,15 +1362,16 @@ const SmartFlowCore = (function() {
         recalculateAll: function() {
             syncPhysicalData();
             const result = runAllAudits(true);
-            if (result.collisions.length > 0) _notifyUI("Recálculo completado. " + result.collisions.length + " posibles interferencias.", true);
-            else _notifyUI("Recálculo completado. Sin interferencias.", false);
+            if (result.collisions.length > 0 || result.massBalanceIssues.length > 0) 
+                _notifyUI("Recálculo completado. " + result.collisions.length + " interferencias, " + result.massBalanceIssues.length + " desbalances.", true);
+            else _notifyUI("Recálculo completado. Sin interferencias ni desbalances.", false);
             _renderUI();
             emit('modelChanged', { type: 'recalculateAll' });
         },
         
         getLastAuditResults: function() { return _lastAuditResults; },
 
-        connectSmart: function(source, target) { /* ... sin cambios ... */ 
+        connectSmart: function(source, target) {
             const objS = findObjectByTag(source.tag), objT = findObjectByTag(target.tag);
             if (!objS || !objT) return _notifyUI("Objeto no encontrado.", true);
             const pS = objS.puertos ? objS.puertos.find(function(p) { return p.id === source.portId; }) : null;
@@ -1058,28 +1388,8 @@ const SmartFlowCore = (function() {
             scheduleAudit();
             return true;
         },
-        
-        injectAccessory: function(lineTag, param, accesorioDef) { /* ... sin cambios ... */
-            const result = _splitLineSegment(lineTag, param);
-            if (!result) return null;
-            if (accesorioDef && accesorioDef.generarPuertos) {
-                const line = _linesMap.get(lineTag);
-                if (line) {
-                    const nuevosPuertos = accesorioDef.generarPuertos(line, param, line.diameter);
-                    line.puertos = line.puertos.filter(function(p) { return !p.id.startsWith('ACC-'); });
-                    nuevosPuertos.forEach(function(p, idx) { p.id = (accesorioDef.tag||'ACC') + '_' + idx; line.puertos.push(p); });
-                    _notifyUI("Accesorio " + (accesorioDef.tag||'ACC') + " inyectado en " + lineTag, false);
-                }
-            }
-            this._saveState();
-            syncPhysicalData();
-            _renderUI();
-            emit('modelChanged', { type: 'injectAccessory', lineTag: lineTag });
-            scheduleAudit();
-            return result;
-        },
-        
-        splitLine: function(lineTag, point, config) { /* ... sin cambios ... */
+
+        splitLine: function(lineTag, point, config) {
             const line = _linesMap.get(lineTag);
             if (!line) { _notifyUI("Línea no encontrada.", true); return null; }
             const segmentIndex = _findSegmentAtPoint(line, point);
@@ -1090,35 +1400,49 @@ const SmartFlowCore = (function() {
             const len = Math.hypot(dir.dx, dir.dy, dir.dz) || 1;
             const dirUnit = { dx: dir.dx/len, dy: dir.dy/len, dz: dir.dz/len };
             let perp = _getPerpendicular(dirUnit);
-            const accessoryTag = "TEE-" + Date.now().toString().slice(-6);
-            const nuevoAccesorio = {
-                tag: accessoryTag, tipo: (config && config.type) || 'TEE_EQUAL',
+            const teeTag = "TEE-" + Date.now().toString().slice(-6);
+            
+            // NUEVO v7.0: El TEE se crea como inline asset real
+            const nuevoTee = {
+                tag: teeTag,
+                type: (config && config.type) || 'TEE_EQUAL',
                 posX: point.x, posY: point.y, posZ: point.z,
-                diametro: line.diameter, material: line.material, spec: line.spec, branchDirection: perp,
+                diametro: line.diameter,
+                material: line.material,
+                spec: line.spec,
+                lineTag: lineTag,
+                position: 0.5, // aproximado
+                status: 'inline',
                 puertos: [
                     { id: 'P1', relX: -dirUnit.dx*100, relY: -dirUnit.dy*100, relZ: -dirUnit.dz*100, orientacion: { dx: -dirUnit.dx, dy: -dirUnit.dy, dz: -dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S1' }, diametro: line.diameter, flow: 'in', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
                     { id: 'P2', relX: dirUnit.dx*100, relY: dirUnit.dy*100, relZ: dirUnit.dz*100, orientacion: { dx: dirUnit.dx, dy: dirUnit.dy, dz: dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S2' }, diametro: line.diameter, flow: 'out', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
                     { id: 'P3', relX: perp.dx*100, relY: perp.dy*100, relZ: perp.dz*100, orientacion: { dx: perp.dx, dy: perp.dy, dz: perp.dz }, status: 'open', diametro: line.diameter, flow: 'bi', constraints: { spec: line.spec||'STD', diametro: line.diameter } }
                 ]
             };
+            
             pts.splice(segmentIndex+1, 0, point);
             line._cachedPoints = pts;
             if (!line.puertos) line.puertos = [];
-            if (!line.puertos.find(function(p) { return p.id === 'S1'; })) line.puertos.push({ id: 'S1', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P1' }, diametro: line.diameter });
-            if (!line.puertos.find(function(p) { return p.id === 'S2'; })) line.puertos.push({ id: 'S2', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: accessoryTag, portId: 'P2' }, diametro: line.diameter });
-            _db.equipos.push(nuevoAccesorio);
-            _equiposMap.set(accessoryTag, nuevoAccesorio);
-            _allObjectsMap.set(accessoryTag, nuevoAccesorio);
+            if (!line.puertos.find(function(p) { return p.id === 'S1'; })) line.puertos.push({ id: 'S1', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: teeTag, portId: 'P1' }, diametro: line.diameter });
+            if (!line.puertos.find(function(p) { return p.id === 'S2'; })) line.puertos.push({ id: 'S2', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: teeTag, portId: 'P2' }, diametro: line.diameter });
+            
+            _db.inlineAssets.push(nuevoTee);
+            _inlineAssetsMap.set(teeTag, nuevoTee);
+            _allObjectsMap.set(teeTag, nuevoTee);
+            
+            if (!line.components) line.components = [];
+            line.components.push({ type: nuevoTee.type, tag: nuevoTee.tag, param: 0.5 });
+            
             this._saveState();
             syncPhysicalData();
             _renderUI();
-            _notifyUI("Línea " + lineTag + " dividida. Accesorio " + accessoryTag + " insertado.", false);
+            _notifyUI("Línea " + lineTag + " dividida. Tee " + teeTag + " insertado como activo real.", false);
             emit('modelChanged', { type: 'splitLine', lineTag: lineTag });
             scheduleAudit();
-            return { componente: nuevoAccesorio, linea: line };
+            return { componente: nuevoTee, linea: line };
         },
 
-        setSelected: function(element) { /* ... sin cambios ... */
+        setSelected: function(element) {
             if (element && element.obj && !findObjectByTag(element.obj.tag)) {
                 _selectedElement = null; _onSelectionChanged(null); _renderUI(); return;
             }
@@ -1129,34 +1453,72 @@ const SmartFlowCore = (function() {
             } else { _onSelectionChanged(null); }
         },
         
-        getPropertyInfo: function(tag) { /* ... sin cambios ... */
+        getPropertyInfo: function(tag) {
             const obj = findObjectByTag(tag);
             if (!obj) return null;
             const isLine = _linesMap.has(tag);
             const isEquipment = _equiposMap.has(tag);
-            return {
+            const isInlineAsset = _inlineAssetsMap.has(tag);
+            const isInstrument = _instrumentsMap.has(tag);
+            
+            let info = {
                 tag: obj.tag,
-                tipo: obj.tipo || (isLine ? 'Tubería' : (isEquipment ? 'Equipo' : 'Desconocido')),
-                spec: obj.spec || 'N/A', material: obj.material || 'N/A',
+                tipo: obj.tipo || (isLine ? 'Tubería' : (isEquipment ? 'Equipo' : (isInlineAsset ? 'Activo Inline' : (isInstrument ? 'Instrumento' : 'Desconocido')))),
+                spec: obj.spec || 'N/A',
+                material: obj.material || 'N/A',
                 diametro: obj.diameter || obj.diametro || 'N/A',
-                dimensiones: obj.posX !== undefined ? { posX: obj.posX, posY: obj.posY, posZ: obj.posZ, diametro: obj.diametro, altura: obj.altura, largo: obj.largo } : null,
                 puertos: obj.puertos ? obj.puertos.map(function(p) { return { id: p.id, status: p.status || 'open', connectedTo: (p.connectedTo && p.connectedTo.tag) || 'Libre', diametro: p.diametro, orientacion: p.orientacion }; }) : [],
                 spool: isLine ? getSpoolReport(tag) : null
             };
+            
+            if (obj.posX !== undefined) {
+                info.dimensiones = { posX: obj.posX, posY: obj.posY, posZ: obj.posZ, diametro: obj.diametro, altura: obj.altura, largo: obj.largo };
+            }
+            
+            if (isInstrument) {
+                info.isaSymbol = obj.isaSymbol || getIsaSymbol(obj.type, obj.location);
+                info.location = obj.location;
+                info.range = obj.range;
+                info.signal = obj.signal;
+                info.loopTag = obj.loopTag;
+            }
+            
+            if (isInlineAsset) {
+                info.lineTag = obj.lineTag;
+                info.position = obj.position;
+                info.subtype = obj.subtype;
+            }
+            
+            return info;
         },
         
-        updateFromPanel: function(tag, field, newValue) { /* ... sin cambios ... */
+        updateFromPanel: function(tag, field, newValue) {
             const obj = findObjectByTag(tag);
             if (!obj) { _notifyUI("Objeto no encontrado.", true); return false; }
             if (field === 'tag') {
                 if (_allObjectsMap.has(newValue)) { _notifyUI("Error: El Tag ya existe.", true); return false; }
+                // Actualizar referencias en líneas
                 _db.lines.forEach(function(line) {
                     if (line.origin && line.origin.objTag === tag) line.origin.objTag = newValue;
                     if (line.destination && line.destination.objTag === tag) line.destination.objTag = newValue;
                 });
+                // Actualizar referencias en streams
+                _db.streams.forEach(function(s) {
+                    if (s.from === tag) s.from = newValue;
+                    if (s.to === tag) s.to = newValue;
+                });
+                // Actualizar en el mapa correspondiente
                 if (_equiposMap.has(tag)) { _equiposMap.delete(tag); _allObjectsMap.delete(tag); obj.tag = newValue; _equiposMap.set(newValue, obj); _allObjectsMap.set(newValue, obj); }
                 else if (_linesMap.has(tag)) { _linesMap.delete(tag); _allObjectsMap.delete(tag); obj.tag = newValue; _linesMap.set(newValue, obj); _allObjectsMap.set(newValue, obj); }
-            } else { obj[field] = newValue; }
+                else if (_inlineAssetsMap.has(tag)) { _inlineAssetsMap.delete(tag); _allObjectsMap.delete(tag); obj.tag = newValue; _inlineAssetsMap.set(newValue, obj); _allObjectsMap.set(newValue, obj); }
+                else if (_instrumentsMap.has(tag)) { _instrumentsMap.delete(tag); obj.tag = newValue; _instrumentsMap.set(newValue, obj); }
+            } else {
+                obj[field] = newValue;
+                // Recalcular ISA si cambió tipo o ubicación en instrumento
+                if (_instrumentsMap.has(tag) && (field === 'type' || field === 'location')) {
+                    obj.isaSymbol = getIsaSymbol(obj.type, obj.location);
+                }
+            }
             if (['posX', 'posY', 'posZ', 'diametro', 'altura', 'largo', 'diameter'].indexOf(field) !== -1) { syncPhysicalData(); }
             this._saveState(); _renderUI();
             _notifyUI("Propiedad '" + field + "' actualizada.", false);
@@ -1166,16 +1528,19 @@ const SmartFlowCore = (function() {
         },
 
         // ============================================================
-        //  GETTERS EXISTENTES
+        //  GETTERS
         // ============================================================
         auditCollisions: auditCollisions,
         auditJointSpacing: auditJointSpacing,
+        auditPFDIntegrity: auditPFDIntegrity,
+        auditMassBalance: auditMassBalance,
         getSpoolReport: getSpoolReport,
         setDatum: setDatum,
         getAbsolutePosition: getAbsolutePosition,
         getLinePoints: getLinePoints,
         findObjectByTag: findObjectByTag,
         calcularPuntoParametrico: calcularPuntoParametrico,
+        getIsaSymbol: getIsaSymbol,
         getDb: function() { return _db; },
         getEquipos: function() { return _db.equipos; },
         getLines: function() { return _db.lines; },
@@ -1189,23 +1554,20 @@ const SmartFlowCore = (function() {
         get equiposMap() { return _equiposMap; },
         get linesMap() { return _linesMap; },
         get allObjectsMap() { return _allObjectsMap; },
+        get streamsMap() { return _streamsMap; },
+        get instrumentsMap() { return _instrumentsMap; },
+        get loopsMap() { return _loopsMap; },
+        get inlineAssetsMap() { return _inlineAssetsMap; },
         
-        // ============================================================
-        //  NUEVOS GETTERS v6.0
-        // ============================================================
         getStreams: getStreams,
         getStreamByTag: getStreamByTag,
         getInstruments: getInstruments,
         getInstrumentByTag: getInstrumentByTag,
         getLoops: getLoops,
         getLoopByTag: getLoopByTag,
-        get streamsMap() { return _streamsMap; },
-        get instrumentsMap() { return _instrumentsMap; },
-        get loopsMap() { return _loopsMap; },
+        getInlineAssets: getInlineAssets,
+        getInlineAssetByTag: getInlineAssetByTag,
         
-        // ============================================================
-        //  NUEVOS MÉTODOS v6.0 (PFD + DTI)
-        // ============================================================
         addStream: addStream,
         updateStream: updateStream,
         removeStream: removeStream,
@@ -1214,6 +1576,9 @@ const SmartFlowCore = (function() {
         updateInstrument: updateInstrument,
         removeInstrument: removeInstrument,
         addLoop: addLoop,
-        auditPFDIntegrity: auditPFDIntegrity
+        
+        // NUEVOS v7.0
+        addInlineAsset: addInlineAsset,
+        removeInlineAsset: removeInlineAsset
     };
 })();
