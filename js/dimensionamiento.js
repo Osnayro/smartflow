@@ -1,20 +1,25 @@
 
+
+
 // ============================================================
-// SMARTFLOW DIMENSIONAMIENTO v1.0 - Motor de Criterios de Diseño
+// SMARTFLOW DIMENSIONAMIENTO v1.1 - Motor de Criterios de Diseño
 // Archivo: js/dimensionamiento.js
-// Propósito: Sugerir diámetros y especificaciones según caudal,
-//            fluido, fase y condiciones de proceso
+// Novedades v1.1:
+//   - sugerirSpec() ahora consulta SmartFlowCatalog.validateSpecForStream()
+//   - Nuevo método: validarSpecCompleta()
+//   - Nuevo método: obtenerSpecsRecomendadas()
+//   - Tablas de caudal→diámetro y criterios de velocidad sin cambios
 // ============================================================
 
 const SmartFlowDimensionamiento = (function() {
     
     // ================================================================
-    // 1. CRITERIOS DE VELOCIDAD POR FASE
+    // 1. CRITERIOS DE VELOCIDAD POR FASE (SIN CAMBIOS)
     // ================================================================
     const criteriosVelocidad = {
         'LIQUID': {
             descripcion: 'Líquidos en general',
-            velocidadMin: 1.0,    // m/s
+            velocidadMin: 1.0,
             velocidadMax: 3.0,
             velocidadOptima: 2.0
         },
@@ -63,7 +68,7 @@ const SmartFlowDimensionamiento = (function() {
     };
 
     // ================================================================
-    // 2. TABLA CAUDAL → DIÁMETRO POR FASE
+    // 2. TABLA CAUDAL → DIÁMETRO POR FASE (SIN CAMBIOS)
     // ================================================================
     const tablaCaudalDiametro = {
         'LIQUID': [
@@ -131,16 +136,55 @@ const SmartFlowDimensionamiento = (function() {
         ]
     };
     
-    // Alias para normalizar fases
     tablaCaudalDiametro['HIDROCARBURO_LIQUIDO'] = tablaCaudalDiametro['LIQUID'];
 
     // ================================================================
-    // 3. SELECCIÓN DE SPEC SEGÚN FLUIDO Y CONDICIONES
+    // 3. SELECCIÓN DE SPEC - AHORA DELEGA EN CATÁLOGO
     // ================================================================
+    
+    /**
+     * Sugiere especificación según fluido y condiciones.
+     * v1.1: Si SmartFlowCatalog está disponible, usa validateSpecForStream
+     * para validación adicional y suggestSpecsForStream para recomendaciones.
+     */
     function sugerirSpec(streamData) {
         const fluido = (streamData.fluid || '').toUpperCase();
         const presion = streamData.pressure || 0;
         const temperatura = streamData.temperature || 25;
+        
+        // ================================================================
+        // Si el catálogo v5.0 está disponible, usar su lógica avanzada
+        // ================================================================
+        if (typeof SmartFlowCatalog !== 'undefined' && 
+            typeof SmartFlowCatalog.suggestSpecsForStream === 'function') {
+            
+            const recomendaciones = SmartFlowCatalog.suggestSpecsForStream(streamData);
+            
+            if (recomendaciones.length > 0) {
+                // La mejor recomendación del catálogo
+                const mejor = recomendaciones[0];
+                
+                // Validar que cumpla presión y temperatura
+                const validacion = SmartFlowCatalog.validateSpecForStream(mejor.spec, streamData);
+                
+                if (validacion.valid) {
+                    return mejor.spec;
+                }
+                
+                // Si la mejor no es válida, buscar la primera que pase validación
+                for (const rec of recomendaciones) {
+                    const val = SmartFlowCatalog.validateSpecForStream(rec.spec, streamData);
+                    if (val.valid) return rec.spec;
+                }
+                
+                // Si ninguna pasa, devolver la mejor de todas formas con warning
+                return mejor.spec;
+            }
+        }
+        
+        // ================================================================
+        // Fallback: lógica original (compatible con versión anterior)
+        // ================================================================
         
         // Fluidos agresivos → acero inoxidable o revestido
         if (fluido.includes('ACID') || fluido.includes('ÁCIDO') || fluido.includes('ACIDO')) {
@@ -203,13 +247,12 @@ const SmartFlowDimensionamiento = (function() {
     }
 
     // ================================================================
-    // 4. FUNCIÓN PRINCIPAL DE DIMENSIONAMIENTO
+    // 4. FUNCIÓN PRINCIPAL DE DIMENSIONAMIENTO (ACTUALIZADA v1.1)
     // ================================================================
     
     /**
      * Sugiere el diámetro óptimo para un stream según caudal y fase.
-     * @param {Object} streamData - { flow, flowUnit, phase, fluid, pressure, temperature }
-     * @returns {Object} - { diametro, velocidad, criterio, especificacion, justificacion }
+     * Ahora incluye validación completa de spec contra el catálogo.
      */
     function sugerirDiametro(streamData) {
         const caudal = parseFloat(streamData.flow) || 0;
@@ -255,16 +298,22 @@ const SmartFlowDimensionamiento = (function() {
         }
         
         // Calcular velocidad real
-        // Q (m3/s) = A (m2) * v (m/s)
-        // Q(m3/h) / 3600 = π * (D*0.0254/2)² * v
         const area = Math.PI * Math.pow(diametroSugerido * 0.0254 / 2, 2);
         const velocidadReal = (caudal / 3600) / area;
         
+        // Obtener especificación (ahora validada contra catálogo)
         const especificacion = sugerirSpec(streamData);
+        
+        // Validación adicional contra el catálogo si está disponible
+        let specValidation = null;
+        if (typeof SmartFlowCatalog !== 'undefined' && 
+            typeof SmartFlowCatalog.validateSpecForStream === 'function') {
+            specValidation = SmartFlowCatalog.validateSpecForStream(especificacion, streamData);
+        }
         
         const criterioInfo = criteriosVelocidad[criterio];
         
-        return {
+        const resultado = {
             error: false,
             diametro: diametroSugerido,
             velocidadReal: parseFloat(velocidadReal.toFixed(2)),
@@ -276,51 +325,113 @@ const SmartFlowDimensionamiento = (function() {
             justificacion: `Caudal ${caudal} ${streamData.flowUnit || 'm3/h'} → Diámetro ${diametroSugerido}" (${criterioInfo ? criterioInfo.descripcion : ''}, v=${velocidadReal.toFixed(2)} m/s)`,
             advertencias: []
         };
+        
+        // Agregar advertencias de validación de spec
+        if (specValidation) {
+            if (specValidation.warnings && specValidation.warnings.length > 0) {
+                resultado.advertencias = resultado.advertencias.concat(specValidation.warnings);
+            }
+            if (specValidation.errors && specValidation.errors.length > 0) {
+                resultado.advertencias = resultado.advertencias.concat(specValidation.errors);
+                resultado.especificacionAlternativa = specValidation.suggestion;
+            }
+        }
+        
+        return resultado;
     }
 
     /**
      * Valida si un diámetro de línea existente es adecuado para un stream.
-     * @returns {Object} - { adecuado, severidad, mensaje, sugerencia }
+     * v1.1: También valida la spec de la línea contra el stream.
      */
-    function validarDiametro(streamData, diametroLinea) {
+    function validarDiametro(streamData, diametroLinea, specLinea) {
         const sugerencia = sugerirDiametro(streamData);
         if (sugerencia.error) return sugerencia;
         
+        const advertencias = [];
         const diferencia = Math.abs(diametroLinea - sugerencia.diametro);
         
+        let resultado = {
+            adecuado: true,
+            severidad: 'OK',
+            mensaje: 'Diámetro adecuado',
+            sugerencia: sugerencia,
+            advertenciasSpec: []
+        };
+        
         if (diferencia === 0) {
-            return {
-                adecuado: true,
-                severidad: 'OK',
-                mensaje: 'Diámetro adecuado',
-                sugerencia: sugerencia
-            };
+            resultado.mensaje = 'Diámetro adecuado';
         } else if (diferencia <= 1) {
-            return {
-                adecuado: true,
-                severidad: 'INFO',
-                mensaje: `Diámetro ${diametroLinea}" vs sugerido ${sugerencia.diametro}". Diferencia aceptable.`,
-                sugerencia: sugerencia
-            };
+            resultado.severidad = 'INFO';
+            resultado.mensaje = `Diámetro ${diametroLinea}" vs sugerido ${sugerencia.diametro}". Diferencia aceptable.`;
         } else if (diametroLinea < sugerencia.diametro) {
-            return {
-                adecuado: false,
-                severidad: 'WARNING',
-                mensaje: `Diámetro SUB-dimensionado: ${diametroLinea}" vs mínimo sugerido ${sugerencia.diametro}". Velocidad excesiva.`,
-                sugerencia: sugerencia
-            };
+            resultado.adecuado = false;
+            resultado.severidad = 'WARNING';
+            resultado.mensaje = `Diámetro SUB-dimensionado: ${diametroLinea}" vs mínimo sugerido ${sugerencia.diametro}". Velocidad excesiva.`;
         } else {
-            return {
-                adecuado: false,
-                severidad: 'INFO',
-                mensaje: `Diámetro SOBRE-dimensionado: ${diametroLinea}" vs sugerido ${sugerencia.diametro}". Sobrecoste de material.`,
-                sugerencia: sugerencia
-            };
+            resultado.adecuado = false;
+            resultado.severidad = 'INFO';
+            resultado.mensaje = `Diámetro SOBRE-dimensionado: ${diametroLinea}" vs sugerido ${sugerencia.diametro}". Sobrecoste de material.`;
         }
+        
+        // Validar spec si se proporciona
+        if (specLinea && typeof SmartFlowCatalog !== 'undefined' && 
+            typeof SmartFlowCatalog.validateSpecForStream === 'function') {
+            const specCheck = SmartFlowCatalog.validateSpecForStream(specLinea, streamData);
+            if (!specCheck.valid || specCheck.warnings.length > 0) {
+                resultado.advertenciasSpec = specCheck.warnings.concat(specCheck.errors);
+                if (specCheck.suggestion) {
+                    resultado.specSugerida = specCheck.suggestion;
+                }
+            }
+        }
+        
+        return resultado;
+    }
+
+    // ================================================================
+    // 5. NUEVOS MÉTODOS v1.1
+    // ================================================================
+
+    /**
+     * Valida completamente una spec contra un stream usando el catálogo.
+     * @param {string} specId - ID de la especificación a validar
+     * @param {Object} streamData - Datos del stream
+     * @returns {Object} Resultado de validación
+     */
+    function validarSpecCompleta(specId, streamData) {
+        if (typeof SmartFlowCatalog !== 'undefined' && 
+            typeof SmartFlowCatalog.validateSpecForStream === 'function') {
+            return SmartFlowCatalog.validateSpecForStream(specId, streamData);
+        }
+        
+        // Fallback simple sin catálogo
+        return {
+            valid: true,
+            warnings: ['Catálogo no disponible para validación completa'],
+            errors: [],
+            suggestion: null
+        };
     }
 
     /**
-     * Obtiene diámetros estándar comerciales cercanos a un diámetro sugerido.
+     * Obtiene specs recomendadas para un stream.
+     * @param {Object} streamData - Datos del stream
+     * @returns {Array} Lista de specs ordenadas por puntuación
+     */
+    function obtenerSpecsRecomendadas(streamData) {
+        if (typeof SmartFlowCatalog !== 'undefined' && 
+            typeof SmartFlowCatalog.suggestSpecsForStream === 'function') {
+            return SmartFlowCatalog.suggestSpecsForStream(streamData);
+        }
+        
+        // Fallback simple
+        const spec = sugerirSpec(streamData);
+        return [{ spec: spec, material: 'N/D', score: 100 }];
+    }
+
+    /**
+     * Obtiene los diámetros estándar comerciales cercanos a un diámetro sugerido.
      */
     function diametrosComercialesCercanos(diametro) {
         const comerciales = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 30, 36];
@@ -332,22 +443,19 @@ const SmartFlowDimensionamiento = (function() {
 
     /**
      * Calcula la pérdida de carga estimada (Darcy-Weisbach simplificada).
-     * @param {Object} params - { diametro, caudal, longitud, rugosidad, densidad, viscosidad }
-     * @returns {Object} - { perdidaCarga, velocidad, reynolds, factorFriccion }
      */
     function estimarPerdidaCarga(params) {
-        const D = (params.diametro || 4) * 0.0254; // pulgadas → metros
-        const Q = (params.caudal || 10) / 3600;     // m3/h → m3/s
-        const L = params.longitud || 100;            // metros
-        const rugosidad = params.rugosidad || 0.000045; // m (acero comercial)
-        const rho = params.densidad || 1000;         // kg/m3
-        const mu = params.viscosidad || 0.001;       // Pa·s (agua)
+        const D = (params.diametro || 4) * 0.0254;
+        const Q = (params.caudal || 10) / 3600;
+        const L = params.longitud || 100;
+        const rugosidad = params.rugosidad || 0.000045;
+        const rho = params.densidad || 1000;
+        const mu = params.viscosidad || 0.001;
         
         const area = Math.PI * Math.pow(D / 2, 2);
         const velocidad = Q / area;
         const Re = (rho * velocidad * D) / mu;
         
-        // Colebrook-White simplificado
         let f = 0.02;
         if (Re > 4000) {
             const rr = rugosidad / D;
@@ -368,13 +476,47 @@ const SmartFlowDimensionamiento = (function() {
         };
     }
 
+    /**
+     * Genera un informe completo de dimensionamiento para un stream.
+     * Incluye diámetro, spec, pérdida de carga estimada y recomendaciones.
+     */
+    function informeDimensionamiento(streamData, longitudTramo) {
+        const dim = sugerirDiametro(streamData);
+        if (dim.error) return dim;
+        
+        const specsRecomendadas = obtenerSpecsRecomendadas(streamData);
+        const diametrosAlt = diametrosComercialesCercanos(dim.diametro);
+        
+        let perdidaCarga = null;
+        if (longitudTramo && longitudTramo > 0) {
+            perdidaCarga = estimarPerdidaCarga({
+                diametro: dim.diametro,
+                caudal: streamData.flow,
+                longitud: longitudTramo,
+                densidad: streamData.density || 1000,
+                viscosidad: streamData.viscosity || 1
+            });
+        }
+        
+        return {
+            dimensionamiento: dim,
+            specsAlternativas: specsRecomendadas.slice(0, 3),
+            diametrosAlternativos: diametrosAlt,
+            perdidaCarga: perdidaCarga,
+            resumen: `${dim.justificacion} | Spec: ${dim.especificacion}`
+        };
+    }
+
     // ================================================================
-    // 5. API PÚBLICA
+    // 6. API PÚBLICA
     // ================================================================
     return {
         sugerirDiametro,
         sugerirSpec,
         validarDiametro,
+        validarSpecCompleta,          // NUEVO v1.1
+        obtenerSpecsRecomendadas,     // NUEVO v1.1
+        informeDimensionamiento,      // NUEVO v1.1
         diametrosComercialesCercanos,
         estimarPerdidaCarga,
         getCriteriosVelocidad: () => criteriosVelocidad,
