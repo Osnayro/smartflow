@@ -1,66 +1,23 @@
-
-// ============================================================
-// MÓDULO 9: SMARTFLOW AUTOCOMPLETE (Autocompletado de Comandos)
-// Archivo: js/autocomplete.js
-// Propósito: Proporcionar sugerencias contextuales mientras el usuario
-//            escribe comandos en el panel de texto.
-// ============================================================
-
 const SmartFlowAutocomplete = (function() {
-    
-    // Dependencias inyectadas
     let _core = null;
     let _catalog = null;
     let _commands = null;
-    
-    // Elementos del DOM
     let _textarea = null;
     let _suggestionBox = null;
     let _currentSuggestions = [];
     let _selectedIndex = -1;
     
-    // -------------------- 1. DICCIONARIO DE SINTAXIS --------------------
-    const keywords = [
-        'create', 'crear', 'crea',
-        'edit', 'editar',
-        'delete', 'eliminar', 'borrar',
-        'connect', 'conectar',
-        'route', 'ruta',
-        'list', 'listar',
-        'audit', 'auditar',
-        'bom', 'mto',
-        'help', 'ayuda',
-        'undo', 'deshacer',
-        'redo', 'rehacer'
-    ];
+    const keywords = ['create', 'crear', 'crea', 'edit', 'editar', 'delete', 'eliminar', 'borrar', 'connect', 'conectar', 'route', 'ruta', 'list', 'listar', 'audit', 'auditar', 'bom', 'mto', 'help', 'ayuda', 'undo', 'deshacer', 'redo', 'rehacer'];
+    const parameters = ['at', 'diam', 'diametro', 'height', 'altura', 'largo', 'material', 'spec', 'diameter', 'entries', 'entradas', 'spacing', 'espaciado', 'output', 'salida', 'from', 'desde', 'to', 'a', 'hasta', 'set', 'establecer', 'move', 'mover', 'add', 'añadir', 'remove', 'quitar', 'waypoint', 'punto', 'component', 'componente', 'position', 'posicion', 'pos', 'dir', 'direccion'];
     
-    const parameters = [
-        'at', 'diam', 'diametro', 'height', 'altura', 'largo',
-        'material', 'spec', 'diameter', 'entries', 'entradas',
-        'spacing', 'espaciado', 'output', 'salida',
-        'from', 'desde', 'to', 'a', 'hasta',
-        'set', 'establecer', 'move', 'mover',
-        'add', 'añadir', 'remove', 'quitar',
-        'waypoint', 'punto', 'component', 'componente',
-        'position', 'posicion', 'pos', 'dir', 'direccion'
-    ];
-    
-    // -------------------- 2. OBTENCIÓN DE SUGERENCIAS --------------------
     function getContextualSuggestions(text) {
         const parts = text.trim().split(/\s+/);
         if (parts.length === 0) return [];
-        
         const lastPart = parts[parts.length - 1].toLowerCase();
-        const prevPart = parts.length > 1 ? parts[parts.length - 2].toLowerCase() : '';
-        
         let suggestions = [];
-        
-        // Primera palabra: solo comandos principales
         if (parts.length === 1) {
             suggestions = keywords.filter(k => k.startsWith(lastPart));
-        }
-        // Segunda palabra: depende del comando
-        else if (parts.length === 2) {
+        } else if (parts.length === 2) {
             const cmd = parts[0].toLowerCase();
             if (cmd === 'create' || cmd === 'crear' || cmd === 'crea') {
                 const types = _catalog ? _catalog.listEquipmentTypes() : [];
@@ -81,12 +38,8 @@ const SmartFlowAutocomplete = (function() {
             } else if (cmd === 'audit' || cmd === 'auditar') {
                 suggestions = ['model', 'modelo'].filter(s => s.startsWith(lastPart));
             }
-        }
-        // Tercera palabra en adelante: parámetros o tags
-        else {
+        } else {
             const cmd = parts[0].toLowerCase();
-            
-            // Tags de equipos/líneas
             if (cmd === 'edit' || cmd === 'editar' || cmd === 'delete' || cmd === 'eliminar') {
                 const type = parts[1].toLowerCase();
                 if (type === 'equipment' || type === 'equipo' || type === 'line' || type === 'línea') {
@@ -100,7 +53,6 @@ const SmartFlowAutocomplete = (function() {
                     suggestions = tags.filter(t => t.toLowerCase().startsWith(lastPart));
                 }
             } else if (cmd === 'connect' || cmd === 'conectar' || cmd === 'route' || cmd === 'ruta') {
-                // Puertos de equipos/líneas
                 const db = _core ? _core.getDb() : null;
                 const objTag = parts[1];
                 const obj = db?.equipos?.find(e => e.tag === objTag) || db?.lines?.find(l => l.tag === objTag);
@@ -108,33 +60,17 @@ const SmartFlowAutocomplete = (function() {
                     suggestions = obj.puertos.map(p => p.id).filter(id => id.toLowerCase().startsWith(lastPart));
                 }
             }
-            
-            // Parámetros genéricos
             if (suggestions.length === 0) {
                 suggestions = parameters.filter(p => p.startsWith(lastPart));
             }
         }
-        
         return suggestions.slice(0, 10);
     }
     
-    // -------------------- 3. INTERFAZ VISUAL --------------------
     function createSuggestionBox() {
         const box = document.createElement('div');
         box.id = 'autocomplete-box';
-        box.style.cssText = `
-            position: absolute;
-            background: #1e1e2e;
-            border: 1px solid #7c3aed;
-            border-radius: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 10000;
-            display: none;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        `;
+        box.style.cssText = `position:absolute;background:#1e1e2e;border:1px solid #7c3aed;border-radius:8px;max-height:200px;overflow-y:auto;z-index:10000;display:none;font-family:'Courier New',monospace;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.5)`;
         document.body.appendChild(box);
         return box;
     }
@@ -143,29 +79,22 @@ const SmartFlowAutocomplete = (function() {
         if (!_suggestionBox) {
             _suggestionBox = createSuggestionBox();
         }
-        
         _currentSuggestions = suggestions;
         _selectedIndex = -1;
-        
         if (suggestions.length === 0) {
             _suggestionBox.style.display = 'none';
             return;
         }
-        
         let html = '';
         suggestions.forEach((s, idx) => {
             html += `<div class="autocomplete-item" data-index="${idx}" style="padding:8px 12px;cursor:pointer;color:#e0e6ed;border-bottom:1px solid #2a2a4a;">${s}</div>`;
         });
         _suggestionBox.innerHTML = html;
-        
-        // Posicionar bajo el textarea
         const rect = _textarea.getBoundingClientRect();
         _suggestionBox.style.left = rect.left + 'px';
         _suggestionBox.style.top = (rect.bottom + 5) + 'px';
         _suggestionBox.style.width = rect.width + 'px';
         _suggestionBox.style.display = 'block';
-        
-        // Eventos de clic
         _suggestionBox.querySelectorAll('.autocomplete-item').forEach(el => {
             el.addEventListener('click', () => {
                 const idx = parseInt(el.dataset.index);
@@ -194,13 +123,11 @@ const SmartFlowAutocomplete = (function() {
     
     function acceptSuggestion(suggestion) {
         if (!_textarea) return;
-        
         const text = _textarea.value;
         const lastSpace = text.lastIndexOf(' ');
         const newText = text.substring(0, lastSpace + 1) + suggestion + ' ';
         _textarea.value = newText;
         _textarea.focus();
-        
         hideSuggestions();
     }
     
@@ -212,7 +139,6 @@ const SmartFlowAutocomplete = (function() {
         _selectedIndex = -1;
     }
     
-    // -------------------- 4. MANEJO DE EVENTOS --------------------
     function onInput(e) {
         const text = _textarea.value;
         const suggestions = getContextualSuggestions(text);
@@ -221,7 +147,6 @@ const SmartFlowAutocomplete = (function() {
     
     function onKeyDown(e) {
         if (_currentSuggestions.length === 0) return;
-        
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             _selectedIndex = Math.min(_selectedIndex + 1, _currentSuggestions.length - 1);
@@ -247,37 +172,17 @@ const SmartFlowAutocomplete = (function() {
         setTimeout(hideSuggestions, 200);
     }
     
-    // -------------------- 5. INICIALIZACIÓN --------------------
     function init(textareaElement, coreInstance, catalogInstance, commandsInstance) {
         _textarea = textareaElement;
         _core = coreInstance;
         _catalog = catalogInstance;
         _commands = commandsInstance;
-        
         _textarea.addEventListener('input', onInput);
         _textarea.addEventListener('keydown', onKeyDown);
         _textarea.addEventListener('blur', onBlur);
-        
-        // Atributos de accesibilidad
         _textarea.setAttribute('aria-autocomplete', 'list');
         _textarea.setAttribute('aria-expanded', 'false');
     }
     
-    // -------------------- API PÚBLICA --------------------
-    return {
-        init,
-        hideSuggestions
-    };
+    return { init, hideSuggestions };
 })();
-```
-
-Modificaciones en js/main.js
-
-Añada la inicialización del módulo dentro de initModules():
-
-```javascript
-// Después de inicializar los otros módulos
-if (typeof SmartFlowAutocomplete !== 'undefined') {
-    SmartFlowAutocomplete.init(commandText, SmartFlowCore, SmartFlowCatalog, SmartFlowCommands);
-}
-
