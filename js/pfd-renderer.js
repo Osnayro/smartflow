@@ -1,990 +1,1172 @@
-
 // ============================================================
-// SMARTFLOW PFD RENDERER v1.2 - Renderizado de Diagrama de Flujo
+// SMARTFLOW PFD RENDERER v1.1 - Motor de Renderizado de Diagramas
 // Archivo: js/pfd-renderer.js
-// Novedades v1.2:
-//   - API compatible con main.js (loadFromCore, exportPNG, exportSVG)
-//   - setSelectionCallback
-//   - getEquipmentLabel extendido (todos los tipos del catálogo)
-//   - Interactividad básica (click para seleccionar)
+// Novedades v1.1:
+//   - Detección de cruces entre streams no conectados
+//   - Dibujo de puentes (bridges) según norma ISA
+//   - Ruteo ortogonal mejorado
+//   - Corrección: API pública fuera del constructor
 // ============================================================
 
 const SmartFlowPFDRenderer = (function() {
     
-    let _core = null;
-    let _canvas = null;
-    let _ctx = null;
-    let _notify = function(msg) { console.log(msg); };
-    
-    // Callbacks
-    let _onSelectionChanged = null;
-    let _selectedTag = null;
-    
     // ================================================================
-    //  CONFIGURACIÓN DE LAYOUT
+    // 1. CONFIGURACIÓN DE LAYOUT
     // ================================================================
     const LAYOUT = {
-        startX: 120,
-        startY: 120,
-        spacingX: 280,
-        spacingY: 200,
-        equipmentSize: 60,
-        marginTop: 70,
-        marginLeft: 100,
-        gridSize: 20,
-        jumpSize: 12,
-        arrowSize: 10
+        SPACING_X: 200,
+        SPACING_Y: 150,
+        MARGIN: 100,
+        GRID_SIZE: 20,
+        LABEL_OFFSET: 15,
+        STREAM_LABEL_OFFSET: 30,
+        MIN_STREAM_SEGMENT: 30,
+        BRIDGE_RADIUS: 6,
+        BRIDGE_GAP: 4
     };
-    
+
     // ================================================================
-    //  COLORES POR TIPO DE FLUIDO
+    // 2. CLASE PRINCIPAL DEL DIAGRAMA PFD
     // ================================================================
-    const FLUID_COLORS = {
-        'WATER': '#3b82f6', 'STEAM': '#ef4444', 'CONDENSATE': '#f59e0b',
-        'AIR': '#94a3b8', 'NITROGEN': '#8b5cf6', 'NATURAL_GAS': '#f97316',
-        'CRUDE_OIL': '#1e293b', 'DIESEL': '#92400e', 'GASOLINE': '#ea580c',
-        'ETHANOL': '#a855f7', 'METHANOL': '#7c3aed', 'PROCESS_WATER': '#06b6d4',
-        'COOLING_WATER': '#0ea5e9', 'CHILLED_WATER': '#2563eb', 'HOT_OIL': '#dc2626',
-        'THERMAL_FLUID': '#b91c1c', 'BRINE': '#0891b2', 'GLYCOL': '#4f46e5',
-        'LUBE_OIL': '#854d0e', 'STEAM_COND': '#fbbf24', 'AMMONIA': '#84cc16',
-        'CHLORINE': '#65a30d', 'H2SO4': '#ca8a04', 'NAOH': '#eab308',
-        'HCL': '#a3e635', 'DEFAULT': '#64748b'
-    };
-    
-    // ================================================================
-    //  ESTADO INTERNO
-    // ================================================================
-    let _equipmentPositions = {};
-    let _streamRoutes = [];
-    let _crossings = [];
-    
-    // ================================================================
-    //  NORMALIZACIÓN DE FLUIDOS
-    // ================================================================
-    function normalizeFluid(fluid) {
-        if (!fluid) return 'DEFAULT';
-        const upper = fluid.toUpperCase().replace(/ /g, '_');
-        if (FLUID_COLORS[upper]) return upper;
-        // Búsqueda parcial
-        for (var key in FLUID_COLORS) {
-            if (upper.includes(key) || key.includes(upper)) return key;
-        }
-        return 'DEFAULT';
-    }
-    
-    // ================================================================
-    //  ALGORITMO DE LAYOUT AUTOMÁTICO
-    // ================================================================
-    
-    function calculateLayout() {
-        var streams = _core.getStreams ? _core.getStreams() : [];
-        var equipos = _core.getEquipos ? _core.getEquipos() : [];
-        
-        _equipmentPositions = {};
-        _streamRoutes = [];
-        _crossings = [];
-        
-        if (equipos.length === 0) return;
-        
-        // Filtrar equipos de proceso
-        var processEquipos = equipos.filter(function(eq) {
-            return !eq.isFitting && eq.tipo !== 'plataforma';
-        });
-        
-        if (processEquipos.length === 0) return;
-        
-        // Construir grafo
-        var graph = new Map();
-        var inDegree = new Map();
-        
-        processEquipos.forEach(function(eq) {
-            graph.set(eq.tag, { from: [], to: [] });
-            inDegree.set(eq.tag, 0);
-        });
-        
-        streams.forEach(function(s) {
-            if (s.from && graph.has(s.from)) {
-                graph.get(s.from).to.push(s);
-            }
-            if (s.to && graph.has(s.to)) {
-                graph.get(s.to).from.push(s);
-                inDegree.set(s.to, (inDegree.get(s.to) || 0) + 1);
-            }
-        });
-        
-        // Ordenamiento topológico
-        var colMap = new Map();
-        var columns = [];
-        
-        var sources = processEquipos
-            .filter(function(eq) { return (inDegree.get(eq.tag) || 0) === 0; })
-            .map(function(eq) { return eq.tag; });
-        
-        if (sources.length === 0 && processEquipos.length > 0) {
-            sources = [processEquipos[0].tag];
-        }
-        
-        var queue = sources.map(function(tag) { return { tag: tag, col: 0 }; });
-        
-        while (queue.length > 0) {
-            var item = queue.shift();
-            if (colMap.has(item.tag)) continue;
+    class PFDDiagram {
+        constructor(canvasId, options = {}) {
+            this.canvas = typeof canvasId === 'string' 
+                ? document.getElementById(canvasId) 
+                : canvasId;
             
-            colMap.set(item.tag, item.col);
-            if (!columns[item.col]) columns[item.col] = [];
-            columns[item.col].push(item.tag);
+            if (!this.canvas) {
+                console.error('Canvas no encontrado:', canvasId);
+                return;
+            }
             
-            var node = graph.get(item.tag);
-            if (node) {
-                node.to.forEach(function(s) {
-                    if (s.to && !colMap.has(s.to)) {
-                        queue.push({ tag: s.to, col: item.col + 1 });
-                    }
+            this.ctx = this.canvas.getContext('2d');
+            this.options = Object.assign({}, LAYOUT, options);
+            
+            this.equipment = [];
+            this.streams = [];
+            this.connections = [];
+            this.crossings = [];
+            this.selectedElement = null;
+            this.hoveredElement = null;
+            this.dragging = null;
+            
+            this.scale = 1.0;
+            this.offsetX = 0;
+            this.offsetY = 0;
+            
+            this.positionHistory = [];
+            this.onSelectionChanged = null;
+            
+            this._bindEvents();
+        }
+
+        // ================================================================
+        // 3. CARGA DE DATOS DESDE EL CORE
+        // ================================================================
+        
+        loadFromCore(equiposData, streamsData) {
+            this.equipment = [];
+            this.streams = [];
+            this.connections = [];
+            this.crossings = [];
+            
+            if (!equiposData || equiposData.length === 0) return;
+            
+            const processEquipment = equiposData.filter(eq => {
+                if (eq.isFitting) return false;
+                if (eq.tipo === 'plataforma') return false;
+                return true;
+            });
+            
+            processEquipment.forEach((eq, index) => {
+                const pfdSymbol = typeof SmartFlowPFDSymbols !== 'undefined' ? 
+                    SmartFlowPFDSymbols.getPFDSymbol(eq.tipo) : null;
+                const size = pfdSymbol ? pfdSymbol.size : { width: 80, height: 60 };
+                
+                const eqNode = {
+                    tag: eq.tag,
+                    tipo: eq.tipo,
+                    spec: eq.spec || '',
+                    material: eq.material || '',
+                    x: eq.pfdX || (this.options.MARGIN + (index % 4) * this.options.SPACING_X),
+                    y: eq.pfdY || (this.options.MARGIN + Math.floor(index / 4) * this.options.SPACING_Y),
+                    width: size.width,
+                    height: size.height,
+                    symbol: pfdSymbol,
+                    puertos: eq.puertos || [],
+                    locked: eq.pfdLocked || false
+                };
+                
+                this.equipment.push(eqNode);
+            });
+            
+            if (streamsData && streamsData.length > 0) {
+                streamsData.forEach(stream => {
+                    this.addStream(stream);
                 });
             }
-        }
-        
-        // Equipos no conectados
-        processEquipos.forEach(function(eq) {
-            if (!colMap.has(eq.tag)) {
-                var col = columns.length;
-                colMap.set(eq.tag, col);
-                if (!columns[col]) columns[col] = [];
-                columns[col].push(eq.tag);
-            }
-        });
-        
-        // Asignar posiciones
-        var posMap = {};
-        
-        columns.forEach(function(colTags, colIndex) {
-            var totalHeight = colTags.length * LAYOUT.spacingY;
-            var startY = LAYOUT.startY + Math.max(0, (LAYOUT.spacingY * 4 - totalHeight) / 2);
             
-            colTags.forEach(function(tag, rowIndex) {
-                posMap[tag] = {
-                    x: LAYOUT.startX + colIndex * LAYOUT.spacingX,
-                    y: Math.max(LAYOUT.startY, startY + rowIndex * LAYOUT.spacingY)
-                };
-            });
-        });
-        
-        _equipmentPositions = posMap;
-        
-        // Calcular rutas ortogonales
-        var routes = [];
-        streams.forEach(function(s) {
-            if (!s.from || !s.to) return;
-            var fromPos = posMap[s.from];
-            var toPos = posMap[s.to];
-            if (!fromPos || !toPos) return;
-            var route = calculateOrthogonalRoute(s, fromPos, toPos);
-            if (route) routes.push(route);
-        });
-        
-        _streamRoutes = routes;
-        
-        // Detectar cruces
-        _crossings = detectCrossings(_streamRoutes);
-    }
-    
-    // ================================================================
-    //  ALGORITMO DE RUTEO ORTOGONAL
-    // ================================================================
-    
-    function calculateOrthogonalRoute(stream, fromPos, toPos) {
-        var fromX = fromPos.x + LAYOUT.equipmentSize / 2;
-        var fromY = fromPos.y;
-        var toX = toPos.x - LAYOUT.equipmentSize / 2;
-        var toY = toPos.y;
-        
-        var points = [{ x: fromX, y: fromY }];
-        var endPoint = { x: toX, y: toY };
-        
-        if (Math.abs(fromY - toY) < 10) {
-            points.push(endPoint);
-        } else {
-            var midX = (fromX + toX) / 2;
-            points.push({ x: midX, y: fromY });
-            points.push({ x: midX, y: toY });
-            points.push(endPoint);
+            this._detectCrossings();
+            
+            if (this.equipment.length > 0) {
+                this.autoLayout();
+            }
+            this._savePositionState();
         }
-        
-        var snappedPoints = points.map(function(p) {
-            return {
-                x: Math.round(p.x / LAYOUT.gridSize) * LAYOUT.gridSize,
-                y: Math.round(p.y / LAYOUT.gridSize) * LAYOUT.gridSize
+
+        addStream(streamData) {
+            const fromEq = this.equipment.find(e => e.tag === streamData.from);
+            const toEq = this.equipment.find(e => e.tag === streamData.to);
+            
+            if (!fromEq || !toEq) {
+                console.warn('Stream ' + streamData.tag + ': equipo origen/destino no encontrado en PFD');
+                return null;
+            }
+            
+            const fromPort = this._findBestPort(fromEq, 'out');
+            const toPort = this._findBestPort(toEq, 'in');
+            
+            const stream = {
+                tag: streamData.tag,
+                from: streamData.from,
+                to: streamData.to,
+                fluid: streamData.fluid || '',
+                flow: streamData.flow || 0,
+                flowUnit: streamData.flowUnit || 'm3/h',
+                phase: streamData.phase || 'LIQUID',
+                fromPoint: fromPort,
+                toPoint: toPort,
+                route: null,
+                color: this._getStreamColor(streamData)
             };
-        });
+            
+            this.streams.push(stream);
+            this._calculateRoute(stream);
+            
+            return stream;
+        }
+
+        _findBestPort(eqNode, direction) {
+            const symbol = eqNode.symbol;
+            if (!symbol || !symbol.connectionPoints) {
+                return {
+                    x: direction === 'in' ? eqNode.x : eqNode.x + eqNode.width,
+                    y: eqNode.y + eqNode.height / 2,
+                    portId: direction === 'in' ? 'left' : 'right'
+                };
+            }
+            
+            const ports = Object.entries(symbol.connectionPoints);
+            const matchingPort = ports.find(function(entry) { 
+                return entry[1].direccion === direction; 
+            });
+            
+            if (matchingPort) {
+                const portId = matchingPort[0];
+                const point = matchingPort[1];
+                return {
+                    x: eqNode.x + point.offsetX * eqNode.width,
+                    y: eqNode.y + point.offsetY * eqNode.height,
+                    portId: portId
+                };
+            }
+            
+            if (ports.length > 0) {
+                const portId = ports[0][0];
+                const point = ports[0][1];
+                return {
+                    x: eqNode.x + point.offsetX * eqNode.width,
+                    y: eqNode.y + point.offsetY * eqNode.height,
+                    portId: portId
+                };
+            }
+            
+            return {
+                x: direction === 'in' ? eqNode.x : eqNode.x + eqNode.width,
+                y: eqNode.y + eqNode.height / 2,
+                portId: 'default'
+            };
+        }
+
+        _calculateRoute(stream) {
+            const from = stream.fromPoint;
+            const to = stream.toPoint;
+            
+            if (!from || !to) return;
+            
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            
+            let route;
+            
+            if (Math.abs(dx) < 20 || Math.abs(dy) < 20) {
+                route = [from, to];
+            } else if (Math.abs(dx) > Math.abs(dy)) {
+                const midX = from.x + dx * 0.5;
+                route = [
+                    { x: from.x, y: from.y },
+                    { x: midX, y: from.y },
+                    { x: midX, y: to.y },
+                    { x: to.x, y: to.y }
+                ];
+            } else {
+                const midY = from.y + dy * 0.5;
+                route = [
+                    { x: from.x, y: from.y },
+                    { x: from.x, y: midY },
+                    { x: to.x, y: midY },
+                    { x: to.x, y: to.y }
+                ];
+            }
+            
+            stream.route = route;
+        }
+
+        _getStreamColor(streamData) {
+            const phase = (streamData.phase || '').toUpperCase();
+            const colors = {
+                'LIQUID': '#3b82f6',
+                'GAS': '#a855f7',
+                'VAPOR': '#ef4444',
+                'MIXED': '#f59e0b',
+                'SOLID': '#78716c'
+            };
+            return colors[phase] || '#64748b';
+        }
+
+        // ================================================================
+        // 4. DETECCIÓN DE CRUCES ENTRE STREAMS NO CONECTADOS
+        // ================================================================
         
-        var normalizedFluid = normalizeFluid(stream.fluid);
-        
-        return {
-            stream: stream,
-            points: snappedPoints,
-            color: FLUID_COLORS[normalizedFluid] || FLUID_COLORS['DEFAULT']
-        };
-    }
-    
-    // ================================================================
-    //  DETECCIÓN DE CRUCES
-    // ================================================================
-    
-    function detectCrossings(routes) {
-        var crossings = [];
-        
-        for (var i = 0; i < routes.length; i++) {
-            for (var j = i + 1; j < routes.length; j++) {
-                var routeA = routes[i];
-                var routeB = routes[j];
-                if (!routeA || !routeB) continue;
-                if (routeA.stream.tag === routeB.stream.tag) continue;
-                
-                for (var a = 0; a < routeA.points.length - 1; a++) {
-                    for (var b = 0; b < routeB.points.length - 1; b++) {
-                        var intersection = lineIntersection(
-                            routeA.points[a], routeA.points[a + 1],
-                            routeB.points[b], routeB.points[b + 1]
-                        );
-                        
-                        if (intersection) {
-                            crossings.push({
-                                routeA: routeA,
-                                routeB: routeB,
-                                point: intersection,
-                                segA: a,
-                                segB: b
-                            });
+        _detectCrossings() {
+            this.crossings = [];
+            
+            for (let i = 0; i < this.streams.length; i++) {
+                for (let j = i + 1; j < this.streams.length; j++) {
+                    const sA = this.streams[i];
+                    const sB = this.streams[j];
+                    
+                    if (sA.from === sB.from || sA.from === sB.to ||
+                        sA.to === sB.from || sA.to === sB.to) {
+                        continue;
+                    }
+                    
+                    if (!sA.route || !sB.route) continue;
+                    
+                    for (let ai = 0; ai < sA.route.length - 1; ai++) {
+                        for (let bj = 0; bj < sB.route.length - 1; bj++) {
+                            const crossing = this._segmentIntersection(
+                                sA.route[ai], sA.route[ai + 1],
+                                sB.route[bj], sB.route[bj + 1]
+                            );
+                            
+                            if (crossing) {
+                                const distFromAStart = Math.hypot(crossing.x - sA.route[0].x, crossing.y - sA.route[0].y);
+                                const distFromAEnd = Math.hypot(crossing.x - sA.route[sA.route.length - 1].x, crossing.y - sA.route[sA.route.length - 1].y);
+                                const distFromBStart = Math.hypot(crossing.x - sB.route[0].x, crossing.y - sB.route[0].y);
+                                const distFromBEnd = Math.hypot(crossing.x - sB.route[sB.route.length - 1].x, crossing.y - sB.route[sB.route.length - 1].y);
+                                
+                                const minDist = 25;
+                                if (distFromAStart > minDist && distFromAEnd > minDist &&
+                                    distFromBStart > minDist && distFromBEnd > minDist) {
+                                    
+                                    const segA_H = Math.abs(sA.route[ai + 1].x - sA.route[ai].x) > Math.abs(sA.route[ai + 1].y - sA.route[ai].y);
+                                    const segB_H = Math.abs(sB.route[bj + 1].x - sB.route[bj].x) > Math.abs(sB.route[bj + 1].y - sB.route[bj].y);
+                                    
+                                    this.crossings.push({
+                                        x: crossing.x,
+                                        y: crossing.y,
+                                        streamA: sA.tag,
+                                        streamB: sB.tag,
+                                        topStream: segA_H ? sA.tag : sB.tag,
+                                        bottomStream: segA_H ? sB.tag : sA.tag
+                                    });
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         
-        return crossings;
-    }
-    
-    function lineIntersection(p1, p2, p3, p4) {
-        var d1x = p2.x - p1.x;
-        var d1y = p2.y - p1.y;
-        var d2x = p4.x - p3.x;
-        var d2y = p4.y - p3.y;
-        
-        var denominator = d1x * d2y - d1y * d2x;
-        if (Math.abs(denominator) < 0.001) return null;
-        
-        var t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denominator;
-        var u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denominator;
-        
-        if (t > 0.05 && t < 0.95 && u > 0.05 && u < 0.95) {
-            return { x: p1.x + t * d1x, y: p1.y + t * d1y };
-        }
-        
-        return null;
-    }
-    
-    function getSegmentDirection(p1, p2) {
-        return Math.abs(p2.y - p1.y) < Math.abs(p2.x - p1.x) ? 'HORIZONTAL' : 'VERTICAL';
-    }
-    
-    // ================================================================
-    //  DIBUJO DE EQUIPOS
-    // ================================================================
-    
-    function drawEquipment(ctx, eq) {
-        var pos = _equipmentPositions[eq.tag];
-        if (!pos) return;
-        
-        var x = pos.x;
-        var y = pos.y;
-        var s = LAYOUT.equipmentSize / 2;
-        var isSelected = (_selectedTag === eq.tag);
-        
-        ctx.save();
-        
-        // Sombra si está seleccionado
-        if (isSelected) {
-            ctx.shadowColor = '#3b82f6';
-            ctx.shadowBlur = 12;
-        }
-        
-        switch (eq.tipo) {
-            case 'tanque_v': case 'torre': case 'reactor':
-            case 'reactor_encamisado': case 'autoclave': case 'caldera':
-            case 'cristalizador': case 'evaporador': case 'desgasificador':
-            case 'desmineralizador': case 'suavizador':
-                ctx.beginPath();
-                ctx.arc(x, y, s, 0, Math.PI * 2);
-                ctx.fillStyle = '#e8f4f8';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#1e40af';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                break;
-                
-            case 'bomba': case 'bomba_dosificacion': case 'bomba_z':
-            case 'bomba_sumergible': case 'compresor':
-                ctx.beginPath();
-                ctx.arc(x, y, s * 0.8, 0, Math.PI * 2);
-                ctx.fillStyle = '#fef3c7';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#d97706';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(x + s * 0.55, y);
-                ctx.lineTo(x - s * 0.25, y - s * 0.45);
-                ctx.lineTo(x - s * 0.25, y + s * 0.45);
-                ctx.closePath();
-                ctx.fillStyle = '#d97706';
-                ctx.fill();
-                break;
-                
-            case 'intercambiador': case 'condensador':
-            case 'calentador_fuego_directo': case 'pasteurizador':
-            case 'esterilizador_uht':
-                ctx.beginPath();
-                ctx.arc(x, y, s, 0, Math.PI * 2);
-                ctx.fillStyle = '#fce7f3';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#be185d';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(x - s * 0.6, y - s * 0.6);
-                ctx.lineTo(x + s * 0.6, y + s * 0.6);
-                ctx.moveTo(x + s * 0.6, y - s * 0.6);
-                ctx.lineTo(x - s * 0.6, y + s * 0.6);
-                ctx.strokeStyle = '#be185d';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-                break;
-                
-            case 'tanque_h': case 'separador': case 'separador_trifasico':
-            case 'filtro_prensa': case 'filtro_duplex': case 'slug_catcher':
-            case 'secador_rotativo': case 'filtro_tambor':
-                ctx.beginPath();
-                ctx.ellipse(x, y, s * 1.3, s * 0.65, 0, 0, Math.PI * 2);
-                ctx.fillStyle = '#dbeafe';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#2563eb';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                break;
-                
-            case 'columna_fraccionadora': case 'absorbedor': case 'stripper':
-                ctx.beginPath();
-                ctx.ellipse(x, y, s * 0.6, s * 2, 0, 0, Math.PI * 2);
-                ctx.fillStyle = '#e8f4f8';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#1e40af';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                break;
-                
-            case 'filtro_arena': case 'filtro_carbon':
-            case 'clarificador': case 'espesador':
-                ctx.beginPath();
-                ctx.arc(x, y, s, 0, Math.PI * 2);
-                ctx.fillStyle = '#dbeafe';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#0284c7';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                break;
-                
-            case 'agitador': case 'molino': case 'centrifuga':
-            case 'centrifuga_discos': case 'homogeneizador': case 'homogeneizador_ap':
-                ctx.beginPath();
-                ctx.arc(x, y, s, 0, Math.PI * 2);
-                ctx.fillStyle = '#f1f5f9';
-                ctx.fill();
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#475569';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.stroke();
-                break;
-                
-            case 'osmosis': case 'skid_inyeccion': case 'llenadora':
-            case 'dosificador_quimico': case 'celda_electrolitica':
-            case 'floculador': case 'tina_quesera': case 'tanque_aseptico':
-            case 'tanque_acero':
-                ctx.fillStyle = '#e2e8f0';
-                ctx.fillRect(x - s * 0.9, y - s * 0.6, s * 1.8, s * 1.2);
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#475569';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.strokeRect(x - s * 0.9, y - s * 0.6, s * 1.8, s * 1.2);
-                break;
-                
-            case 'antorcha':
-                ctx.fillStyle = '#fee2e2';
-                ctx.fillRect(x - s * 0.3, y - s * 0.5, s * 0.6, s * 1.0);
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#dc2626';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.strokeRect(x - s * 0.3, y - s * 0.5, s * 0.6, s * 1.0);
-                break;
-                
-            default:
-                ctx.fillStyle = '#f8fafc';
-                ctx.fillRect(x - s * 0.7, y - s * 0.5, s * 1.4, s * 1.0);
-                ctx.strokeStyle = isSelected ? '#3b82f6' : '#64748b';
-                ctx.lineWidth = isSelected ? 3 : 2.5;
-                ctx.strokeRect(x - s * 0.7, y - s * 0.5, s * 1.4, s * 1.0);
-        }
-        
-        // Tag
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 11px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText(eq.tag, x, y + s + 16);
-        
-        // Tipo
-        ctx.fillStyle = '#64748b';
-        ctx.font = '8px Segoe UI';
-        ctx.fillText(getEquipmentLabel(eq.tipo), x, y + s + 30);
-        
-        ctx.restore();
-    }
-    
-    function getEquipmentLabel(tipo) {
-        if (!tipo) return '';
-        // Buscar en el catálogo primero
-        if (typeof SmartFlowCatalog !== 'undefined') {
-            var eq = SmartFlowCatalog.getEquipment(tipo);
-            if (eq && eq.nombre) return eq.nombre;
-        }
-        // Fallback
-        var labels = {
-            'tanque_v': 'Tanque Vertical', 'tanque_h': 'Tanque Horizontal',
-            'bomba': 'Bomba Centrífuga', 'bomba_z': 'Bomba Succión Inf.',
-            'bomba_dosificacion': 'Bomba Dosificadora', 'bomba_sumergible': 'Bomba Sumergible',
-            'intercambiador': 'Intercambiador', 'torre': 'Torre',
-            'reactor': 'Reactor', 'reactor_encamisado': 'Reactor Encamisado',
-            'compresor': 'Compresor', 'separador': 'Separador',
-            'caldera': 'Caldera', 'columna_fraccionadora': 'Columna Fracc.',
-            'condensador': 'Condensador', 'evaporador': 'Evaporador',
-            'cristalizador': 'Cristalizador', 'autoclave': 'Autoclave',
-            'agitador': 'Agitador', 'molino': 'Molino',
-            'centrifuga': 'Centrífuga', 'centrifuga_discos': 'Centrífuga Discos',
-            'filtro_prensa': 'Filtro Prensa', 'filtro_duplex': 'Filtro Dúplex',
-            'filtro_arena': 'Filtro Arena', 'filtro_carbon': 'Filtro Carbón',
-            'filtro_tambor': 'Filtro Tambor', 'clarificador': 'Clarificador',
-            'espesador': 'Espesador', 'desgasificador': 'Desgasificador',
-            'desmineralizador': 'Desmineralizador', 'suavizador': 'Suavizador',
-            'osmosis': 'Ósmosis Inversa', 'separador_trifasico': 'Separador Trifásico',
-            'slug_catcher': 'Slug Catcher', 'calentador_fuego_directo': 'Calentador',
-            'absorbedor': 'Absorbedor', 'stripper': 'Stripper',
-            'secador_rotativo': 'Secador Rotativo', 'antorcha': 'Antorcha',
-            'pasteurizador': 'Pasteurizador', 'esterilizador_uht': 'Esterilizador UHT',
-            'homogeneizador': 'Homogeneizador', 'homogeneizador_ap': 'Homogeneizador AP',
-            'llenadora': 'Llenadora', 'tina_quesera': 'Tina Quesera',
-            'tanque_aseptico': 'Tanque Aséptico', 'tanque_acero': 'Tanque Acero',
-            'skid_inyeccion': 'Skid Inyección', 'dosificador_quimico': 'Dosificador',
-            'celda_electrolitica': 'Celda Electrolítica', 'floculador': 'Floculador',
-            'canaleta_parshall': 'Canaleta Parshall'
-        };
-        return labels[tipo] || tipo.replace(/_/g, ' ');
-    }
-    
-    // ================================================================
-    //  DIBUJO DE CORRIENTES
-    // ================================================================
-    
-    function drawStreamWithJumps(ctx, route, jumpSegments) {
-        if (!route || route.points.length < 2) return;
-        
-        var points = route.points;
-        var color = route.color;
-        
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        for (var i = 0; i < points.length - 1; i++) {
-            var segKey = route.stream.tag + '_' + i;
-            if (jumpSegments.has(segKey)) continue;
+        _segmentIntersection(p1, p2, p3, p4) {
+            const seg1_H = Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y);
+            const seg2_H = Math.abs(p4.x - p3.x) > Math.abs(p4.y - p3.y);
             
-            ctx.beginPath();
-            ctx.moveTo(points[i].x, points[i].y);
-            ctx.lineTo(points[i + 1].x, points[i + 1].y);
-            ctx.stroke();
-        }
-        
-        ctx.restore();
-    }
-    
-    function drawStreamLabels(ctx, route) {
-        if (!route || route.points.length < 2) return;
-        
-        var stream = route.stream;
-        var points = route.points;
-        var color = route.color;
-        
-        ctx.save();
-        
-        var firstMidX = (points[0].x + points[1].x) / 2;
-        var firstMidY = points[0].y - 10;
-        
-        ctx.fillStyle = color;
-        ctx.font = 'bold 10px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText(stream.tag, firstMidX, firstMidY);
-        
-        if (points.length >= 3) {
-            var labelX = points[1].x + 10;
-            var labelY = (points[1].y + points[2].y) / 2;
+            if (seg1_H === seg2_H) return null;
             
-            ctx.fillStyle = '#1e293b';
-            ctx.font = '8px Segoe UI';
-            ctx.textAlign = 'left';
-            
-            var lines = [
-                (stream.fluid || 'N/D'),
-                formatValue(stream.flow, stream.flowUnit || 'm³/h'),
-                formatValue(stream.pressure, stream.pressureUnit || 'bar'),
-                formatValue(stream.temperature, stream.temperatureUnit || '°C')
-            ];
-            
-            var startY2 = labelY - (lines.length * 11) / 2;
-            lines.forEach(function(line, idx) {
-                ctx.fillText(line, labelX, startY2 + idx * 11 + 8);
-            });
-        } else if (points.length === 2) {
-            var cx = (points[0].x + points[1].x) / 2;
-            var cy = points[0].y - 10;
-            
-            ctx.fillStyle = '#1e293b';
-            ctx.font = '8px Segoe UI';
-            ctx.textAlign = 'center';
-            ctx.fillText(
-                stream.fluid + ' ' + formatValue(stream.flow, stream.flowUnit || 'm³/h'),
-                cx, cy
-            );
-        }
-        
-        ctx.restore();
-    }
-    
-    function formatValue(value, unit) {
-        if (value === undefined || value === null || value === 0) return 'N/D';
-        return value + ' ' + unit;
-    }
-    
-    // ================================================================
-    //  DIBUJO DE SALTOS
-    // ================================================================
-    
-    function drawJump(ctx, crossing) {
-        var point = crossing.point;
-        var routeA = crossing.routeA;
-        var routeB = crossing.routeB;
-        var segA = crossing.segA;
-        var segB = crossing.segB;
-        
-        var segADir = getSegmentDirection(routeA.points[segA], routeA.points[segA + 1]);
-        var segBDir = getSegmentDirection(routeB.points[segB], routeB.points[segB + 1]);
-        
-        var jumpingRoute, jumpingSeg;
-        
-        if (segADir === 'HORIZONTAL') {
-            jumpingRoute = routeA;
-            jumpingSeg = segA;
-        } else if (segBDir === 'HORIZONTAL') {
-            jumpingRoute = routeB;
-            jumpingSeg = segB;
-        } else {
-            jumpingRoute = routeA;
-            jumpingSeg = segA;
-        }
-        
-        var p1 = jumpingRoute.points[jumpingSeg];
-        var p2 = jumpingRoute.points[jumpingSeg + 1];
-        var isHorizontal = Math.abs(p2.y - p1.y) < Math.abs(p2.x - p1.x);
-        var gapSize = LAYOUT.jumpSize;
-        
-        ctx.save();
-        
-        if (isHorizontal) {
-            var jumpX = point.x;
-            var jumpY = point.y;
-            
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(jumpX - gapSize, jumpY);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.arc(jumpX, jumpY - gapSize, gapSize, 0, Math.PI, false);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(jumpX + gapSize, jumpY);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-        } else {
-            var jumpX2 = point.x;
-            var jumpY2 = point.y;
-            
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(jumpX2, jumpY2 - gapSize);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.arc(jumpX2 + gapSize, jumpY2, gapSize, -Math.PI / 2, Math.PI / 2, false);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(jumpX2, jumpY2 + gapSize);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-        }
-        
-        ctx.restore();
-    }
-    
-    // ================================================================
-    //  DIBUJO DE FLECHAS
-    // ================================================================
-    
-    function drawArrow(ctx, from, to, color) {
-        var angle = Math.atan2(to.y - from.y, to.x - from.x);
-        var arrowSize = LAYOUT.arrowSize;
-        
-        ctx.beginPath();
-        ctx.moveTo(to.x, to.y);
-        ctx.lineTo(
-            to.x - arrowSize * Math.cos(angle - 0.5),
-            to.y - arrowSize * Math.sin(angle - 0.5)
-        );
-        ctx.lineTo(
-            to.x - arrowSize * Math.cos(angle + 0.5),
-            to.y - arrowSize * Math.sin(angle + 0.5)
-        );
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.fill();
-    }
-    
-    // ================================================================
-    //  LEYENDA
-    // ================================================================
-    
-    function drawLegend(ctx) {
-        var streams = _core.getStreams ? _core.getStreams() : [];
-        if (streams.length === 0) return;
-        
-        var fluidSet = {};
-        streams.forEach(function(s) {
-            if (s.fluid) fluidSet[s.fluid] = true;
-        });
-        var fluidTypes = Object.keys(fluidSet);
-        if (fluidTypes.length === 0) return;
-        
-        var x = 15;
-        var y = 80;
-        
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 9px Segoe UI';
-        ctx.textAlign = 'left';
-        ctx.fillText('LEYENDA', x, y);
-        y += 14;
-        
-        fluidTypes.slice(0, 10).forEach(function(fluid) {
-            var norm = normalizeFluid(fluid);
-            var color = FLUID_COLORS[norm] || FLUID_COLORS['DEFAULT'];
-            
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + 30, y);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            
-            ctx.fillStyle = '#334155';
-            ctx.font = '8px Segoe UI';
-            ctx.fillText(fluid, x + 36, y + 3);
-            
-            y += 14;
-        });
-    }
-    
-    // ================================================================
-    //  RENDERIZADO PRINCIPAL
-    // ================================================================
-    
-    function render() {
-        if (!_ctx || !_canvas || !_core) return;
-        
-        var dpr = window.devicePixelRatio || 1;
-        var displayWidth = _canvas.width / dpr;
-        var displayHeight = _canvas.height / dpr;
-        
-        _ctx.clearRect(0, 0, displayWidth, displayHeight);
-        
-        // Fondo
-        _ctx.fillStyle = '#ffffff';
-        _ctx.fillRect(0, 0, displayWidth, displayHeight);
-        
-        // Título
-        _ctx.fillStyle = '#0f172a';
-        _ctx.font = 'bold 15px Segoe UI';
-        _ctx.textAlign = 'left';
-        _ctx.fillText('DIAGRAMA DE FLUJO DE PROCESO (PFD)', 20, 28);
-        
-        _ctx.fillStyle = '#64748b';
-        _ctx.font = '8px Segoe UI';
-        _ctx.fillText('ISO 10628 | Ruteo: Ortogonal | Saltos: SI', 20, 42);
-        
-        // Layout
-        calculateLayout();
-        
-        if (Object.keys(_equipmentPositions).length === 0) {
-            _ctx.fillStyle = '#94a3b8';
-            _ctx.font = '13px Segoe UI';
-            _ctx.textAlign = 'center';
-            _ctx.fillText('Sin equipos para mostrar', displayWidth / 2, displayHeight / 2);
-            _ctx.fillText('Use 🧭 Asistido o ⌨️ Cmd para crear equipos y streams', displayWidth / 2, displayHeight / 2 + 24);
-            return;
-        }
-        
-        // Mapa de segmentos con salto
-        var jumpSegments = new Set();
-        _crossings.forEach(function(crossing) {
-            var segADir = getSegmentDirection(
-                crossing.routeA.points[crossing.segA],
-                crossing.routeA.points[crossing.segA + 1]
-            );
-            var segBDir = getSegmentDirection(
-                crossing.routeB.points[crossing.segB],
-                crossing.routeB.points[crossing.segB + 1]
-            );
-            
-            if (segADir === 'HORIZONTAL') {
-                jumpSegments.add(crossing.routeA.stream.tag + '_' + crossing.segA);
-            } else if (segBDir === 'HORIZONTAL') {
-                jumpSegments.add(crossing.routeB.stream.tag + '_' + crossing.segB);
+            let hSeg, vSeg;
+            if (seg1_H) {
+                hSeg = { p1: p1, p2: p2 };
+                vSeg = { p1: p3, p2: p4 };
             } else {
-                jumpSegments.add(crossing.routeA.stream.tag + '_' + crossing.segA);
+                hSeg = { p1: p3, p2: p4 };
+                vSeg = { p1: p1, p2: p2 };
             }
-        });
-        
-        // PASO 1: Líneas principales
-        _streamRoutes.forEach(function(route) {
-            drawStreamWithJumps(_ctx, route, jumpSegments);
-        });
-        
-        // PASO 2: Saltos
-        _crossings.forEach(function(crossing) {
-            drawJump(_ctx, crossing);
-        });
-        
-        // PASO 3: Flechas
-        _streamRoutes.forEach(function(route) {
-            if (route.points.length >= 2) {
-                var last = route.points[route.points.length - 1];
-                var prev = route.points[route.points.length - 2];
-                drawArrow(_ctx, prev, last, route.color);
-            }
-        });
-        
-        // PASO 4: Etiquetas
-        _streamRoutes.forEach(function(route) {
-            drawStreamLabels(_ctx, route);
-        });
-        
-        // PASO 5: Equipos
-        var equipos = _core.getEquipos ? _core.getEquipos() : [];
-        equipos.forEach(function(eq) { drawEquipment(_ctx, eq); });
-        
-        // PASO 6: Leyenda
-        drawLegend(_ctx);
-    }
-    
-    // ================================================================
-    //  INICIALIZACIÓN
-    // ================================================================
-    
-    function init(canvasElement, coreInstance, notifyFn) {
-        _canvas = canvasElement;
-        _core = coreInstance;
-        _notify = notifyFn || _notify;
-        
-        if (_canvas) {
-            _ctx = _canvas.getContext('2d');
-            resizeCanvas();
             
-            // Evento click para selección
-            _canvas.addEventListener('click', function(e) {
-                var rect = _canvas.getBoundingClientRect();
-                var dpr = window.devicePixelRatio || 1;
-                var mx = (e.clientX - rect.left) / dpr;
-                var my = (e.clientY - rect.top) / dpr;
+            const hY = hSeg.p1.y;
+            const hX1 = Math.min(hSeg.p1.x, hSeg.p2.x);
+            const hX2 = Math.max(hSeg.p1.x, hSeg.p2.x);
+            
+            const vX = vSeg.p1.x;
+            const vY1 = Math.min(vSeg.p1.y, vSeg.p2.y);
+            const vY2 = Math.max(vSeg.p1.y, vSeg.p2.y);
+            
+            const margin = 3;
+            
+            if (vX >= hX1 - margin && vX <= hX2 + margin &&
+                hY >= vY1 - margin && hY <= vY2 + margin) {
+                return { x: vX, y: hY };
+            }
+            
+            return null;
+        }
+        
+        _drawBridge(ctx, crossing) {
+            const x = crossing.x;
+            const y = crossing.y;
+            const gap = this.options.BRIDGE_GAP || 4;
+            const radius = this.options.BRIDGE_RADIUS || 6;
+            
+            const streamH = this.streams.find(function(s) { return s.tag === crossing.topStream; });
+            
+            if (!streamH) return;
+            
+            // Borrar el segmento horizontal en el punto de cruce
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(x - gap - 2, y - 3, gap * 2 + 4, 6);
+            
+            // Dibujar el arco de puente
+            ctx.strokeStyle = streamH.color || '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x - gap, y);
+            ctx.quadraticCurveTo(x, y - radius, x + gap, y);
+            ctx.stroke();
+            
+            // Restaurar los extremos del stream horizontal
+            ctx.beginPath();
+            ctx.moveTo(x - gap - 1, y);
+            ctx.lineTo(x - gap, y);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(x + gap, y);
+            ctx.lineTo(x + gap + 1, y);
+            ctx.stroke();
+        }
+
+        // ================================================================
+        // 5. LAYOUT AUTOMÁTICO
+        // ================================================================
+        
+        autoLayout() {
+            if (this.equipment.length === 0) return;
+            
+            const graph = {};
+            const inDegree = {};
+            
+            this.equipment.forEach(function(eq) {
+                graph[eq.tag] = [];
+                inDegree[eq.tag] = 0;
+            });
+            
+            this.streams.forEach(function(stream) {
+                if (graph[stream.from] && graph[stream.to]) {
+                    graph[stream.from].push(stream.to);
+                    inDegree[stream.to] = (inDegree[stream.to] || 0) + 1;
+                }
+            });
+            
+            const layers = [];
+            const queue = [];
+            
+            Object.entries(inDegree).forEach(function(entry) {
+                if (entry[1] === 0) queue.push(entry[0]);
+            });
+            
+            if (queue.length === 0) {
+                this.equipment.forEach(function(eq) { queue.push(eq.tag); });
+            }
+            
+            const visited = new Set();
+            let currentLayer = queue.slice();
+            
+            while (currentLayer.length > 0) {
+                layers.push(currentLayer);
+                const nextLayer = [];
                 
-                var equipos = _core.getEquipos ? _core.getEquipos() : [];
-                var found = null;
+                currentLayer.forEach(function(tag) {
+                    if (visited.has(tag)) return;
+                    visited.add(tag);
+                    
+                    (graph[tag] || []).forEach(function(nextTag) {
+                        if (!visited.has(nextTag) && !nextLayer.includes(nextTag)) {
+                            nextLayer.push(nextTag);
+                        }
+                    });
+                });
                 
-                for (var i = equipos.length - 1; i >= 0; i--) {
-                    var pos = _equipmentPositions[equipos[i].tag];
-                    if (!pos) continue;
-                    var s = LAYOUT.equipmentSize / 2;
-                    var dist = Math.hypot(mx - pos.x, my - pos.y);
-                    if (dist < s + 10) {
-                        found = equipos[i];
-                        break;
+                currentLayer = nextLayer;
+            }
+            
+            this.equipment.forEach(function(eq) {
+                if (!visited.has(eq.tag)) {
+                    if (layers.length === 0) layers.push([]);
+                    layers[layers.length - 1].push(eq.tag);
+                }
+            });
+            
+            const tagToEq = {};
+            this.equipment.forEach(function(eq) { tagToEq[eq.tag] = eq; });
+            
+            var self = this;
+            layers.forEach(function(layer, layerIndex) {
+                const x = self.options.MARGIN + layerIndex * self.options.SPACING_X;
+                const totalHeight = layer.length * self.options.SPACING_Y;
+                const startY = self.options.MARGIN + (self.canvas ? self.canvas.height / 2 - totalHeight / 2 : 200);
+                
+                layer.forEach(function(tag, itemIndex) {
+                    const eq = tagToEq[tag];
+                    if (eq && !eq.locked) {
+                        eq.x = x;
+                        eq.y = startY + itemIndex * self.options.SPACING_Y;
                     }
-                }
+                });
+            });
+            
+            this._updateAllRoutes();
+            this._detectCrossings();
+        }
+
+        _updateAllRoutes() {
+            var self = this;
+            this.streams.forEach(function(stream) {
+                const fromEq = self.equipment.find(function(e) { return e.tag === stream.from; });
+                const toEq = self.equipment.find(function(e) { return e.tag === stream.to; });
                 
-                _selectedTag = found ? found.tag : null;
-                render();
-                
-                if (_onSelectionChanged) {
-                    _onSelectionChanged(found ? { tag: found.tag, tipo: found.tipo } : null);
+                if (fromEq && toEq) {
+                    stream.fromPoint = self._findBestPort(fromEq, 'out');
+                    stream.toPoint = self._findBestPort(toEq, 'in');
+                    self._calculateRoute(stream);
                 }
             });
         }
+
+        // ================================================================
+        // 6. RENDERIZADO
+        // ================================================================
         
-        window.addEventListener('resize', function() {
-            resizeCanvas();
-            setTimeout(render, 50);
-        });
+        render() {
+            if (!this.ctx || !this.canvas) return;
+            
+            const ctx = this.ctx;
+            const w = this.canvas.width;
+            const h = this.canvas.height;
+            
+            ctx.clearRect(0, 0, w, h);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+            
+            ctx.save();
+            ctx.translate(this.offsetX, this.offsetY);
+            ctx.scale(this.scale, this.scale);
+            
+            this._renderGrid(ctx);
+            
+            // Streams detrás de los equipos
+            var self = this;
+            this.streams.forEach(function(stream) { self._renderStream(ctx, stream); });
+            
+            // Puentes en cruces
+            this.crossings.forEach(function(crossing) { self._drawBridge(ctx, crossing); });
+            
+            // Equipos encima
+            this.equipment.forEach(function(eq) { self._renderEquipment(ctx, eq); });
+            
+            // Etiquetas de streams
+            this.streams.forEach(function(stream) { self._renderStreamLabel(ctx, stream); });
+            
+            ctx.restore();
+        }
+
+        _renderGrid(ctx) {
+            const gridSize = this.options.GRID_SIZE;
+            const w = this.canvas.width / this.scale;
+            const h = this.canvas.height / this.scale;
+            
+            ctx.strokeStyle = '#f1f5f9';
+            ctx.lineWidth = 0.5;
+            
+            for (let x = 0; x < w; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+            
+            for (let y = 0; y < h; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+        }
+
+        _renderEquipment(ctx, eq) {
+            const x = eq.x, y = eq.y, width = eq.width, height = eq.height;
+            const symbol = eq.symbol, tag = eq.tag;
+            const isSelected = this.selectedElement && this.selectedElement.tag === tag;
+            const isHovered = this.hoveredElement && this.hoveredElement.tag === tag;
+            
+            ctx.save();
+            
+            if (isSelected) {
+                ctx.shadowColor = '#3b82f6';
+                ctx.shadowBlur = 10;
+            }
+            
+            if (symbol) {
+                this._renderSymbol(ctx, eq, isSelected, isHovered);
+            } else {
+                this._renderDefaultBox(ctx, eq, isSelected, isHovered);
+            }
+            
+            if (isHovered || isSelected) {
+                this._renderConnectionPoints(ctx, eq);
+            }
+            
+            ctx.fillStyle = '#1e293b';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            
+            const labelOffset = symbol ? symbol.labelOffset : { x: 0.5, y: -0.2 };
+            const labelX = x + labelOffset.x * width;
+            const labelY = y + labelOffset.y * height - 10;
+            
+            ctx.fillText(tag, labelX, labelY);
+            
+            if (eq.spec) {
+                ctx.fillStyle = '#64748b';
+                ctx.font = '9px Inter, sans-serif';
+                ctx.fillText(eq.spec, labelX, labelY + 14);
+            }
+            
+            ctx.restore();
+        }
+
+        _renderSymbol(ctx, eq, isSelected, isHovered) {
+            const x = eq.x, y = eq.y, width = eq.width, height = eq.height;
+            const symbol = eq.symbol;
+            const shape = symbol.shape;
+            
+            ctx.strokeStyle = isSelected ? '#3b82f6' : (symbol.stroke ? symbol.stroke.color : '#1e293b');
+            ctx.lineWidth = isSelected ? 3 : (symbol.stroke ? symbol.stroke.width : 2);
+            ctx.fillStyle = symbol.fill || '#f8fafc';
+            
+            if (symbol.stroke && symbol.stroke.dash) {
+                ctx.setLineDash(symbol.stroke.dash);
+            }
+            
+            switch (shape) {
+                case 'centrifugal_pump': case 'dosing_pump': case 'submersible_pump': case 'compressor':
+                    this._drawPumpSymbol(ctx, x, y, width, height, shape); break;
+                case 'vertical_vessel': case 'reactor': case 'jacketed_reactor': case 'autoclave': case 'crystallizer':
+                    this._drawVerticalVessel(ctx, x, y, width, height, shape); break;
+                case 'horizontal_vessel': case 'separator': case 'three_phase_separator': case 'slug_catcher':
+                    this._drawHorizontalVessel(ctx, x, y, width, height, shape); break;
+                case 'heat_exchanger': case 'condenser': case 'boiler': case 'fired_heater': case 'evaporator':
+                    this._drawHeatExchanger(ctx, x, y, width, height, shape); break;
+                case 'distillation_column': case 'fractionation_column': case 'absorber': case 'stripper': case 'degasifier':
+                    this._drawColumn(ctx, x, y, width, height, shape); break;
+                case 'sand_filter': case 'carbon_filter': case 'softener': case 'demineralizer':
+                    this._drawFilter(ctx, x, y, width, height, shape); break;
+                case 'clarifier': case 'thickener':
+                    this._drawClarifier(ctx, x, y, width, height, shape); break;
+                case 'reverse_osmosis': this._drawROUnit(ctx, x, y, width, height); break;
+                case 'centrifuge': case 'disc_centrifuge':
+                    this._drawCentrifuge(ctx, x, y, width, height, shape); break;
+                case 'filter_press': case 'duplex_filter':
+                    this._drawFilterPress(ctx, x, y, width, height); break;
+                case 'agitator': this._drawAgitator(ctx, x, y, width, height); break;
+                case 'mill': case 'rotary_dryer': case 'drum_filter':
+                    this._drawRotaryEquipment(ctx, x, y, width, height, shape); break;
+                case 'homogenizer': case 'hp_homogenizer': case 'uht_sterilizer': case 'pasteurizer':
+                    this._drawProcessSkid(ctx, x, y, width, height, shape); break;
+                case 'cheese_vat': case 'filler':
+                    this._drawFoodEquipment(ctx, x, y, width, height, shape); break;
+                case 'chemical_doser': case 'injection_skid':
+                    this._drawDosingUnit(ctx, x, y, width, height); break;
+                case 'flare': this._drawFlare(ctx, x, y, width, height); break;
+                case 'flocculator': this._drawFlocculator(ctx, x, y, width, height); break;
+                case 'electrolytic_cell': this._drawElectrolyticCell(ctx, x, y, width, height); break;
+                case 'parshall_flume': this._drawParshallFlume(ctx, x, y, width, height); break;
+                default: this._renderDefaultBox(ctx, eq, isSelected, isHovered);
+            }
+            
+            ctx.setLineDash([]);
+        }
+
+        // ================================================================
+        // 7. DIBUJOS PRIMITIVOS DE SÍMBOLOS
+        // ================================================================
         
-        if (_core && _core.on) {
-            _core.on('modelChanged', function() {
-                _selectedTag = null;
-                setTimeout(render, 100);
+        _drawPumpSymbol(ctx, x, y, w, h, shape) {
+            const cx = x + w/2, cy = y + h/2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, Math.min(w, h) / 2 - 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            if (shape !== 'submersible_pump') {
+                ctx.beginPath();
+                ctx.moveTo(cx - 8, cy - 10);
+                ctx.lineTo(cx + 12, cy);
+                ctx.lineTo(cx - 8, cy + 10);
+                ctx.closePath();
+                ctx.fillStyle = '#1e293b';
+                ctx.fill();
+            }
+            if (shape === 'submersible_pump') {
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - 12);
+                ctx.lineTo(cx + 8, cy);
+                ctx.lineTo(cx - 8, cy);
+                ctx.closePath();
+                ctx.fillStyle = '#1e293b';
+                ctx.fill();
+            }
+            if (shape === 'dosing_pump') {
+                ctx.beginPath();
+                ctx.arc(cx, cy, Math.min(w, h) / 3, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        _drawVerticalVessel(ctx, x, y, w, h, shape) {
+            const cx = x + w/2;
+            const topY = y;
+            const botY = y + h;
+            ctx.beginPath();
+            ctx.moveTo(x + 5, topY + 10);
+            ctx.lineTo(x + 5, botY - 10);
+            ctx.lineTo(x + w - 5, botY - 10);
+            ctx.lineTo(x + w - 5, topY + 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(cx, topY + 10, w/2 - 5, 8, 0, Math.PI, 0);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(cx, botY - 10, w/2 - 5, 8, 0, 0, Math.PI);
+            ctx.fill();
+            ctx.stroke();
+            if (shape === 'jacketed_reactor') {
+                ctx.setLineDash([4, 3]);
+                ctx.strokeRect(x + 12, topY + 20, w - 24, h - 40);
+                ctx.setLineDash([]);
+            }
+        }
+
+        _drawHorizontalVessel(ctx, x, y, w, h, shape) {
+            const cx = x + w/2, cy = y + h/2;
+            ctx.beginPath();
+            ctx.moveTo(x + 15, y + 5);
+            ctx.lineTo(x + w - 15, y + 5);
+            ctx.lineTo(x + w - 15, y + h - 5);
+            ctx.lineTo(x + 15, y + h - 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(x + 15, cy, 8, h/2 - 5, 0, Math.PI/2, -Math.PI/2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(x + w - 15, cy, 8, h/2 - 5, 0, -Math.PI/2, Math.PI/2);
+            ctx.fill();
+            ctx.stroke();
+            if (shape === 'three_phase_separator') {
+                ctx.setLineDash([3, 5]);
+                ctx.beginPath();
+                ctx.moveTo(x + 30, cy - 5);
+                ctx.lineTo(x + w - 30, cy - 5);
+                ctx.moveTo(x + 30, cy + 5);
+                ctx.lineTo(x + w - 30, cy + 5);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        _drawHeatExchanger(ctx, x, y, w, h, shape) {
+            ctx.beginPath();
+            ctx.ellipse(x + w/2, y + h/2, w/2 - 2, h/2 - 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.setLineDash([2, 3]);
+            for (let i = -2; i <= 2; i++) {
+                ctx.beginPath();
+                ctx.moveTo(x + w/2 - 20, y + h/2 + i * 6);
+                ctx.lineTo(x + w/2 + 20, y + h/2 + i * 6);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        _drawColumn(ctx, x, y, w, h, shape) {
+            this._drawVerticalVessel(ctx, x, y, w, h, shape);
+            ctx.setLineDash([1, 4]);
+            for (let i = 0.25; i < 0.9; i += 0.15) {
+                const by = y + h * i;
+                ctx.beginPath();
+                ctx.moveTo(x + 8, by);
+                ctx.lineTo(x + w - 8, by);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        _drawFilter(ctx, x, y, w, h, shape) {
+            this._drawVerticalVessel(ctx, x, y, w, h, shape);
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y + h * 0.4);
+            ctx.lineTo(x + w - 5, y + h * 0.4);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#94a3b8';
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.arc(x + 8 + i * (w - 16) / 4, y + h * 0.45, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        _drawClarifier(ctx, x, y, w, h, shape) {
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y + 10);
+            ctx.lineTo(x + w - 5, y + 10);
+            ctx.lineTo(x + w/2 + 5, y + h - 10);
+            ctx.lineTo(x + w/2 - 5, y + h - 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        _drawROUnit(ctx, x, y, w, h) {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y + h - 5);
+            ctx.lineTo(x + w - 5, y + 5);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        _drawCentrifuge(ctx, x, y, w, h, shape) {
+            ctx.beginPath();
+            ctx.arc(x + w/2, y + h/2, Math.min(w, h)/2 - 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            for (let a = 0; a < 4; a++) {
+                const angle = (a * Math.PI) / 4;
+                ctx.beginPath();
+                ctx.moveTo(x + w/2, y + h/2);
+                ctx.lineTo(x + w/2 + Math.cos(angle) * 15, y + h/2 + Math.sin(angle) * 15);
+                ctx.stroke();
+            }
+        }
+
+        _drawFilterPress(ctx, x, y, w, h) {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            for (let i = 0.15; i < 0.9; i += 0.15) {
+                ctx.beginPath();
+                ctx.moveTo(x + w * i, y + 5);
+                ctx.lineTo(x + w * i, y + h - 5);
+                ctx.stroke();
+            }
+        }
+
+        _drawAgitator(ctx, x, y, w, h) {
+            this._drawVerticalVessel(ctx, x, y, w, h, 'agitator');
+            ctx.beginPath();
+            ctx.moveTo(x + w/2, y + 15);
+            ctx.lineTo(x + w/2, y + h * 0.6);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + w/2 - 12, y + h * 0.55);
+            ctx.lineTo(x + w/2 + 12, y + h * 0.65);
+            ctx.moveTo(x + w/2 + 12, y + h * 0.55);
+            ctx.lineTo(x + w/2 - 12, y + h * 0.65);
+            ctx.stroke();
+        }
+
+        _drawRotaryEquipment(ctx, x, y, w, h, shape) {
+            ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
+            ctx.strokeRect(x + 5, y + 5, w - 10, h - 10);
+            ctx.beginPath();
+            ctx.arc(x + 5, y + h/2, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x + w - 5, y + h/2, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        _drawProcessSkid(ctx, x, y, w, h, shape) {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            ctx.beginPath();
+            ctx.arc(x + w/2, y + h/2, 12, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        _drawFoodEquipment(ctx, x, y, w, h, shape) {
+            const r = 10;
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        _drawDosingUnit(ctx, x, y, w, h) {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            ctx.beginPath();
+            ctx.arc(x + w/2, y + h/2, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e293b';
+            ctx.fill();
+        }
+
+        _drawFlare(ctx, x, y, w, h) {
+            ctx.beginPath();
+            ctx.moveTo(x + w/2 - 3, y + h);
+            ctx.lineTo(x + w/2 - 3, y + 15);
+            ctx.lineTo(x + w/2 + 3, y + 15);
+            ctx.lineTo(x + w/2 + 3, y + h);
+            ctx.stroke();
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.moveTo(x + w/2, y);
+            ctx.lineTo(x + w/2 + 8, y + 15);
+            ctx.lineTo(x + w/2 - 8, y + 15);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        _drawFlocculator(ctx, x, y, w, h) {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(x + w * (0.25 + i * 0.25), y + 10);
+                ctx.lineTo(x + w * (0.25 + i * 0.25), y + h - 10);
+                ctx.stroke();
+            }
+        }
+
+        _drawElectrolyticCell(ctx, x, y, w, h) {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            ctx.beginPath();
+            ctx.moveTo(x + w * 0.3, y + 10);
+            ctx.lineTo(x + w * 0.3, y + h - 10);
+            ctx.moveTo(x + w * 0.7, y + 10);
+            ctx.lineTo(x + w * 0.7, y + h - 10);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ef4444';
+            ctx.stroke();
+        }
+
+        _drawParshallFlume(ctx, x, y, w, h) {
+            ctx.beginPath();
+            ctx.moveTo(x, y + h);
+            ctx.lineTo(x, y + 5);
+            ctx.lineTo(x + w * 0.3, y);
+            ctx.lineTo(x + w * 0.7, y);
+            ctx.lineTo(x + w, y + 5);
+            ctx.lineTo(x + w, y + h);
+            ctx.stroke();
+        }
+
+        _renderDefaultBox(ctx, eq, isSelected, isHovered) {
+            const x = eq.x, y = eq.y, width = eq.width, height = eq.height;
+            ctx.fillStyle = isHovered ? '#f1f5f9' : '#f8fafc';
+            ctx.strokeStyle = isSelected ? '#3b82f6' : '#94a3b8';
+            ctx.lineWidth = isSelected ? 2 : 1;
+            ctx.beginPath();
+            ctx.roundRect(x, y, width, height, 4);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        _renderConnectionPoints(ctx, eq) {
+            const symbol = eq.symbol;
+            if (!symbol || !symbol.connectionPoints) return;
+            Object.entries(symbol.connectionPoints).forEach(function(entry) {
+                const portId = entry[0];
+                const point = entry[1];
+                const px = eq.x + point.offsetX * eq.width;
+                const py = eq.y + point.offsetY * eq.height;
+                ctx.fillStyle = point.direccion === 'in' ? '#3b82f6' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(px, py, 4, 0, Math.PI * 2);
+                ctx.fill();
             });
         }
-        
-        setTimeout(render, 300);
-        console.log('SmartFlowPFDRenderer v1.2 inicializado | Saltos: ✅ | Interactivo: ✅');
-    }
-    
-    function resizeCanvas() {
-        if (!_canvas) return;
-        var container = _canvas.parentElement;
-        var dpr = window.devicePixelRatio || 1;
-        
-        if (container) {
-            _canvas.width = container.clientWidth * dpr;
-            _canvas.height = container.clientHeight * dpr;
-            _canvas.style.width = container.clientWidth + 'px';
-            _canvas.style.height = container.clientHeight + 'px';
-            _ctx = _canvas.getContext('2d');
-            _ctx.scale(dpr, dpr);
+
+        _renderStream(ctx, stream) {
+            if (!stream.route || stream.route.length < 2) return;
+            
+            const route = stream.route;
+            
+            ctx.strokeStyle = stream.color || '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            ctx.moveTo(route[0].x, route[0].y);
+            for (let i = 1; i < route.length; i++) {
+                ctx.lineTo(route[i].x, route[i].y);
+            }
+            
+            ctx.stroke();
+            
+            this._drawArrow(ctx, route);
         }
-    }
-    
-    // ================================================================
-    //  API PÚBLICA (COMPATIBLE CON main.js)
-    // ================================================================
-    
-    return {
-        // Inicialización
-        init: init,
-        render: render,
-        resizeCanvas: resizeCanvas,
+
+        _drawArrow(ctx, route) {
+            if (route.length < 2) return;
+            const midIndex = Math.floor(route.length / 2);
+            const from = route[midIndex];
+            const to = route[Math.min(midIndex + 1, route.length - 1)];
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            const len = Math.hypot(dx, dy);
+            if (len < 5) return;
+            const ux = dx / len;
+            const uy = dy / len;
+            const arrowX = from.x + dx * 0.5;
+            const arrowY = from.y + dy * 0.5;
+            ctx.fillStyle = '#64748b';
+            ctx.beginPath();
+            ctx.moveTo(arrowX + ux * 8, arrowY + uy * 8);
+            ctx.lineTo(arrowX - ux * 5 + uy * 5, arrowY - uy * 5 - ux * 5);
+            ctx.lineTo(arrowX - ux * 5 - uy * 5, arrowY - uy * 5 + ux * 5);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        _renderStreamLabel(ctx, stream) {
+            if (!stream.route || stream.route.length < 2) return;
+            const midIndex = Math.floor(stream.route.length / 2);
+            const from = stream.route[midIndex];
+            const to = stream.route[Math.min(midIndex + 1, stream.route.length - 1)];
+            const labelX = (from.x + to.x) / 2;
+            const labelY = (from.y + to.y) / 2 - this.options.STREAM_LABEL_OFFSET;
+            const labelText = stream.tag + ': ' + stream.fluid + ' (' + stream.flow + ' ' + stream.flowUnit + ')';
+            ctx.font = '10px Inter, sans-serif';
+            const textWidth = ctx.measureText(labelText).width;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillRect(labelX - textWidth/2 - 4, labelY - 8, textWidth + 8, 16);
+            ctx.fillStyle = '#475569';
+            ctx.textAlign = 'center';
+            ctx.fillText(labelText, labelX, labelY + 3);
+        }
+
+        // ================================================================
+        // 8. INTERACTIVIDAD
+        // ================================================================
         
-        // Carga de datos (compatible con API anterior)
-        loadFromCore: function(equiposData, streamsData) {
-            // El renderer ya lee del Core directamente en render()
-            // Esta función existe para compatibilidad
-            calculateLayout();
-            render();
-        },
-        addStream: function(streamData) {
-            // Compatibilidad - el Core ya tiene el stream
-            calculateLayout();
-            render();
-        },
-        autoLayout: function() {
-            calculateLayout();
-            render();
-        },
-        
-        // Exportación (requerido por main.js y pfd-export.js)
-        exportPNG: function() {
-            if (!_canvas) return null;
-            return _canvas.toDataURL('image/png');
-        },
-        exportSVG: function() {
-            // SVG simplificado
-            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + _canvas.width + '" height="' + _canvas.height + '">';
-            _streamRoutes.forEach(function(route) {
-                if (!route || route.points.length < 2) return;
-                var pts = route.points.map(function(p) { return p.x + ',' + p.y; }).join(' ');
-                svg += '<polyline points="' + pts + '" stroke="' + route.color + '" stroke-width="2.5" fill="none"/>';
-            });
-            var equipos = _core.getEquipos ? _core.getEquipos() : [];
-            equipos.forEach(function(eq) {
-                var pos = _equipmentPositions[eq.tag];
-                if (!pos) return;
-                var s = LAYOUT.equipmentSize / 2;
-                svg += '<circle cx="' + pos.x + '" cy="' + pos.y + '" r="' + s + '" fill="#f8fafc" stroke="#1e293b" stroke-width="2"/>';
-                svg += '<text x="' + pos.x + '" y="' + (pos.y + s + 16) + '" text-anchor="middle" font-size="11" font-weight="bold">' + eq.tag + '</text>';
-            });
-            svg += '</svg>';
-            return svg;
-        },
-        exportLayout: function() {
+        _bindEvents() {
+            var self = this;
+            this.canvas.addEventListener('mousedown', function(e) { self._onMouseDown(e); });
+            this.canvas.addEventListener('mousemove', function(e) { self._onMouseMove(e); });
+            this.canvas.addEventListener('mouseup', function(e) { self._onMouseUp(e); });
+            this.canvas.addEventListener('click', function(e) { self._onClick(e); });
+            this.canvas.addEventListener('wheel', function(e) { self._onWheel(e); });
+        }
+
+        _screenToWorld(screenX, screenY) {
+            const rect = this.canvas.getBoundingClientRect();
             return {
-                equipment: Object.keys(_equipmentPositions).map(function(tag) {
-                    var pos = _equipmentPositions[tag];
-                    return { tag: tag, x: pos.x, y: pos.y };
+                x: (screenX - rect.left - this.offsetX) / this.scale,
+                y: (screenY - rect.top - this.offsetY) / this.scale
+            };
+        }
+
+        _findEquipmentAt(worldX, worldY) {
+            for (let i = this.equipment.length - 1; i >= 0; i--) {
+                const eq = this.equipment[i];
+                if (worldX >= eq.x && worldX <= eq.x + eq.width &&
+                    worldY >= eq.y && worldY <= eq.y + eq.height) {
+                    return eq;
+                }
+            }
+            return null;
+        }
+
+        _onMouseDown(e) {
+            const world = this._screenToWorld(e.clientX, e.clientY);
+            const eq = this._findEquipmentAt(world.x, world.y);
+            if (eq && !eq.locked) {
+                this.dragging = { equipment: eq, offsetX: world.x - eq.x, offsetY: world.y - eq.y };
+                this.canvas.style.cursor = 'grabbing';
+            }
+        }
+
+        _onMouseMove(e) {
+            const world = this._screenToWorld(e.clientX, e.clientY);
+            if (this.dragging) {
+                const eq = this.dragging.equipment;
+                eq.x = Math.round((world.x - this.dragging.offsetX) / this.options.GRID_SIZE) * this.options.GRID_SIZE;
+                eq.y = Math.round((world.y - this.dragging.offsetY) / this.options.GRID_SIZE) * this.options.GRID_SIZE;
+                this._updateAllRoutes();
+                this._detectCrossings();
+                this.render();
+            } else {
+                const eq = this._findEquipmentAt(world.x, world.y);
+                if (eq !== this.hoveredElement) {
+                    this.hoveredElement = eq;
+                    this.canvas.style.cursor = eq ? 'grab' : 'default';
+                    this.render();
+                }
+            }
+        }
+
+        _onMouseUp(e) {
+            if (this.dragging) {
+                this.dragging = null;
+                this.canvas.style.cursor = 'default';
+                this._savePositionState();
+            }
+        }
+
+        _onClick(e) {
+            const world = this._screenToWorld(e.clientX, e.clientY);
+            const eq = this._findEquipmentAt(world.x, world.y);
+            if (this.selectedElement !== eq) {
+                this.selectedElement = eq;
+                this.render();
+                if (this.onSelectionChanged) this.onSelectionChanged(eq);
+            }
+        }
+
+        _onWheel(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            this.scale = Math.max(0.3, Math.min(3, this.scale * delta));
+            this.render();
+        }
+
+        _savePositionState() {
+            var self = this;
+            const positions = this.equipment.map(function(eq) { 
+                return { tag: eq.tag, x: eq.x, y: eq.y }; 
+            });
+            this.positionHistory.push(positions);
+            if (this.positionHistory.length > 20) this.positionHistory.shift();
+        }
+
+        // ================================================================
+        // 9. EXPORTACIÓN
+        // ================================================================
+        
+        exportLayout() {
+            return {
+                equipment: this.equipment.map(function(eq) { 
+                    return { tag: eq.tag, tipo: eq.tipo, x: eq.x, y: eq.y, locked: eq.locked }; 
                 }),
-                streams: _streamRoutes.map(function(r) {
-                    return { tag: r.stream.tag, from: r.stream.from, to: r.stream.to };
+                streams: this.streams.map(function(s) { 
+                    return { tag: s.tag, from: s.from, to: s.to }; 
                 })
             };
-        },
-        
-        // Callbacks
-        setSelectionCallback: function(cb) {
-            _onSelectionChanged = cb;
-        },
-        
-        // Getters
-        getEquipment: function() {
-            var equipos = _core.getEquipos ? _core.getEquipos() : [];
-            return equipos.map(function(eq) {
-                var pos = _equipmentPositions[eq.tag];
-                return {
-                    tag: eq.tag,
-                    tipo: eq.tipo,
-                    x: pos ? pos.x : 0,
-                    y: pos ? pos.y : 0,
-                    width: LAYOUT.equipmentSize,
-                    height: LAYOUT.equipmentSize
-                };
+        }
+
+        exportPNG() {
+            return this.canvas.toDataURL('image/png');
+        }
+
+        exportSVG() {
+            let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.canvas.width + '" height="' + this.canvas.height + '">';
+            
+            this.streams.forEach(function(stream) {
+                if (!stream.route) return;
+                const points = stream.route.map(function(p) { return p.x + ',' + p.y; }).join(' ');
+                svg += '<polyline points="' + points + '" stroke="' + (stream.color || '#3b82f6') + '" stroke-width="2" fill="none"/>';
             });
-        },
-        getStreams: function() {
-            return _streamRoutes.map(function(r) { return r.stream; });
-        },
-        get canvas() { return _canvas; },
+            
+            this.equipment.forEach(function(eq) {
+                svg += '<rect x="' + eq.x + '" y="' + eq.y + '" width="' + eq.width + '" height="' + eq.height + '" fill="#f8fafc" stroke="#1e293b" rx="4"/>';
+                svg += '<text x="' + (eq.x + eq.width/2) + '" y="' + (eq.y - 5) + '" text-anchor="middle" font-size="12" font-weight="bold">' + eq.tag + '</text>';
+            });
+            
+            svg += '</svg>';
+            return svg;
+        }
+    }
+    // Fin de la clase PFDDiagram
+
+    // ================================================================
+    // 10. FACTORY FUNCTION (API PÚBLICA)
+    // ================================================================
+    
+    function createRenderer(canvas, options) {
+        const instance = new PFDDiagram(canvas, options);
         
-        // Datos internos
-        getEquipmentPositions: function() { return _equipmentPositions; },
-        getStreamRoutes: function() { return _streamRoutes; },
-        getCrossings: function() { return _crossings; }
+        // Devolver fachada con métodos públicos
+        return {
+            loadFromCore: function(a, b) { return instance.loadFromCore(a, b); },
+            addStream: function(a) { return instance.addStream(a); },
+            autoLayout: function() { return instance.autoLayout(); },
+            render: function() { return instance.render(); },
+            exportLayout: function() { return instance.exportLayout(); },
+            exportPNG: function() { return instance.exportPNG(); },
+            exportSVG: function() { return instance.exportSVG(); },
+            getEquipment: function() { return instance.equipment; },
+            getStreams: function() { return instance.streams; },
+            setSelectionCallback: function(cb) { instance.onSelectionChanged = cb; },
+            get canvas() { return instance.canvas; }
+        };
+    }
+
+    return { 
+        createRenderer: createRenderer, 
+        PFDDiagram: PFDDiagram, 
+        LAYOUT: LAYOUT 
     };
+
 })();
+
+// Polyfill roundRect
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        if (typeof r === 'number') r = { tl: r, tr: r, br: r, bl: r };
+        this.beginPath();
+        this.moveTo(x + r.tl, y);
+        this.lineTo(x + w - r.tr, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+        this.lineTo(x + w, y + h - r.br);
+        this.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+        this.lineTo(x + r.bl, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+        this.lineTo(x, y + r.tl);
+        this.quadraticCurveTo(x, y, x + r.tl, y);
+        this.closePath();
+    };
+}
 
 if (typeof window !== 'undefined') window.SmartFlowPFDRenderer = SmartFlowPFDRenderer;
