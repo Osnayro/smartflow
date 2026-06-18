@@ -1,14 +1,11 @@
 
 // ============================================================
-// SMARTFLOW ENGINE v2.1 - Orquestador Principal PFD/DTI
+// SMARTFLOW ENGINE v2.3 - Orquestador Principal PFD/DTI
 // Archivo: js/smartflow-engine.js
-// Novedades v2.1:
-//   - execute() retorna campo ui para integración con AdaptiveUIPFD
-//   - Delegación a SmartFlowCommands con manejo de errores
-//   - Notificaciones visuales + voz (Web Speech API)
-//   - Reconocimiento de voz (SpeechRecognition)
-//   - Consume validateSpecForStream y suggestSpecsForStream del catálogo
-//   - Comando BUILD_PROCESS_LINE con validación completa de spec
+// Correcciones:
+//   - Eliminado reconocimiento de voz (SpeechRecognition)
+//   - Notificaciones de voz corregidas
+//   - Template literals eliminados
 // ============================================================
 
 const SmartFlowEngine = (function() {
@@ -17,14 +14,14 @@ const SmartFlowEngine = (function() {
     // 1. SISTEMA DE NOTIFICACIONES (VISUAL + VOZ)
     // ================================================================
     
-    let _voiceEnabled = true;
-    let _voiceVolume = 0.8;
-    let _voiceRate = 1.0;
-    let _voicePitch = 1.0;
-    let _currentUtterance = null;
-    let _voiceQueue = [];
-    let _isSpeaking = false;
-    let _onNotification = null;
+    var _voiceEnabled = true;
+    var _voiceVolume = 0.8;
+    var _voiceRate = 1.0;
+    var _voicePitch = 1.0;
+    var _currentUtterance = null;
+    var _voiceQueue = [];
+    var _isSpeaking = false;
+    var _onNotification = null;
     
     function setVoiceEnabled(enabled) {
         _voiceEnabled = enabled;
@@ -51,47 +48,72 @@ const SmartFlowEngine = (function() {
         tipo = tipo || 'info';
         hablar = hablar !== undefined ? hablar : (tipo === 'error' || tipo === 'warning');
         
-        const prefix = tipo === 'error' ? '❌' : tipo === 'warning' ? '⚠️' : tipo === 'success' ? '✅' : 'ℹ️';
-        console.log(`${prefix} [SmartFlow] ${mensaje}`);
+        var prefix = tipo === 'error' ? 'ERROR' : tipo === 'warning' ? 'WARN' : tipo === 'success' ? 'OK' : 'INFO';
+        console.log(prefix + ' [EngineFlow] ' + mensaje);
         
         if (_onNotification) {
             try {
                 _onNotification({ message: mensaje, type: tipo, timestamp: Date.now() });
             } catch (e) {
-                console.warn('Error en callback de notificación:', e);
+                console.warn('Error en callback de notificacion:', e);
             }
         }
         
         if (hablar && _voiceEnabled) {
-            _speak(mensaje, tipo);
+            _speak(mensaje);
         }
     }
     
-    function _speak(mensaje, tipo) {
+    function _speak(mensaje) {
         if (!window.speechSynthesis) return;
         
-        let textoVoz = mensaje;
-        if (textoVoz.length > 200) {
-            const frases = textoVoz.split(/[.!?]\s+/);
+        // Limpiar emojis y caracteres especiales
+        var textoVoz = mensaje.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{2B00}-\u{2BFF}]|[\u{FE00}-\u{FEFF}]|✅|❌|⚠️|ℹ️|📐|📋|📤|📊|🔗|🔍|⚙️|🏗️|📏|🔌|🗺️|✂️|🔀|📍|🔄|📌|🔩|➡️|⚡|💾|▶️|📜|📁|❓|🛢️|🔥|🗼|⚗️|💨|🔵|💧|🟢|🔴|🔊|🔇|🆕|🧭|⌨️|🖼️|📄|💡|🧪|♨️|⛽|☠️|🥛|🍺|🧃|🌿|🪨|❄️|🌊|🎤|⛶|📢|🧹|⏺/g, '');
+        
+        // Resumir mensajes largos
+        if (textoVoz.length > 250) {
+            var frases = textoVoz.split(/[.!?]\s+/);
             textoVoz = frases.slice(0, 2).join('. ') + '.';
         }
         
-        textoVoz = textoVoz.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|✅|❌|⚠️|ℹ️|📐|📋|📤|📊|🔗|🔍|⚙️|🏗️|📏|🔌|🗺️|✂️|🔀|📍|🔄|📌|🔩|➡️|⚡|💾|▶️|📜|📁|❓|🛢️|🔥|🗼|⚗️|💨|🔵|💧|🟢|🔴/g, '');
+        // Cancelar mensaje anterior si es un error
+        if (_currentUtterance) {
+            window.speechSynthesis.cancel();
+            _isSpeaking = false;
+            _voiceQueue = [];
+        }
         
-        const utterance = new SpeechSynthesisUtterance(textoVoz);
+        var utterance = new SpeechSynthesisUtterance(textoVoz);
         utterance.volume = _voiceVolume;
         utterance.rate = _voiceRate;
         utterance.pitch = _voicePitch;
         utterance.lang = 'es-ES';
         
-        const voices = window.speechSynthesis.getVoices();
-        const spanishVoice = voices.find(v => v.lang.startsWith('es'));
-        if (spanishVoice) utterance.voice = spanishVoice;
-        
-        if (tipo === 'error' && _currentUtterance) {
-            window.speechSynthesis.cancel();
-            _voiceQueue = [];
+        // Intentar usar voz en español
+        var voices = window.speechSynthesis.getVoices();
+        if (voices.length === 0) {
+            // Las voces no están cargadas aún, esperar
+            window.speechSynthesis.onvoiceschanged = function() {
+                var v = window.speechSynthesis.getVoices();
+                var sv = null;
+                for (var i = 0; i < v.length; i++) {
+                    if (v[i].lang.indexOf('es') === 0) { sv = v[i]; break; }
+                }
+                if (sv) utterance.voice = sv;
+                _voiceQueue.push(utterance);
+                _processVoiceQueue();
+            };
+            return;
         }
+        
+        var spanishVoice = null;
+        for (var v = 0; v < voices.length; v++) {
+            if (voices[v].lang.indexOf('es') === 0) {
+                spanishVoice = voices[v];
+                break;
+            }
+        }
+        if (spanishVoice) utterance.voice = spanishVoice;
         
         _voiceQueue.push(utterance);
         _processVoiceQueue();
@@ -106,16 +128,16 @@ const SmartFlowEngine = (function() {
         _currentUtterance.onend = function() {
             _isSpeaking = false;
             _currentUtterance = null;
-            _processVoiceQueue();
+            setTimeout(function() { _processVoiceQueue(); }, 100);
         };
         
         _currentUtterance.onerror = function(e) {
             if (e.error !== 'canceled' && e.error !== 'interrupted') {
-                console.warn('Error de síntesis de voz:', e.error);
+                console.warn('Error de sintesis de voz: ' + e.error);
             }
             _isSpeaking = false;
             _currentUtterance = null;
-            _processVoiceQueue();
+            setTimeout(function() { _processVoiceQueue(); }, 100);
         };
         
         window.speechSynthesis.speak(_currentUtterance);
@@ -129,119 +151,11 @@ const SmartFlowEngine = (function() {
     }
 
     // ================================================================
-    // 2. RECONOCIMIENTO DE VOZ
-    // ================================================================
-    
-    let _recognition = null;
-    let _isListening = false;
-    let _onVoiceCommand = null;
-    let _wakeWord = 'smartflow';
-    let _continuousListening = false;
-    
-    function initVoiceRecognition(options) {
-        options = options || {};
-        _wakeWord = options.wakeWord || 'smartflow';
-        _continuousListening = options.continuous || false;
-        
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            console.warn('SpeechRecognition no disponible en este navegador');
-            return false;
-        }
-        
-        _recognition = new SpeechRecognition();
-        _recognition.lang = options.lang || 'es-ES';
-        _recognition.interimResults = false;
-        _recognition.continuous = _continuousListening;
-        _recognition.maxAlternatives = 1;
-        
-        _recognition.onresult = function(event) {
-            const last = event.results.length - 1;
-            const transcript = event.results[last][0].transcript.trim().toLowerCase();
-            
-            console.log('🎤 Voz detectada:', transcript);
-            
-            if (!_continuousListening && !transcript.includes(_wakeWord)) return;
-            
-            let comando = transcript;
-            if (transcript.includes(_wakeWord)) {
-                comando = transcript.substring(transcript.indexOf(_wakeWord) + _wakeWord.length).trim();
-            }
-            
-            if (comando) {
-                _notify(`Comando de voz: "${comando}"`, 'info', false);
-                if (_onVoiceCommand) _onVoiceCommand(comando);
-                execute(comando);
-            }
-        };
-        
-        _recognition.onerror = function(event) {
-            console.warn('Error de reconocimiento de voz:', event.error);
-            if (event.error === 'not-allowed') {
-                _notify('Permiso de micrófono denegado', 'warning', true);
-            }
-        };
-        
-        _recognition.onend = function() {
-            _isListening = false;
-            if (_continuousListening) {
-                setTimeout(function() {
-                    if (_continuousListening) startListening();
-                }, 500);
-            }
-        };
-        
-        _notify('Reconocimiento de voz inicializado', 'info', false);
-        return true;
-    }
-    
-    function startListening() {
-        if (!_recognition) {
-            _notify('Reconocimiento de voz no inicializado', 'warning', false);
-            return false;
-        }
-        if (_isListening) return true;
-        try {
-            _recognition.start();
-            _isListening = true;
-            console.log('🎤 Escuchando...');
-        } catch (e) {
-            console.warn('Error al iniciar escucha:', e);
-            return false;
-        }
-        return true;
-    }
-    
-    function stopListening() {
-        if (_recognition && _isListening) {
-            _recognition.stop();
-            _isListening = false;
-        }
-    }
-    
-    function toggleListening() {
-        if (_isListening) {
-            stopListening();
-            return false;
-        } else {
-            return startListening();
-        }
-    }
-    
-    function setVoiceCommandCallback(callback) {
-        _onVoiceCommand = callback;
-    }
-    
-    function isListening() {
-        return _isListening;
-    }
-
-    // ================================================================
-    // 3. VERIFICACIÓN DE DEPENDENCIAS
+    // 2. VERIFICACIÓN DE DEPENDENCIAS
     // ================================================================
     
     function _checkDependencies() {
-        const modulos = {
+        var modulos = {
             'SmartFlowCore': typeof SmartFlowCore !== 'undefined',
             'SmartFlowCatalog': typeof SmartFlowCatalog !== 'undefined',
             'SmartFlowDimensionamiento': typeof SmartFlowDimensionamiento !== 'undefined',
@@ -251,18 +165,19 @@ const SmartFlowEngine = (function() {
             'AdaptiveCommandSystemPFD': typeof AdaptiveCommandSystemPFD !== 'undefined'
         };
         
-        const faltantes = Object.entries(modulos)
-            .filter(([name, loaded]) => !loaded)
-            .map(([name]) => name);
+        var faltantes = [];
+        for (var name in modulos) {
+            if (!modulos[name]) faltantes.push(name);
+        }
         
-        return { completo: faltantes.length === 0, faltantes, modulos };
+        return { completo: faltantes.length === 0, faltantes: faltantes, modulos: modulos };
     }
 
     // ================================================================
-    // 4. CONTADORES GLOBALES
+    // 3. CONTADORES GLOBALES
     // ================================================================
     
-    let _contadores = {
+    var _contadores = {
         equipo: 100,
         linea: 100,
         stream: 100,
@@ -271,34 +186,34 @@ const SmartFlowEngine = (function() {
     };
 
     function _nextTag(prefijo, tipo) {
-        const contador = _contadores[tipo] || 100;
+        var contador = _contadores[tipo] || 100;
         _contadores[tipo] = contador + 1;
-        return `${prefijo}-${contador}`;
+        return prefijo + '-' + contador;
     }
 
     // ================================================================
-    // 5. COMANDOS DE ALTO NIVEL
+    // 4. COMANDOS DE ALTO NIVEL
     // ================================================================
     
     function createEquipment(params) {
         if (!SmartFlowCatalog) return { error: true, mensaje: 'SmartFlowCatalog no disponible' };
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const tipo = params.TYPE || params.TIPO || params.type;
+        var tipo = params.TYPE || params.TIPO || params.type;
         if (!tipo) return { error: true, mensaje: 'TYPE requerido' };
         
-        const resolved = SmartFlowCatalog.resolveEquipmentAlias(tipo);
+        var resolved = SmartFlowCatalog.resolveEquipmentAlias(tipo);
         if (!resolved) {
-            const disponibles = SmartFlowCatalog.listEquipmentTypes().slice(0, 10).join(', ');
-            return { error: true, mensaje: `Tipo '${tipo}' no encontrado. Disponibles: ${disponibles}...` };
+            var disponibles = SmartFlowCatalog.listEquipmentTypes().slice(0, 10).join(', ');
+            return { error: true, mensaje: 'Tipo "' + tipo + '" no encontrado. Disponibles: ' + disponibles + '...' };
         }
         
-        const tag = params.TAG || params.tag || _nextTag('EQP', 'equipo');
-        const x = parseFloat(params.X || params.x || 0);
-        const y = parseFloat(params.Y || params.y || 0);
-        const z = parseFloat(params.Z || params.z || 0);
+        var tag = params.TAG || params.tag || _nextTag('EQP', 'equipo');
+        var x = parseFloat(params.X || params.x || 0);
+        var y = parseFloat(params.Y || params.y || 0);
+        var z = parseFloat(params.Z || params.z || 0);
         
-        const opciones = {
+        var opciones = {
             diametro: parseFloat(params.DIAMETRO || params.DIAM || params.diametro || 1000),
             altura: parseFloat(params.ALTURA || params.H || params.altura || 2000),
             largo: parseFloat(params.LARGO || params.L || params.largo || 1500),
@@ -312,273 +227,271 @@ const SmartFlowEngine = (function() {
             altura_salida_desde_base: parseFloat(params.ALTURA_SALIDA || 0)
         };
         
-        const equipo = SmartFlowCatalog.createEquipment(resolved, tag, x, y, z, opciones);
-        if (!equipo) return { error: true, mensaje: 'Error al crear equipo desde catálogo' };
+        var equipo = SmartFlowCatalog.createEquipment(resolved, tag, x, y, z, opciones);
+        if (!equipo) return { error: true, mensaje: 'Error al crear equipo desde catalogo' };
         
-        const result = SmartFlowCore.addEquipment(equipo);
+        var result = SmartFlowCore.addEquipment(equipo);
         if (!result) return { error: true, mensaje: 'Error al agregar equipo al Core' };
         
-        const mensaje = `Equipo ${tag} (${SmartFlowCatalog.getEquipment(resolved)?.nombre || resolved}) creado con ${equipo.puertos.length} puertos`;
+        var eqName = 'Equipo';
+        var eqDef = SmartFlowCatalog.getEquipment(resolved);
+        if (eqDef && eqDef.nombre) eqName = eqDef.nombre;
+        
+        var mensaje = eqName + ' ' + tag + ' creado con ' + equipo.puertos.length + ' puertos';
         _notify(mensaje, 'success', true);
         
         return {
-            error: false, tag, tipo: resolved,
-            nombre: SmartFlowCatalog.getEquipment(resolved)?.nombre || resolved,
-            posicion: { x, y, z }, spec: equipo.spec, material: equipo.material,
+            error: false, tag: tag, tipo: resolved,
+            nombre: eqName,
+            posicion: { x: x, y: y, z: z }, spec: equipo.spec, material: equipo.material,
             puertos: equipo.puertos.length,
-            ui: { type: 'success', text: `✅ ${mensaje}\n   📍 Posición: (${x}, ${y}, ${z})\n   📐 Spec: ${equipo.spec} | Material: ${equipo.material}\n   🔌 ${equipo.puertos.length} puertos generados` },
-            mensaje
+            ui: { type: 'success', text: 'OK ' + mensaje },
+            mensaje: mensaje
         };
     }
 
     function createStream(params) {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const tag = params.TAG || params.tag || _nextTag('S', 'stream');
-        const from = params.FROM || params.from;
-        const to = params.TO || params.to;
+        var tag = params.TAG || params.tag || _nextTag('S', 'stream');
+        var from = params.FROM || params.from;
+        var to = params.TO || params.to;
         
         if (!from || !to) return { error: true, mensaje: 'FROM y TO requeridos' };
         
-        const fromEq = SmartFlowCore.findObjectByTag(from);
-        const toEq = SmartFlowCore.findObjectByTag(to);
+        var fromEq = SmartFlowCore.findObjectByTag(from);
+        var toEq = SmartFlowCore.findObjectByTag(to);
         
-        if (!fromEq) return { error: true, mensaje: `Equipo origen '${from}' no encontrado` };
-        if (!toEq) return { error: true, mensaje: `Equipo destino '${to}' no encontrado` };
+        if (!fromEq) return { error: true, mensaje: 'Equipo origen "' + from + '" no encontrado' };
+        if (!toEq) return { error: true, mensaje: 'Equipo destino "' + to + '" no encontrado' };
         
-        const streamData = {
-            tag, from, to,
+        var streamData = {
+            tag: tag, from: from, to: to,
             fluid: params.FLUID || params.fluid || params.FLUIDO || 'AGUA',
             flow: parseFloat(params.CAUDAL || params.FLOW || params.flow || 0),
             flowUnit: params.FLOW_UNIT || params.flowUnit || 'm3/h',
             pressure: parseFloat(params.PRESION || params.PRESSURE || params.pressure || 0),
             pressureUnit: params.P_UNIT || params.pressureUnit || 'bar',
             temperature: parseFloat(params.TEMP || params.TEMPERATURA || params.temperature || 25),
-            temperatureUnit: params.T_UNIT || params.temperatureUnit || '°C',
+            temperatureUnit: params.T_UNIT || params.temperatureUnit || 'C',
             phase: params.PHASE || params.phase || params.FASE || 'LIQUID',
             density: parseFloat(params.DENSIDAD || params.DENSITY || params.density || 1000),
             viscosity: parseFloat(params.VISCOSIDAD || params.VISCOSITY || params.viscosity || 1),
             service: params.SERVICIO || params.SERVICE || params.service || ''
         };
         
-        const result = SmartFlowCore.addStream(streamData);
+        var result = SmartFlowCore.addStream(streamData);
         if (!result) return { error: true, mensaje: 'Error al crear stream' };
         
-        let dimensionamiento = null;
+        var dimensionamiento = null;
         if (SmartFlowDimensionamiento) {
             dimensionamiento = SmartFlowDimensionamiento.sugerirDiametro(streamData);
         }
         
-        let mensaje = `Corriente ${tag}: ${from} → ${to} | ${streamData.fluid} (${streamData.flow} ${streamData.flowUnit})`;
-        let uiText = `✅ ${mensaje}`;
+        var mensaje = 'Corriente ' + tag + ': ' + from + ' a ' + to + ' | ' + streamData.fluid + ' (' + streamData.flow + ' ' + streamData.flowUnit + ')';
+        var uiText = 'OK ' + mensaje;
         
         if (dimensionamiento && !dimensionamiento.error) {
-            mensaje += ` | Diámetro sugerido: ${dimensionamiento.diametro}" ${dimensionamiento.especificacion}`;
-            uiText += `\n   📐 Diámetro sugerido: ${dimensionamiento.diametro}" ${dimensionamiento.especificacion}`;
-            uiText += `\n   📊 ${dimensionamiento.justificacion}`;
+            uiText += '\n   Diametro sugerido: ' + dimensionamiento.diametro + '" ' + dimensionamiento.especificacion;
+            uiText += '\n   ' + dimensionamiento.justificacion;
             if (dimensionamiento.advertencias && dimensionamiento.advertencias.length > 0) {
-                dimensionamiento.advertencias.forEach(w => _notify(w, 'warning', false));
+                dimensionamiento.advertencias.forEach(function(w) { _notify(w, 'warning', false); });
             }
         }
         
         _notify(mensaje, 'success', true);
         
         return {
-            error: false, tag, from, to,
+            error: false, tag: tag, from: from, to: to,
             fluido: streamData.fluid,
-            caudal: `${streamData.flow} ${streamData.flowUnit}`,
-            presion: `${streamData.pressure} ${streamData.pressureUnit}`,
-            temperatura: `${streamData.temperature} ${streamData.temperatureUnit}`,
+            caudal: streamData.flow + ' ' + streamData.flowUnit,
+            presion: streamData.pressure + ' ' + streamData.pressureUnit,
+            temperatura: streamData.temperature + ' ' + streamData.temperatureUnit,
             fase: streamData.phase,
-            dimensionamiento,
+            dimensionamiento: dimensionamiento,
             ui: { type: 'success', text: uiText },
-            mensaje
+            mensaje: mensaje
         };
     }
 
     function autoRoute(params) {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const from = params.FROM || params.from;
-        const to = params.TO || params.to;
+        var from = params.FROM || params.from;
+        var to = params.TO || params.to;
         
         if (!from || !to) return { error: true, mensaje: 'FROM y TO requeridos' };
         
-        const source = SmartFlowCore.findObjectByTag(from);
-        const target = SmartFlowCore.findObjectByTag(to);
+        var source = SmartFlowCore.findObjectByTag(from);
+        var target = SmartFlowCore.findObjectByTag(to);
         
-        if (!source) return { error: true, mensaje: `Origen '${from}' no encontrado` };
-        if (!target) return { error: true, mensaje: `Destino '${to}' no encontrado` };
+        if (!source) return { error: true, mensaje: 'Origen "' + from + '" no encontrado' };
+        if (!target) return { error: true, mensaje: 'Destino "' + to + '" no encontrado' };
         
-        const sourcePort = source.puertos?.find(p => p.status === 'open');
-        const targetPort = target.puertos?.find(p => p.status === 'open');
+        var sourcePort = null;
+        if (source.puertos) {
+            for (var sp = 0; sp < source.puertos.length; sp++) {
+                if (source.puertos[sp].status === 'open') { sourcePort = source.puertos[sp]; break; }
+            }
+        }
+        var targetPort = null;
+        if (target.puertos) {
+            for (var tp = 0; tp < target.puertos.length; tp++) {
+                if (target.puertos[tp].status === 'open') { targetPort = target.puertos[tp]; break; }
+            }
+        }
         
-        if (!sourcePort) return { error: true, mensaje: `${from}: sin puertos libres` };
-        if (!targetPort) return { error: true, mensaje: `${to}: sin puertos libres` };
+        if (!sourcePort) return { error: true, mensaje: from + ': sin puertos libres' };
+        if (!targetPort) return { error: true, mensaje: to + ': sin puertos libres' };
         
-        const spec = params.SPEC || params.spec || sourcePort.constraints?.spec || 'ACERO_150_RF';
-        const diametro = parseFloat(params.DIAMETRO || params.DIAM || params.diametro || sourcePort.diametro || 4);
+        var spec = params.SPEC || params.spec || (sourcePort.constraints ? sourcePort.constraints.spec : null) || 'ACERO_150_RF';
+        var diametro = parseFloat(params.DIAMETRO || params.DIAM || params.diametro || sourcePort.diametro || 4);
         
-        const startPos = {
+        var startPos = {
             x: (source.posX || 0) + (sourcePort.relX || 0),
             y: (source.posY || 0) + (sourcePort.relY || 0),
             z: (source.posZ || 0) + (sourcePort.relZ || 0)
         };
         
-        const endPos = {
+        var endPos = {
             x: (target.posX || 0) + (targetPort.relX || 0),
             y: (target.posY || 0) + (targetPort.relY || 0),
             z: (target.posZ || 0) + (targetPort.relZ || 0)
         };
         
-        const dx = endPos.x - startPos.x;
-        const dy = endPos.y - startPos.y;
-        const dz = endPos.z - startPos.z;
-        const distTotal = Math.hypot(dx, dy, dz);
+        var dx = endPos.x - startPos.x;
+        var dy = endPos.y - startPos.y;
+        var dz = endPos.z - startPos.z;
+        var distTotal = Math.hypot(dx, dy, dz);
         
-        let points3D;
-        const estiloRuteo = params.STYLE || params.ESTILO || 'AUTO';
+        var points3D;
         
-        if (estiloRuteo === 'DIRECTO' || distTotal < 500) {
+        if (distTotal < 500) {
             points3D = [startPos, endPos];
         } else if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > Math.abs(dz)) {
-            const midX = startPos.x + dx * 0.6;
+            var midX = startPos.x + dx * 0.6;
             points3D = [startPos, { x: midX, y: startPos.y, z: startPos.z }, { x: midX, y: endPos.y, z: startPos.z }, { x: midX, y: endPos.y, z: endPos.z }, endPos];
         } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > Math.abs(dz)) {
-            const midY = startPos.y + dy * 0.5;
+            var midY = startPos.y + dy * 0.5;
             points3D = [startPos, { x: startPos.x, y: midY, z: startPos.z }, { x: endPos.x, y: midY, z: startPos.z }, { x: endPos.x, y: midY, z: endPos.z }, endPos];
         } else {
-            const midX = startPos.x + dx * 0.5;
-            points3D = [startPos, { x: midX, y: startPos.y, z: startPos.z }, { x: midX, y: endPos.y, z: endPos.z }, endPos];
+            var midX2 = startPos.x + dx * 0.5;
+            points3D = [startPos, { x: midX2, y: startPos.y, z: startPos.z }, { x: midX2, y: endPos.y, z: endPos.z }, endPos];
         }
         
-        const puntosFiltrados = [points3D[0]];
-        for (let i = 1; i < points3D.length; i++) {
-            const prev = puntosFiltrados[puntosFiltrados.length - 1];
-            const curr = points3D[i];
+        var puntosFiltrados = [points3D[0]];
+        for (var i = 1; i < points3D.length; i++) {
+            var prev = puntosFiltrados[puntosFiltrados.length - 1];
+            var curr = points3D[i];
             if (Math.hypot(curr.x - prev.x, curr.y - prev.y, curr.z - prev.z) > 10) {
                 puntosFiltrados.push(curr);
             }
         }
         
-        const lineTag = params.TAG || params.tag || `LINE-${from}-${to}-${Date.now().toString(36).slice(-4)}`;
-        const lineData = {
-            tag: lineTag, spec, diameter: diametro,
-            material: params.MATERIAL || params.MAT || params.material || 
-                      (SmartFlowCatalog ? SmartFlowCatalog.getSpec(spec)?.material : 'CS'),
+        var lineTag = params.TAG || params.tag || 'LINE-' + Date.now().toString(36).slice(-4);
+        var lineData = {
+            tag: lineTag, spec: spec, diameter: diametro,
+            material: params.MATERIAL || params.MAT || params.material || 'CS',
             points3D: puntosFiltrados, _cachedPoints: puntosFiltrados,
             origin: { objTag: from, portId: sourcePort.id },
             destination: { objTag: to, portId: targetPort.id }
         };
         
-        const result = SmartFlowCore.addLine(lineData);
-        if (!result) return { error: true, mensaje: 'Error al crear línea' };
+        var result = SmartFlowCore.addLine(lineData);
+        if (!result) return { error: true, mensaje: 'Error al crear linea' };
         
         SmartFlowCore.updatePuerto(from, sourcePort.id, { status: 'connected', connectedTo: { tag: lineTag, portId: 'START' } });
         SmartFlowCore.updatePuerto(to, targetPort.id, { status: 'connected', connectedTo: { tag: lineTag, portId: 'END' } });
         
-        let longTotal = 0;
-        for (let i = 1; i < puntosFiltrados.length; i++) {
-            longTotal += Math.hypot(puntosFiltrados[i].x - puntosFiltrados[i-1].x, puntosFiltrados[i].y - puntosFiltrados[i-1].y, puntosFiltrados[i].z - puntosFiltrados[i-1].z);
+        var longTotal = 0;
+        for (var j = 1; j < puntosFiltrados.length; j++) {
+            longTotal += Math.hypot(puntosFiltrados[j].x - puntosFiltrados[j-1].x, puntosFiltrados[j].y - puntosFiltrados[j-1].y, puntosFiltrados[j].z - puntosFiltrados[j-1].z);
         }
         
-        const mensaje = `Línea ${lineTag}: ${from}:${sourcePort.id} → ${to}:${targetPort.id} | ${spec} ${diametro}" | ${(longTotal/1000).toFixed(2)}m`;
+        var mensaje = 'Linea ' + lineTag + ': ' + from + ':' + sourcePort.id + ' a ' + to + ':' + targetPort.id + ' | ' + spec + ' ' + diametro + '" | ' + (longTotal/1000).toFixed(2) + 'm';
         _notify(mensaje, 'success', false);
         
         return {
             error: false, tag: lineTag,
-            from: `${from}:${sourcePort.id}`, to: `${to}:${targetPort.id}`,
-            spec, diametro: `${diametro}"`,
-            longitud: `${(longTotal / 1000).toFixed(2)} m`,
-            codosAutomaticos: Math.max(0, puntosFiltrados.length - 2),
-            puntosRuta: puntosFiltrados.length,
-            ui: { type: 'success', text: `✅ ${mensaje}\n   📏 Longitud: ${(longTotal/1000).toFixed(2)}m\n   🔀 Codos: ${Math.max(0, puntosFiltrados.length - 2)}` },
-            mensaje
+            from: from + ':' + sourcePort.id, to: to + ':' + targetPort.id,
+            spec: spec, diametro: diametro + '"',
+            longitud: (longTotal / 1000).toFixed(2) + ' m',
+            ui: { type: 'success', text: 'OK ' + mensaje },
+            mensaje: mensaje
         };
     }
 
     function linkStreamToLine(params) {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const streamTag = params.STREAM || params.stream || params.S;
-        const lineTag = params.LINE || params.line || params.L;
+        var streamTag = params.STREAM || params.stream || params.S;
+        var lineTag = params.LINE || params.line || params.L;
         
         if (!streamTag || !lineTag) return { error: true, mensaje: 'STREAM y LINE requeridos' };
         
-        const stream = SmartFlowCore.getStreamByTag(streamTag);
-        const line = SmartFlowCore.getDb().linesMap.get(lineTag);
+        var stream = SmartFlowCore.getStreamByTag(streamTag);
+        var line = SmartFlowCore.getDb().linesMap.get(lineTag);
         
-        if (!stream) return { error: true, mensaje: `Stream '${streamTag}' no encontrado` };
-        if (!line) return { error: true, mensaje: `Línea '${lineTag}' no encontrada` };
+        if (!stream) return { error: true, mensaje: 'Stream "' + streamTag + '" no encontrado' };
+        if (!line) return { error: true, mensaje: 'Linea "' + lineTag + '" no encontrada' };
         
         SmartFlowCore.linkStreamToLine(streamTag, lineTag);
         
-        let validacion = null;
+        var validacion = null;
         if (SmartFlowDimensionamiento) {
             validacion = SmartFlowDimensionamiento.validarDiametro(stream, line.diameter, line.spec);
         }
         
         SmartFlowCore.updateLine(lineTag, { service: stream.fluid });
         
-        let mensaje = `Stream ${streamTag} vinculado a línea ${lineTag}`;
-        let uiText = `🔗 ${mensaje}`;
+        var mensaje = 'Stream ' + streamTag + ' vinculado a linea ' + lineTag;
+        var uiText = 'OK ' + mensaje;
         
         if (validacion) {
             if (validacion.severidad === 'WARNING') {
-                mensaje += ` | ⚠️ ${validacion.mensaje}`;
-                uiText += `\n   ⚠️ ${validacion.mensaje}`;
+                uiText += '\n   ADVERTENCIA: ' + validacion.mensaje;
                 _notify(validacion.mensaje, 'warning', true);
-            } else if (validacion.severidad === 'INFO' && !validacion.adecuado) {
-                mensaje += ` | ℹ️ ${validacion.mensaje}`;
-                uiText += `\n   ℹ️ ${validacion.mensaje}`;
-                _notify(validacion.mensaje, 'info', false);
-            }
-            if (validacion.advertenciasSpec && validacion.advertenciasSpec.length > 0) {
-                validacion.advertenciasSpec.forEach(w => {
-                    uiText += `\n   ⚠️ ${w}`;
-                    _notify(w, 'warning', false);
-                });
             }
             if (validacion.specSugerida) {
-                uiText += `\n   💡 Sugerencia: usar spec ${validacion.specSugerida}`;
+                uiText += '\n   Sugerencia: usar spec ' + validacion.specSugerida;
             }
         }
         
         _notify(mensaje, 'success', false);
         
-        return { error: false, stream: streamTag, line: lineTag, validacion, ui: { type: 'success', text: uiText }, mensaje };
+        return { error: false, stream: streamTag, line: lineTag, validacion: validacion, ui: { type: 'success', text: uiText }, mensaje: mensaje };
     }
 
     function addInstrument(params) {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const tag = params.TAG || params.tag || _nextTag('IN', 'instrumento');
-        const lineTag = params.LINE || params.line;
-        const position = parseFloat(params.POS || params.position || 0.5);
-        const type = params.TYPE || params.type || 'PRESSURE_GAUGE';
-        const service = params.SERVICE || params.service || params.SERVICIO || '';
+        var tag = params.TAG || params.tag || _nextTag('IN', 'instrumento');
+        var lineTag = params.LINE || params.line;
+        var position = parseFloat(params.POS || params.position || 0.5);
+        var type = params.TYPE || params.type || 'PRESSURE_GAUGE';
+        var service = params.SERVICE || params.service || params.SERVICIO || '';
         
         if (!lineTag) return { error: true, mensaje: 'LINE requerido' };
         
-        const instData = {
-            tag, type, lineTag, position, service,
+        var instData = {
+            tag: tag, type: type, lineTag: lineTag, position: position, service: service,
             location: params.LOCATION || params.location || 'FIELD',
             signal: params.SIGNAL || params.signal || '4-20mA',
             range: params.RANGE || params.rango || '',
             loopTag: params.LOOP || params.loop || ''
         };
         
-        const result = SmartFlowCore.addInstrument(instData);
+        var result = SmartFlowCore.addInstrument(instData);
         if (!result) return { error: true, mensaje: 'Error al agregar instrumento' };
         
-        const mensaje = `Instrumento ${tag} (${type}) insertado en ${lineTag} @ ${(position*100).toFixed(0)}%`;
+        var mensaje = 'Instrumento ' + tag + ' (' + type + ') en ' + lineTag + ' al ' + (position*100).toFixed(0) + '%';
         _notify(mensaje, 'success', false);
         
         return {
-            error: false, tag, type, line: lineTag,
-            position: `${(position * 100).toFixed(0)}%`, location: instData.location,
-            ui: { type: 'success', text: `📊 ${mensaje}\n   📍 Ubicación: ${instData.location}` },
-            mensaje
+            error: false, tag: tag, type: type, line: lineTag,
+            position: (position * 100).toFixed(0) + '%', location: instData.location,
+            ui: { type: 'success', text: 'OK ' + mensaje },
+            mensaje: mensaje
         };
     }
 
@@ -586,18 +499,18 @@ const SmartFlowEngine = (function() {
         if (!SmartFlowLoops) return { error: true, mensaje: 'SmartFlowLoops no disponible' };
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const type = params.TYPE || params.type || params.TIPO;
-        const lineTag = params.LINE || params.line;
+        var type = params.TYPE || params.type || params.TIPO;
+        var lineTag = params.LINE || params.line;
         
         if (!type || !lineTag) return { error: true, mensaje: 'TYPE y LINE requeridos' };
         
-        const template = SmartFlowLoops.getLoopTemplate(type);
+        var template = SmartFlowLoops.getLoopTemplate(type);
         if (!template) {
-            const disponibles = SmartFlowLoops.listLoopTemplates().map(t => t.name).join(', ');
-            return { error: true, mensaje: `Plantilla '${type}' no encontrada. Disponibles: ${disponibles}` };
+            var disponibles = SmartFlowLoops.listLoopTemplates().map(function(t) { return t.name; }).join(', ');
+            return { error: true, mensaje: 'Plantilla "' + type + '" no encontrada. Disponibles: ' + disponibles };
         }
         
-        const options = {
+        var options = {
             lazoNumero: parseInt(params.NUM || params.numero || 0) || undefined,
             loopTag: params.TAG || params.tag || undefined,
             rango: params.RANGE || params.rango || '',
@@ -605,11 +518,11 @@ const SmartFlowEngine = (function() {
             especificacion: params.SPEC || params.spec || ''
         };
         
-        const result = SmartFlowLoops.executeLoop(type, lineTag, options);
+        var result = SmartFlowLoops.executeLoop(type, lineTag, options);
         
         if (result.error) return result;
         
-        const mensaje = result.mensaje;
+        var mensaje = result.mensaje;
         _notify(mensaje, 'success', true);
         
         return {
@@ -617,16 +530,16 @@ const SmartFlowEngine = (function() {
             nombre: template.nombre, line: lineTag,
             instrumentos: result.insertados,
             logicaControl: template.logicaControl, signal: template.signal,
-            ui: { type: 'success', text: `🔁 ${mensaje}\n   📡 Señal: ${template.signal}\n   🧠 Lógica: ${template.logicaControl}` },
-            mensaje
+            ui: { type: 'success', text: 'OK ' + mensaje },
+            mensaje: mensaje
         };
     }
 
     function buildProcessLine(params) {
-        const pasos = [];
+        var pasos = [];
         
-        const streamTag = params.STREAM_TAG || params.STREAM || `S-${_contadores.stream}`;
-        const streamParams = {
+        var streamTag = params.STREAM_TAG || params.STREAM || 'S-' + _contadores.stream;
+        var streamParams = {
             TAG: streamTag,
             FROM: params.FROM || params.from,
             TO: params.TO || params.to,
@@ -637,35 +550,20 @@ const SmartFlowEngine = (function() {
             PHASE: params.PHASE || params.phase || 'LIQUID'
         };
         
-        const streamResult = createStream(streamParams);
+        var streamResult = createStream(streamParams);
         if (streamResult.error) return streamResult;
         pasos.push(streamResult.mensaje);
         
-        let spec = params.SPEC || params.spec;
-        let diametro = parseFloat(params.DIAMETRO || params.DIAM || params.diametro || 0);
+        var spec = params.SPEC || params.spec;
+        var diametro = parseFloat(params.DIAMETRO || params.DIAM || params.diametro || 0);
         
         if (streamResult.dimensionamiento && !streamResult.dimensionamiento.error) {
             if (!diametro) diametro = streamResult.dimensionamiento.diametro;
             if (!spec) spec = streamResult.dimensionamiento.especificacion;
-            pasos.push(`Dimensionamiento: ${diametro}" ${spec}`);
-            
-            if (SmartFlowCatalog && SmartFlowCatalog.validateSpecForStream) {
-                const specCheck = SmartFlowCatalog.validateSpecForStream(spec, {
-                    fluid: streamParams.FLUID,
-                    pressure: streamParams.PRESION,
-                    temperature: streamParams.TEMP
-                });
-                if (!specCheck.valid || specCheck.warnings.length > 0) {
-                    specCheck.warnings.forEach(w => pasos.push(`⚠️ ${w}`));
-                }
-                if (specCheck.suggestion && !spec) {
-                    spec = specCheck.suggestion;
-                    pasos.push(`Spec corregida: ${spec}`);
-                }
-            }
+            pasos.push('Dimensionamiento: ' + diametro + '" ' + spec);
         }
         
-        const routeParams = {
+        var routeParams = {
             FROM: params.FROM || params.from,
             TO: params.TO || params.to,
             SPEC: spec || 'ACERO_150_RF',
@@ -673,43 +571,39 @@ const SmartFlowEngine = (function() {
             TAG: params.LINE_TAG || params.LINE || undefined
         };
         
-        const routeResult = autoRoute(routeParams);
+        var routeResult = autoRoute(routeParams);
         if (routeResult.error) {
-            pasos.push(`⚠️ Error en ruteo: ${routeResult.mensaje}`);
-            return { error: false, parcial: true, pasos, ui: { type: 'warning', text: pasos.join('\n') }, mensaje: pasos.join('\n') };
+            pasos.push('Error en ruteo: ' + routeResult.mensaje);
+            return { error: false, parcial: true, pasos: pasos, ui: { type: 'warning', text: pasos.join('\n') }, mensaje: pasos.join('\n') };
         }
         pasos.push(routeResult.mensaje);
         
-        const linkResult = linkStreamToLine({ STREAM: streamTag, LINE: routeResult.tag });
+        var linkResult = linkStreamToLine({ STREAM: streamTag, LINE: routeResult.tag });
         pasos.push(linkResult.mensaje);
         
-        const mensaje = pasos.join('\n');
-        _notify(`Línea de proceso completa: ${streamTag} → ${routeResult.tag}`, 'success', true);
+        var mensaje = pasos.join('\n');
+        _notify('Linea de proceso completa: ' + streamTag + ' a ' + routeResult.tag, 'success', true);
         
         return {
             error: false, parcial: false,
             stream: streamTag, line: routeResult.tag,
-            spec, diametro: `${diametro}"`, pasos,
-            ui: { type: 'success', text: '✅ Línea de proceso completa\n' + pasos.map(p => '   ' + p).join('\n') },
-            mensaje
+            spec: spec, diametro: diametro + '"', pasos: pasos,
+            ui: { type: 'success', text: 'OK Linea de proceso completa\n' + pasos.map(function(p) { return '   ' + p; }).join('\n') },
+            mensaje: mensaje
         };
     }
 
     function auditProject(params) {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const silent = params && (params.SILENT === 'true' || params.silent === true);
-        const reporte = SmartFlowCore.auditModel();
+        var reporte = SmartFlowCore.auditModel();
         
-        let pfdIssues = [];
-        if (!silent) pfdIssues = SmartFlowCore.auditPFDIntegrity();
-        
-        _notify('Auditoría completada', 'info', false);
+        _notify('Auditoria completada', 'info', false);
         
         return {
-            error: false, reporte, pfdIssues,
+            error: false, reporte: reporte,
             timestamp: new Date().toISOString(),
-            ui: { type: 'info', text: '🔍 ' + (reporte || 'Auditoría completada') },
+            ui: { type: 'info', text: reporte || 'Auditoria completada' },
             mensaje: reporte
         };
     }
@@ -717,10 +611,9 @@ const SmartFlowEngine = (function() {
     function exportProject(params) {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const formato = (params && params.FORMAT) || (params && params.format) || 'JSON';
-        const data = SmartFlowCore.exportProject();
+        var data = SmartFlowCore.exportProject();
         
-        const resumen = {
+        var resumen = {
             equipos: SmartFlowCore.getEquipos().length,
             lineas: SmartFlowCore.getLines().length,
             streams: SmartFlowCore.getStreams().length,
@@ -728,76 +621,66 @@ const SmartFlowEngine = (function() {
             lazos: SmartFlowCore.getLoops().length
         };
         
-        const mensaje = `Proyecto exportado: ${resumen.equipos} equipos, ${resumen.lineas} líneas, ${resumen.streams} streams, ${resumen.instrumentos} instrumentos, ${resumen.lazos} lazos`;
+        var mensaje = 'Proyecto exportado: ' + resumen.equipos + ' equipos, ' + resumen.lineas + ' lineas, ' + resumen.streams + ' streams';
         _notify(mensaje, 'success', false);
         
         return {
-            error: false, formato,
-            data: formato === 'JSON' ? data : JSON.stringify(JSON.parse(data), null, 2),
-            resumen,
-            ui: { type: 'success', text: `📤 ${mensaje}` },
-            mensaje
+            error: false, formato: 'JSON', data: data, resumen: resumen,
+            ui: { type: 'success', text: 'OK ' + mensaje },
+            mensaje: mensaje
         };
     }
 
     function projectSummary() {
         if (!SmartFlowCore) return { error: true, mensaje: 'SmartFlowCore no disponible' };
         
-        const equipos = SmartFlowCore.getEquipos();
-        const lineas = SmartFlowCore.getLines();
-        const streams = SmartFlowCore.getStreams();
-        const instrumentos = SmartFlowCore.getInstruments();
-        const lazos = SmartFlowCore.getLoops();
+        var equipos = SmartFlowCore.getEquipos().length;
+        var lineas = SmartFlowCore.getLines().length;
+        var streams = SmartFlowCore.getStreams().length;
+        var instrumentos = SmartFlowCore.getInstruments().length;
+        var lazos = SmartFlowCore.getLoops().length;
         
-        const streamsHuerfanos = streams.filter(s => !s.linkedLineTags || s.linkedLineTags.length === 0);
-        
-        let longitudTotal = 0;
-        lineas.forEach(line => {
-            const pts = SmartFlowCore.getLinePoints(line);
-            if (pts && pts.length >= 2) {
-                for (let i = 1; i < pts.length; i++) {
-                    longitudTotal += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y, pts[i].z - pts[i-1].z);
-                }
+        var streamsHuerfanos = 0;
+        var allStreams = SmartFlowCore.getStreams();
+        for (var i = 0; i < allStreams.length; i++) {
+            if (!allStreams[i].linkedLineTags || allStreams[i].linkedLineTags.length === 0) {
+                streamsHuerfanos++;
             }
-        });
+        }
         
-        const uiText = [
-            `📋 RESUMEN DEL PROYECTO`,
-            `━━━━━━━━━━━━━━━━━━━━━━━`,
-            `🏗️  Equipos: ${equipos.length}`,
-            `📏 Líneas: ${lineas.length} (${(longitudTotal/1000).toFixed(1)}m)`,
-            `🌊 Corrientes: ${streams.length} (${streamsHuerfanos.length} sin línea)`,
-            `📊 Instrumentos: ${instrumentos.length}`,
-            `🔁 Lazos: ${lazos.length}`,
-            `━━━━━━━━━━━━━━━━━━━━━━━`
+        var uiText = [
+            'RESUMEN DEL PROYECTO',
+            'Equipos: ' + equipos,
+            'Lineas: ' + lineas,
+            'Corrientes: ' + streams + ' (' + streamsHuerfanos + ' sin linea)',
+            'Instrumentos: ' + instrumentos,
+            'Lazos: ' + lazos
         ].join('\n');
         
-        _notify(`Proyecto: ${equipos.length} equipos, ${lineas.length} líneas, ${streams.length} streams`, 'info', false);
+        _notify('Proyecto: ' + equipos + ' equipos, ' + lineas + ' lineas, ' + streams + ' streams', 'info', false);
         
         return {
             error: false,
-            resumen: { equipos: equipos.length, lineas: lineas.length, streams: streams.length, instrumentos: instrumentos.length, lazos: lazos.length, streamsHuerfanos: streamsHuerfanos.length },
+            resumen: { equipos: equipos, lineas: lineas, streams: streams, instrumentos: instrumentos, lazos: lazos },
             ui: { type: 'info', text: uiText },
             mensaje: uiText
         };
     }
 
     function help() {
-        const uiText = [
-            `📋 COMANDOS DISPONIBLES`,
-            `━━━━━━━━━━━━━━━━━━━━━━━`,
-            `🏗️  CREATE_EQUIPMENT TYPE=.. TAG=..`,
-            `🌊 CREATE_STREAM TAG=.. FROM=.. TO=.. FLUID=.. CAUDAL=..`,
-            `🔗 BUILD_PROCESS_LINE FROM=.. TO=.. FLUID=.. CAUDAL=..`,
-            `📏 AUTO_ROUTE FROM=.. TO=..`,
-            `🔌 LINK STREAM=.. LINE=..`,
-            `📊 ADD_INSTRUMENT TAG=.. LINE=.. TYPE=.. POS=..`,
-            `🔁 ADD_LOOP TYPE=.. LINE=..`,
-            `📋 PROJECT_SUMMARY`,
-            `🔍 AUDIT_PROJECT`,
-            `📤 EXPORT_PROJECT`,
-            `━━━━━━━━━━━━━━━━━━━━━━━`,
-            `🎤 VOICE ON/OFF | LISTEN`
+        var uiText = [
+            'COMANDOS DISPONIBLES',
+            'CREATE_EQUIPMENT TYPE=.. TAG=..',
+            'CREATE_STREAM TAG=.. FROM=.. TO=.. FLUID=.. CAUDAL=..',
+            'BUILD_PROCESS_LINE FROM=.. TO=.. FLUID=.. CAUDAL=..',
+            'AUTO_ROUTE FROM=.. TO=..',
+            'LINK STREAM=.. LINE=..',
+            'ADD_INSTRUMENT TAG=.. LINE=.. TYPE=.. POS=..',
+            'ADD_LOOP TYPE=.. LINE=..',
+            'PROJECT_SUMMARY',
+            'AUDIT_PROJECT',
+            'EXPORT_PROJECT',
+            'VOICE ON/OFF'
         ].join('\n');
         
         return {
@@ -808,43 +691,40 @@ const SmartFlowEngine = (function() {
     }
 
     // ================================================================
-    // 6. PARSER DE COMANDOS UNIFICADO
+    // 5. PARSER DE COMANDOS UNIFICADO
     // ================================================================
     
     function execute(inputString) {
         if (!inputString || typeof inputString !== 'string') {
-            return { error: true, mensaje: 'Comando vacío o inválido', ui: { type: 'error', text: 'Comando vacío' } };
+            return { error: true, mensaje: 'Comando vacio', ui: { type: 'error', text: 'Comando vacio' } };
         }
         
-        const trimmed = inputString.trim();
-        if (!trimmed) return { error: true, mensaje: 'Comando vacío', ui: { type: 'error', text: 'Comando vacío' } };
+        var trimmed = inputString.trim();
+        if (!trimmed) return { error: true, mensaje: 'Comando vacio', ui: { type: 'error', text: 'Comando vacio' } };
         
-        const lowerCmd = trimmed.toLowerCase();
-        if (lowerCmd === 'voice on' || lowerCmd === 'voz on' || lowerCmd === 'voz activar') {
+        var lowerCmd = trimmed.toLowerCase();
+        
+        // Comandos de voz
+        if (lowerCmd === 'voice on' || lowerCmd === 'voz on') {
             setVoiceEnabled(true);
-            const msg = 'Notificaciones de voz activadas';
+            var msg = 'Notificaciones de voz activadas';
             _notify(msg, 'info', true);
-            return { error: false, mensaje: msg, voiceEnabled: true, ui: { type: 'success', text: '🔊 ' + msg } };
+            return { error: false, mensaje: msg, voiceEnabled: true, ui: { type: 'success', text: msg } };
         }
-        if (lowerCmd === 'voice off' || lowerCmd === 'voz off' || lowerCmd === 'voz desactivar') {
+        if (lowerCmd === 'voice off' || lowerCmd === 'voz off') {
             setVoiceEnabled(false);
-            const msg = 'Notificaciones de voz desactivadas';
-            _notify(msg, 'info', false);
-            return { error: false, mensaje: msg, voiceEnabled: false, ui: { type: 'info', text: '🔇 ' + msg } };
-        }
-        if (lowerCmd === 'listen' || lowerCmd === 'escuchar') {
-            const listening = toggleListening();
-            const msg = listening ? 'Reconocimiento de voz activado - Escuchando...' : 'Reconocimiento de voz desactivado';
-            _notify(msg, 'info', listening);
-            return { error: false, mensaje: msg, listening, ui: { type: listening ? 'success' : 'info', text: listening ? '🎤 ' + msg : '🔇 ' + msg } };
+            var msg2 = 'Notificaciones de voz desactivadas';
+            _notify(msg2, 'info', false);
+            return { error: false, mensaje: msg2, voiceEnabled: false, ui: { type: 'info', text: msg2 } };
         }
         
-        const tokens = [];
-        let current = '';
-        let inQuotes = false;
+        // Tokenizar
+        var tokens = [];
+        var current = '';
+        var inQuotes = false;
         
-        for (let i = 0; i < trimmed.length; i++) {
-            const ch = trimmed[i];
+        for (var i = 0; i < trimmed.length; i++) {
+            var ch = trimmed[i];
             if (ch === '"' || ch === "'") {
                 inQuotes = !inQuotes;
             } else if (ch === ' ' && !inQuotes) {
@@ -857,17 +737,17 @@ const SmartFlowEngine = (function() {
         if (current) tokens.push(current);
         
         if (tokens.length === 0) {
-            return { error: true, mensaje: 'Comando vacío', ui: { type: 'error', text: 'Comando vacío' } };
+            return { error: true, mensaje: 'Comando vacio', ui: { type: 'error', text: 'Comando vacio' } };
         }
         
-        const commandName = tokens[0].toUpperCase();
-        const args = {};
+        var commandName = tokens[0].toUpperCase();
+        var args = {};
         
-        for (let i = 1; i < tokens.length; i++) {
-            const eqIndex = tokens[i].indexOf('=');
+        for (var j = 1; j < tokens.length; j++) {
+            var eqIndex = tokens[j].indexOf('=');
             if (eqIndex > 0) {
-                const key = tokens[i].substring(0, eqIndex).toUpperCase();
-                let value = tokens[i].substring(eqIndex + 1);
+                var key = tokens[j].substring(0, eqIndex).toUpperCase();
+                var value = tokens[j].substring(eqIndex + 1);
                 if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
                     value = value.slice(1, -1);
                 }
@@ -875,7 +755,7 @@ const SmartFlowEngine = (function() {
             }
         }
         
-        const commandMap = {
+        var commandMap = {
             'CREATE_EQUIPMENT': createEquipment, 'ADD_EQUIP': createEquipment, 'EQUIP': createEquipment,
             'CREATE_STREAM': createStream, 'ADD_STREAM': createStream, 'STREAM': createStream,
             'AUTO_ROUTE': autoRoute, 'ROUTE': autoRoute,
@@ -889,46 +769,46 @@ const SmartFlowEngine = (function() {
             'HELP': help, 'AYUDA': help, '?': help
         };
         
-        const command = commandMap[commandName];
+        var command = commandMap[commandName];
         if (!command) {
             if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCommands.executeCommand === 'function') {
                 try {
-                    const result = SmartFlowCommands.executeCommand(trimmed);
-                    if (result !== null && result !== undefined) {
-                        return { error: false, delegado: true, mensaje: 'Ejecutado por SmartFlowCommands', ui: { type: 'success', text: '✅ Comando ejecutado' } };
+                    var cmdResult = SmartFlowCommands.executeCommand(trimmed);
+                    if (cmdResult !== null && cmdResult !== undefined) {
+                        return { error: false, delegado: true, mensaje: 'Ejecutado', ui: { type: 'success', text: 'OK Comando ejecutado' } };
                     }
                 } catch (e) {
-                    return { error: true, mensaje: e.message, ui: { type: 'error', text: '❌ ' + e.message } };
+                    return { error: true, mensaje: e.message, ui: { type: 'error', text: 'ERROR ' + e.message } };
                 }
             }
             
-            const msg = `Comando '${commandName}' no reconocido`;
-            return { error: true, mensaje: msg, ui: { type: 'error', text: '❌ ' + msg } };
+            var msg3 = 'Comando "' + commandName + '" no reconocido';
+            return { error: true, mensaje: msg3, ui: { type: 'error', text: msg3 } };
         }
         
         try {
-            const result = command(args);
+            var result = command(args);
             if (result && !result.ui) {
                 result.ui = {
                     type: result.error ? 'error' : 'success',
-                    text: result.error ? ('❌ ' + (result.mensaje || 'Error')) : ('✅ ' + (result.mensaje || 'Ejecutado'))
+                    text: result.error ? ('ERROR ' + (result.mensaje || 'Error')) : ('OK ' + (result.mensaje || 'Ejecutado'))
                 };
             }
             return result;
         } catch (e) {
             console.error('Error ejecutando comando:', commandName, e);
-            _notify(`Error: ${e.message}`, 'error', true);
-            return { error: true, mensaje: `Error: ${e.message}`, ui: { type: 'error', text: '❌ ' + e.message } };
+            _notify('Error: ' + e.message, 'error', true);
+            return { error: true, mensaje: 'Error: ' + e.message, ui: { type: 'error', text: 'ERROR ' + e.message } };
         }
     }
 
     function executeBatch(commandsArray) {
-        const results = [];
-        for (const cmd of commandsArray) {
-            const result = execute(cmd);
+        var results = [];
+        for (var i = 0; i < commandsArray.length; i++) {
+            var result = execute(commandsArray[i]);
             results.push(result);
             if (result.error) {
-                results.push({ mensaje: '⛔ Batch detenido por error' });
+                results.push({ mensaje: 'Batch detenido por error' });
                 break;
             }
         }
@@ -936,60 +816,64 @@ const SmartFlowEngine = (function() {
     }
 
     // ================================================================
-    // 7. INICIALIZACIÓN
+    // 6. INICIALIZACIÓN
     // ================================================================
     
     function init(options) {
         options = options || {};
-        const deps = _checkDependencies();
+        var deps = _checkDependencies();
         
-        if (options.contadores) Object.assign(_contadores, options.contadores);
+        if (options.contadores) {
+            for (var key in options.contadores) {
+                _contadores[key] = options.contadores[key];
+            }
+        }
         if (options.voiceEnabled !== undefined) _voiceEnabled = options.voiceEnabled;
         if (options.voiceVolume !== undefined) _voiceVolume = options.voiceVolume;
         if (options.notificationCallback) _onNotification = options.notificationCallback;
         
-        if (options.enableVoiceRecognition) {
-            initVoiceRecognition({
-                wakeWord: options.wakeWord || 'smartflow',
-                continuous: options.continuousListening || false,
-                lang: options.lang || 'es-ES'
-            });
-        }
+        console.log('SmartFlow Engine v2.3 inicializado');
+        console.log('Modulos:', deps.modulos);
         
-        console.log('SmartFlow Engine v2.1 inicializado');
-        console.log('Módulos:', deps.modulos);
-        
-        _notify('SmartFlow Engine listo', 'info', false);
+        _notify('EngineFlow listo', 'info', false);
         
         return {
             ready: deps.completo,
             modulos: deps.modulos,
             faltantes: deps.faltantes,
             mensaje: deps.completo 
-                ? '✅ SmartFlow Engine listo. Todos los módulos cargados.'
-                : `⚠️ SmartFlow Engine iniciado con módulos faltantes: ${deps.faltantes.join(', ')}`
+                ? 'EngineFlow listo. Todos los modulos cargados.'
+                : 'EngineFlow iniciado con modulos faltantes: ' + deps.faltantes.join(', ')
         };
     }
 
     // ================================================================
-    // 8. API PÚBLICA
+    // 7. API PÚBLICA
     // ================================================================
     return {
-        init, execute, executeBatch,
+        init: init, execute: execute, executeBatch: executeBatch,
         
-        createEquipment, createStream, autoRoute, linkStreamToLine,
-        addInstrument, addLoop, buildProcessLine,
-        auditProject, exportProject, projectSummary, help,
+        createEquipment: createEquipment,
+        createStream: createStream,
+        autoRoute: autoRoute,
+        linkStreamToLine: linkStreamToLine,
+        addInstrument: addInstrument,
+        addLoop: addLoop,
+        buildProcessLine: buildProcessLine,
+        auditProject: auditProject,
+        exportProject: exportProject,
+        projectSummary: projectSummary,
+        help: help,
         
-        setVoiceEnabled, setVoiceConfig, setNotificationCallback,
+        setVoiceEnabled: setVoiceEnabled,
+        setVoiceConfig: setVoiceConfig,
+        setNotificationCallback: setNotificationCallback,
         get voiceEnabled() { return _voiceEnabled; },
-        notify: _notify, stopSpeaking,
+        notify: _notify,
+        stopSpeaking: stopSpeaking,
         
-        initVoiceRecognition, startListening, stopListening,
-        toggleListening, setVoiceCommandCallback, isListening,
-        
-        setContador: (tipo, valor) => { if (_contadores[tipo] !== undefined) _contadores[tipo] = valor; },
-        getContadores: () => ({ ..._contadores }),
+        setContador: function(tipo, valor) { if (_contadores[tipo] !== undefined) _contadores[tipo] = valor; },
+        getContadores: function() { return Object.assign({}, _contadores); },
         
         getDependencies: _checkDependencies
     };
