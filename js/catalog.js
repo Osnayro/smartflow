@@ -1,10 +1,12 @@
 
 // ============================================================
-// SMARTFLOW CATALOG v4.1.2 - Catálogo Industrial Unificado
+// SMARTFLOW CATALOG v5.0 - Catálogo Industrial Unificado
 // Archivo: js/catalog.js
 // Industrias: Agua • Oil&Gas • Petroquímica • Química • Alimentos
-// Novedades v4.1.2:
-//   - Añadida variante bomba_z (succión +Z, descarga +Y superior)
+// Novedades v5.0:
+//   - dimensionCriteria en todas las specs (presión, temp, fluidos)
+//   - validateSpecForStream() y suggestSpecsForStream()
+//   - Compatible 100% con SmartFlowDimensionamiento y SmartFlowEngine
 // ============================================================
 
 const SmartFlowCatalog = (function() {
@@ -13,37 +15,118 @@ const SmartFlowCatalog = (function() {
     // 1. ESPECIFICACIONES DE MATERIALES
     // ================================================================
     const specs = {
-        "PPR_PN12_5": { material: "PPR", norma: "IRAM 13471", presion: "PN 12.5", color: 0x7c3aed, conexion: "TERMOFUSION" },
-        "ACERO_SCH80": { material: "Acero al Carbono", norma: "ASTM A106 Gr. B", schedule: "SCH 80", color: 0x94a3b8, conexion: "NPT" },
-        "ACERO_150_RF": { material: "Acero al Carbono", norma: "ASTM A105", clase: "150", cara: "RF", color: 0x64748b, conexion: "BRIDADA" },
-        "CS_300_RF": { material: "Acero al Carbono", norma: "ASTM A105", clase: "300", cara: "RF", color: 0x475569, conexion: "BRIDADA" },
-        "SS_150_RF": { material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "150", cara: "RF", color: 0x94a3b8, conexion: "BRIDADA" },
-        "SS_SANITARY": { material: "Acero Inoxidable 316L", norma: "3A / ASME BPE", acabado: "Ra < 0.8 µm", color: 0xe2e8f0, conexion: "TRI-CLAMP" },
-        "PTFE_LINED": { material: "Acero al Carbono Revestido PTFE", norma: "ASTM A395", color: 0xa78bfa, conexion: "BRIDADA" },
-        "HDPE_PE100": { material: "HDPE", norma: "PE100", presion: "PN 10", color: 0x22c55e, conexion: "ELECTROFUSION" },
-        "PVC_SCH80": { material: "PVC", norma: "ASTM D1785", schedule: "SCH 80", color: 0xeab308, conexion: "CEMENTADO" },
-        "CS_600_RF": { material: "Acero al Carbono", norma: "ASTM A105", clase: "600", cara: "RF", color: 0x334155, conexion: "BRIDADA" },
-        "CS_900_RF": { material: "Acero al Carbono", norma: "ASTM A105", clase: "900", cara: "RF", color: 0x1e293b, conexion: "BRIDADA" },
-        "CS_1500_RTJ": { material: "Acero al Carbono", norma: "ASTM A105", clase: "1500", cara: "RTJ", color: 0x0f172a, conexion: "BRIDADA" },
-        "SS_300_RF": { material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "300", cara: "RF", color: 0x78909c, conexion: "BRIDADA" },
-        "SS_600_RF": { material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "600", cara: "RF", color: 0x5c7a89, conexion: "BRIDADA" },
-        "DUPLEX_150_RF": { material: "Acero Dúplex 2205", norma: "ASTM A182 F51", clase: "150", cara: "RF", color: 0xcbd5e1, conexion: "BRIDADA" },
-        "ALLOY20_150_RF": { material: "Alloy 20", norma: "ASTM B462", clase: "150", cara: "RF", color: 0xfbbf24, conexion: "BRIDADA" },
-        "HASTELLOY_150_RF": { material: "Hastelloy C276", norma: "ASTM B574", clase: "150", cara: "RF", color: 0xf59e0b, conexion: "BRIDADA" },
-        "CS_CRYO": { material: "Acero al Carbono Criogénico", norma: "ASTM A333 Gr.6", clase: "150", cara: "RF", color: 0x6366f1, conexion: "BRIDADA" },
-        "PVC_SCH40": { material: "PVC", norma: "ASTM D1785", schedule: "SCH 40", color: 0xfacc15, conexion: "CEMENTADO" },
-        "CPVC_SCH80": { material: "CPVC", norma: "ASTM F441", schedule: "SCH 80", color: 0xfb923c, conexion: "CEMENTADO" },
-        "PVDF_PN16": { material: "PVDF", norma: "ISO 10931", presion: "PN 16", color: 0xef4444, conexion: "TERMOFUSION" },
-        "FRP": { material: "Fibra de Vidrio (FRP)", norma: "ASTM D2996", color: 0x8b5cf6, conexion: "LAMINADO" },
-        "RUBBER_LINED": { material: "Acero Revestido Goma", norma: "ASTM A395", color: 0xec4899, conexion: "BRIDADA" },
-        "GLASS_LINED": { material: "Acero Revestido Vidrio", norma: "DIN 2873", color: 0xf0f9ff, conexion: "BRIDADA" },
-        "HORMIGON_ESTRUCTURAL": { material: "Concreto Armado", norma: "ACI 318", resistencia: "f'c=28 MPa", color: 0x9ca3af, conexion: "ANCLADO" },
-        "ALUMINIO_ESTRUCTURAL": { material: "Aluminio Estructural 6061-T6", norma: "ASTM B308", color: 0xd1d5db, conexion: "PERNADO" },
-        "MADERA_ESTRUCTURAL": { material: "Madera Estructural", norma: "NDS 2018", color: 0x8b6914, conexion: "CLAVADO/PERNADO" }
+        "PPR_PN12_5": { 
+            material: "PPR", norma: "IRAM 13471", presion: "PN 12.5", color: 0x7c3aed, conexion: "TERMOFUSION",
+            dimensionCriteria: { maxPressure: 12.5, maxTemperature: 60, fluids: ['AGUA','AGUA POTABLE','AGUA TRATADA'], corrosionAllowance: 0 }
+        },
+        "ACERO_SCH80": { 
+            material: "Acero al Carbono", norma: "ASTM A106 Gr. B", schedule: "SCH 80", color: 0x94a3b8, conexion: "NPT",
+            dimensionCriteria: { maxPressure: 80, maxTemperature: 400, fluids: ['AGUA','VAPOR','CRUDO','GAS NATURAL'], corrosionAllowance: 1.5 }
+        },
+        "ACERO_150_RF": { 
+            material: "Acero al Carbono", norma: "ASTM A105", clase: "150", cara: "RF", color: 0x64748b, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 19.6, maxTemperature: 300, fluids: ['AGUA','VAPOR','CRUDO','GAS','HIDROCARBURO'], corrosionAllowance: 1.5 }
+        },
+        "CS_300_RF": { 
+            material: "Acero al Carbono", norma: "ASTM A105", clase: "300", cara: "RF", color: 0x475569, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 51.1, maxTemperature: 400, fluids: ['VAPOR','CRUDO','GAS','HIDROCARBURO'], corrosionAllowance: 1.5 }
+        },
+        "SS_150_RF": { 
+            material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "150", cara: "RF", color: 0x94a3b8, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 19.6, maxTemperature: 500, fluids: ['AGUA','VAPOR','ACIDO','CRUDO','ALIMENTO','FARMACEUTICO'], corrosionAllowance: 0 }
+        },
+        "SS_SANITARY": { 
+            material: "Acero Inoxidable 316L", norma: "3A / ASME BPE", acabado: "Ra < 0.8 µm", color: 0xe2e8f0, conexion: "TRI-CLAMP",
+            dimensionCriteria: { maxPressure: 10, maxTemperature: 150, fluids: ['LECHE','CERVEZA','JUGO','ALIMENTO','FARMACEUTICO','AGUA PURIFICADA'], corrosionAllowance: 0 }
+        },
+        "PTFE_LINED": { 
+            material: "Acero al Carbono Revestido PTFE", norma: "ASTM A395", color: 0xa78bfa, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 16, maxTemperature: 180, fluids: ['ACIDO CLORHIDRICO','ACIDO SULFURICO','CLORO','HIPOCLORITO'], corrosionAllowance: 0 }
+        },
+        "HDPE_PE100": { 
+            material: "HDPE", norma: "PE100", presion: "PN 10", color: 0x22c55e, conexion: "ELECTROFUSION",
+            dimensionCriteria: { maxPressure: 10, maxTemperature: 40, fluids: ['AGUA','AGUA TRATADA','LODO'], corrosionAllowance: 0 }
+        },
+        "PVC_SCH80": { 
+            material: "PVC", norma: "ASTM D1785", schedule: "SCH 80", color: 0xeab308, conexion: "CEMENTADO",
+            dimensionCriteria: { maxPressure: 16, maxTemperature: 50, fluids: ['AGUA','AGUA POTABLE','CLORO','HIPOCLORITO'], corrosionAllowance: 0 }
+        },
+        "CS_600_RF": { 
+            material: "Acero al Carbono", norma: "ASTM A105", clase: "600", cara: "RF", color: 0x334155, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 102.1, maxTemperature: 450, fluids: ['VAPOR ALTA PRESION','CRUDO','GAS ALTA PRESION'], corrosionAllowance: 1.5 }
+        },
+        "CS_900_RF": { 
+            material: "Acero al Carbono", norma: "ASTM A105", clase: "900", cara: "RF", color: 0x1e293b, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 153.2, maxTemperature: 450, fluids: ['VAPOR ALTA PRESION','GAS ALTA PRESION'], corrosionAllowance: 1.5 }
+        },
+        "CS_1500_RTJ": { 
+            material: "Acero al Carbono", norma: "ASTM A105", clase: "1500", cara: "RTJ", color: 0x0f172a, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 255.3, maxTemperature: 500, fluids: ['VAPOR ALTA PRESION','GAS ALTA PRESION'], corrosionAllowance: 1.5 }
+        },
+        "SS_300_RF": { 
+            material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "300", cara: "RF", color: 0x78909c, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 51.1, maxTemperature: 550, fluids: ['ACIDO','VAPOR','CRUDO','QUIMICO'], corrosionAllowance: 0 }
+        },
+        "SS_600_RF": { 
+            material: "Acero Inoxidable 316L", norma: "ASTM A182 F316L", clase: "600", cara: "RF", color: 0x5c7a89, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 102.1, maxTemperature: 550, fluids: ['ACIDO','VAPOR ALTA PRESION','QUIMICO CORROSIVO'], corrosionAllowance: 0 }
+        },
+        "DUPLEX_150_RF": { 
+            material: "Acero Dúplex 2205", norma: "ASTM A182 F51", clase: "150", cara: "RF", color: 0xcbd5e1, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 19.6, maxTemperature: 300, fluids: ['AGUA MARINA','CLORURO','ACIDO'], corrosionAllowance: 0 }
+        },
+        "ALLOY20_150_RF": { 
+            material: "Alloy 20", norma: "ASTM B462", clase: "150", cara: "RF", color: 0xfbbf24, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 19.6, maxTemperature: 300, fluids: ['ACIDO SULFURICO','ACIDO FOSFORICO'], corrosionAllowance: 0 }
+        },
+        "HASTELLOY_150_RF": { 
+            material: "Hastelloy C276", norma: "ASTM B574", clase: "150", cara: "RF", color: 0xf59e0b, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 19.6, maxTemperature: 500, fluids: ['ACIDO CLORHIDRICO','CLORO HUMEDO','QUIMICO AGRESIVO'], corrosionAllowance: 0 }
+        },
+        "CS_CRYO": { 
+            material: "Acero al Carbono Criogénico", norma: "ASTM A333 Gr.6", clase: "150", cara: "RF", color: 0x6366f1, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 19.6, maxTemperature: -30, fluids: ['GAS NATURAL LICUADO','NITROGENO LIQUIDO','OXIGENO LIQUIDO'], corrosionAllowance: 1.0 }
+        },
+        "PVC_SCH40": { 
+            material: "PVC", norma: "ASTM D1785", schedule: "SCH 40", color: 0xfacc15, conexion: "CEMENTADO",
+            dimensionCriteria: { maxPressure: 10, maxTemperature: 45, fluids: ['AGUA','DRENAJE'], corrosionAllowance: 0 }
+        },
+        "CPVC_SCH80": { 
+            material: "CPVC", norma: "ASTM F441", schedule: "SCH 80", color: 0xfb923c, conexion: "CEMENTADO",
+            dimensionCriteria: { maxPressure: 16, maxTemperature: 80, fluids: ['HIPOCLORITO','ACIDO DILUIDO','AGUA CALIENTE'], corrosionAllowance: 0 }
+        },
+        "PVDF_PN16": { 
+            material: "PVDF", norma: "ISO 10931", presion: "PN 16", color: 0xef4444, conexion: "TERMOFUSION",
+            dimensionCriteria: { maxPressure: 16, maxTemperature: 120, fluids: ['ACIDO CONCENTRADO','SOLVENTE','QUIMICO PURO'], corrosionAllowance: 0 }
+        },
+        "FRP": { 
+            material: "Fibra de Vidrio (FRP)", norma: "ASTM D2996", color: 0x8b5cf6, conexion: "LAMINADO",
+            dimensionCriteria: { maxPressure: 10, maxTemperature: 90, fluids: ['ACIDO','CLORO','AGUA MARINA'], corrosionAllowance: 0 }
+        },
+        "RUBBER_LINED": { 
+            material: "Acero Revestido Goma", norma: "ASTM A395", color: 0xec4899, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 16, maxTemperature: 80, fluids: ['ACIDO DILUIDO','SLURRY','LODO ABRASIVO'], corrosionAllowance: 0 }
+        },
+        "GLASS_LINED": { 
+            material: "Acero Revestido Vidrio", norma: "DIN 2873", color: 0xf0f9ff, conexion: "BRIDADA",
+            dimensionCriteria: { maxPressure: 10, maxTemperature: 200, fluids: ['ACIDO CONCENTRADO','QUIMICO PURO','FARMACEUTICO'], corrosionAllowance: 0 }
+        },
+        "HORMIGON_ESTRUCTURAL": { 
+            material: "Concreto Armado", norma: "ACI 318", resistencia: "f'c=28 MPa", color: 0x9ca3af, conexion: "ANCLADO",
+            dimensionCriteria: { maxPressure: 0, maxTemperature: 60, fluids: ['ESTRUCTURAL'], corrosionAllowance: 0, isStructural: true }
+        },
+        "ALUMINIO_ESTRUCTURAL": { 
+            material: "Aluminio Estructural 6061-T6", norma: "ASTM B308", color: 0xd1d5db, conexion: "PERNADO",
+            dimensionCriteria: { maxPressure: 0, maxTemperature: 150, fluids: ['ESTRUCTURAL'], corrosionAllowance: 0, isStructural: true }
+        },
+        "MADERA_ESTRUCTURAL": { 
+            material: "Madera Estructural", norma: "NDS 2018", color: 0x8b6914, conexion: "CLAVADO/PERNADO",
+            dimensionCriteria: { maxPressure: 0, maxTemperature: 50, fluids: ['ESTRUCTURAL'], corrosionAllowance: 0, isStructural: true }
+        }
     };
 
     // ================================================================
-    // 2. DEFINICIÓN DE EQUIPOS (COMPLETO)
+    // 2. DEFINICIÓN DE EQUIPOS (COMPLETO - SIN CAMBIOS)
     // ================================================================
     const equipment = {
         tanque_v: { 
@@ -465,7 +548,7 @@ const SmartFlowCatalog = (function() {
     };
 
     // ================================================================
-    // 3. COMPONENTES DE TUBERÍA
+    // 3. COMPONENTES DE TUBERÍA (SIN CAMBIOS)
     // ================================================================
     const components = {
         TEE_EQUAL_CS: { tipo: 'TEE_EQUAL', nombre: 'Tee Recta Acero', abbr: 'TE', spec: 'ACERO_150_RF', norma: 'ASTM A234 WPB', material: 'Acero al Carbono' },
@@ -620,10 +703,8 @@ const SmartFlowCatalog = (function() {
     };
 
     // ================================================================
-    // 4-10. GENERADORES, DIMENSIONES, ALIAS, FACTORÍA, API
+    // 4. GENERADORES DE PUERTOS PARA COMPONENTES
     // ================================================================
-    // [Se mantiene exactamente igual que en v4.1.1]
-    // ... (todo el resto del archivo sin cambios)
 
     function calculateLineDirection(line, param) {
         if (!line) return { dx: 1, dy: 0, dz: 0 };
@@ -827,6 +908,10 @@ const SmartFlowCatalog = (function() {
         return 50;
     }
 
+    // ================================================================
+    // 5. ALIAS Y RESOLUCIÓN
+    // ================================================================
+
     const _equipmentAliases = {
         'tanque_vertical': 'tanque_v', 'tanquevertical': 'tanque_v', 'tanque_horizontal': 'tanque_h', 'tanquehorizontal': 'tanque_h',
         'bomba_centrifuga': 'bomba', 'bombacentrifuga': 'bomba',
@@ -873,24 +958,6 @@ const SmartFlowCatalog = (function() {
         return null;
     }
 
-    const _componentCategories = {
-        'TEE': ['TEE_EQUAL', 'TEE_REDUCING'], 'CROSS': ['CROSS'], 'PIPE': ['PIPE'],
-        'ELBOW': ['ELBOW_90_LR', 'ELBOW_90_SR', 'ELBOW_45', 'ELBOW_90_PPR', 'ELBOW_45_PPR', 'ELBOW_90_HDPE', 'ELBOW_45_HDPE', 'ELBOW_90_PVC', 'ELBOW_45_PVC', 'ELBOW_90_LR_SS', 'ELBOW_45_SS', 'ELBOW_90_SANITARY'],
-        'VALVE': ['GATE_VALVE', 'GLOBE_VALVE', 'BUTTERFLY_VALVE', 'BALL_VALVE', 'CHECK_VALVE', 'DIAPHRAGM_VALVE', 'CONTROL_VALVE', 'PRESSURE_RELIEF', 'SAFETY_VALVE', 'DRAIN_VALVE', 'AIR_RELEASE', 'SAMPLE_VALVE', 'PLUG_VALVE', 'CHOKE_VALVE', 'CRYOGENIC_VALVE', 'GLASS_LINED_VALVE', 'ASEPTIC_VALVE', 'CHECK_VALVE_SANITARY', 'SAMPLE_VALVE_SANITARY'],
-        'REDUCER': ['CONCENTRIC_REDUCER', 'ECCENTRIC_REDUCER'],
-        'FLANGE': ['WELD_NECK_FLANGE', 'SLIP_ON_FLANGE', 'BLIND_FLANGE', 'LAP_JOINT_FLANGE', 'RTJ_FLANGE', 'ORIFICE_FLANGE'],
-        'STUB_END': ['STUB_END'], 'CAP': ['CAP'], 'UNION': ['UNION', 'UNION_ACERO'], 'NIPPLE': ['NIPPLE'],
-        'BULKHEAD': ['BULKHEAD'], 'TRANSITION': ['TRANSITION'], 'EXPANSION_JOINT': ['EXPANSION_JOINT'],
-        'STRAINER': ['Y_STRAINER', 'T_STRAINER', 'BASKET_STRAINER', 'DUPLEX_STRAINER', 'SANITARY_STRAINER'],
-        'STEAM_TRAP': ['STEAM_TRAP', 'STEAM_TRAP_SANITARY'],
-        'INSTRUMENT': ['PRESSURE_GAUGE', 'TEMPERATURE_GAUGE', 'FLOW_METER', 'PRESSURE_TRANSMITTER', 'LEVEL_TRANSMITTER', 'TEMPERATURE_TRANSMITTER', 'ROTAMETER', 'SIGHT_GLASS', 'LEVEL_SWITCH_RANA', 'CORIOLIS_METER', 'PH_METER', 'CONDUCTIVITY_METER', 'SANITARY_PRESSURE_GAUGE'],
-        'SUPPORT': ['PIPE_SHOE', 'U_BOLT', 'GUIDE', 'ANCHOR', 'HANGER', 'SPRING_HANGER', 'PIPE_CLAMP'],
-        'QUICK_CONNECT': ['CAMLOCK', 'QUICK_CONNECT'], 'HOSE': ['FLEXIBLE_HOSE', 'METALLIC_HOSE', 'PTFE_HOSE'],
-        'SAFETY': ['SILENCER', 'VENT_SILENCER', 'FLAME_ARRESTER', 'VACUUM_BREAKER', 'DETONATION_ARRESTER', 'RUPTURE_DISC'],
-        'SAMPLE': ['SAMPLE_COOLER', 'SAMPLE_VALVE', 'PISTON_SAMPLE_VALVE'],
-        'INJECTION': ['CHEMICAL_INJECTOR', 'CHLORINE_EJECTOR'], 'MIXER': ['STATIC_MIXER']
-    };
-
     const _componentAliases = {
         'TE': 'TEE_EQUAL', 'TR': 'TEE_REDUCING', 'CR': 'CROSS', 'EL': 'ELBOW_90_LR', 'E4': 'ELBOW_45', 'ES': 'ELBOW_90_SR',
         'GV': 'GATE_VALVE', 'GL': 'GLOBE_VALVE', 'VB': 'BUTTERFLY_VALVE', 'BA': 'BALL_VALVE', 'CK': 'CHECK_VALVE',
@@ -935,6 +1002,24 @@ const SmartFlowCatalog = (function() {
         }
         return null;
     }
+
+    const _componentCategories = {
+        'TEE': ['TEE_EQUAL', 'TEE_REDUCING'], 'CROSS': ['CROSS'], 'PIPE': ['PIPE'],
+        'ELBOW': ['ELBOW_90_LR', 'ELBOW_90_SR', 'ELBOW_45', 'ELBOW_90_PPR', 'ELBOW_45_PPR', 'ELBOW_90_HDPE', 'ELBOW_45_HDPE', 'ELBOW_90_PVC', 'ELBOW_45_PVC', 'ELBOW_90_LR_SS', 'ELBOW_45_SS', 'ELBOW_90_SANITARY'],
+        'VALVE': ['GATE_VALVE', 'GLOBE_VALVE', 'BUTTERFLY_VALVE', 'BALL_VALVE', 'CHECK_VALVE', 'DIAPHRAGM_VALVE', 'CONTROL_VALVE', 'PRESSURE_RELIEF', 'SAFETY_VALVE', 'DRAIN_VALVE', 'AIR_RELEASE', 'SAMPLE_VALVE', 'PLUG_VALVE', 'CHOKE_VALVE', 'CRYOGENIC_VALVE', 'GLASS_LINED_VALVE', 'ASEPTIC_VALVE', 'CHECK_VALVE_SANITARY', 'SAMPLE_VALVE_SANITARY'],
+        'REDUCER': ['CONCENTRIC_REDUCER', 'ECCENTRIC_REDUCER'],
+        'FLANGE': ['WELD_NECK_FLANGE', 'SLIP_ON_FLANGE', 'BLIND_FLANGE', 'LAP_JOINT_FLANGE', 'RTJ_FLANGE', 'ORIFICE_FLANGE'],
+        'STUB_END': ['STUB_END'], 'CAP': ['CAP'], 'UNION': ['UNION', 'UNION_ACERO'], 'NIPPLE': ['NIPPLE'],
+        'BULKHEAD': ['BULKHEAD'], 'TRANSITION': ['TRANSITION'], 'EXPANSION_JOINT': ['EXPANSION_JOINT'],
+        'STRAINER': ['Y_STRAINER', 'T_STRAINER', 'BASKET_STRAINER', 'DUPLEX_STRAINER', 'SANITARY_STRAINER'],
+        'STEAM_TRAP': ['STEAM_TRAP', 'STEAM_TRAP_SANITARY'],
+        'INSTRUMENT': ['PRESSURE_GAUGE', 'TEMPERATURE_GAUGE', 'FLOW_METER', 'PRESSURE_TRANSMITTER', 'LEVEL_TRANSMITTER', 'TEMPERATURE_TRANSMITTER', 'ROTAMETER', 'SIGHT_GLASS', 'LEVEL_SWITCH_RANA', 'CORIOLIS_METER', 'PH_METER', 'CONDUCTIVITY_METER', 'SANITARY_PRESSURE_GAUGE'],
+        'SUPPORT': ['PIPE_SHOE', 'U_BOLT', 'GUIDE', 'ANCHOR', 'HANGER', 'SPRING_HANGER', 'PIPE_CLAMP'],
+        'QUICK_CONNECT': ['CAMLOCK', 'QUICK_CONNECT'], 'HOSE': ['FLEXIBLE_HOSE', 'METALLIC_HOSE', 'PTFE_HOSE'],
+        'SAFETY': ['SILENCER', 'VENT_SILENCER', 'FLAME_ARRESTER', 'VACUUM_BREAKER', 'DETONATION_ARRESTER', 'RUPTURE_DISC'],
+        'SAMPLE': ['SAMPLE_COOLER', 'SAMPLE_VALVE', 'PISTON_SAMPLE_VALVE'],
+        'INJECTION': ['CHEMICAL_INJECTOR', 'CHLORINE_EJECTOR'], 'MIXER': ['STATIC_MIXER']
+    };
 
     function findComponentByTypeAndSpec(tipo, specId) {
         const resolved = resolveComponentAlias(tipo);
@@ -1074,6 +1159,34 @@ const SmartFlowCatalog = (function() {
         return base;
     }
 
+    function getTransitionAccessories(lineMaterial, componentMaterial, diameter) {
+        const from = (lineMaterial || '').toUpperCase().trim();
+        const to = (componentMaterial || '').toUpperCase().trim();
+        if (!to || from === to) return null;
+        const plasticFamilies = [['PPR', 'PP', 'PPR', 'PP-EPDM', 'PP_EPDM'], ['PE', 'PE100', 'HDPE', 'PE_EPDM'], ['PVC', 'CPVC']];
+        const isPlasticCompatible = plasticFamilies.some(family => family.some(m => from.includes(m)) && family.some(m => to.includes(m)));
+        if (isPlasticCompatible) return null;
+        const transitionMap = {
+            'PPR->ACERO AL CARBONO': { left: 'ADAPTADOR_MACHO_PPR_3IN', right: 'UNION_CS_3000' },
+            'ACERO AL CARBONO->PPR': { left: 'UNION_CS_3000', right: 'ADAPTADOR_HEMBRA_PPR_3IN' },
+            'HDPE->ACERO AL CARBONO': { left: 'TRANSITION_HDPE_STEEL', right: null },
+            'ACERO AL CARBONO->HDPE': { left: null, right: 'TRANSITION_HDPE_STEEL' },
+            'PVC->ACERO AL CARBONO': { left: 'UNION_CS_3000', right: null },
+            'ACERO AL CARBONO->PVC': { left: null, right: 'UNION_CS_3000' },
+            'ACERO AL CARBONO->ACERO INOXIDABLE 316L': { left: 'UNION_CS_3000', right: null }
+        };
+        const key = `${from}->${to}`;
+        if (transitionMap[key]) return transitionMap[key];
+        const metalMaterials = ['ACERO', 'INOXIDABLE', 'INOX', 'CARBONO', 'CS', 'SS'];
+        const fromIsMetal = metalMaterials.some(m => from.includes(m));
+        const toIsMetal = metalMaterials.some(m => to.includes(m));
+        if (fromIsMetal && toIsMetal) return { left: 'UNION_CS_3000', right: 'UNION_CS_3000' };
+        return null;
+    }
+
+    // ================================================================
+    // 6. API PÚBLICA (AMPLIADA v5.0)
+    // ================================================================
     return {
         getSpecs: () => specs,
         getSpec: (id) => specs[id] || null,
@@ -1119,29 +1232,105 @@ const SmartFlowCatalog = (function() {
             if (d_origen === d_destino) return { tipo: 'TEE_EQUAL', diam: d_origen };
             return { tipo: 'REDUCCION_CONCENTRICA', d_mayor: Math.max(d_origen, d_destino), d_menor: Math.min(d_origen, d_destino) };
         },
-        getTransitionAccessories: (lineMaterial, componentMaterial, diameter) => {
-            const from = (lineMaterial || '').toUpperCase().trim();
-            const to = (componentMaterial || '').toUpperCase().trim();
-            if (!to || from === to) return null;
-            const plasticFamilies = [['PPR', 'PP', 'PPR', 'PP-EPDM', 'PP_EPDM'], ['PE', 'PE100', 'HDPE', 'PE_EPDM'], ['PVC', 'CPVC']];
-            const isPlasticCompatible = plasticFamilies.some(family => family.some(m => from.includes(m)) && family.some(m => to.includes(m)));
-            if (isPlasticCompatible) return null;
-            const transitionMap = {
-                'PPR->ACERO AL CARBONO': { left: 'ADAPTADOR_MACHO_PPR_3IN', right: 'UNION_CS_3000' },
-                'ACERO AL CARBONO->PPR': { left: 'UNION_CS_3000', right: 'ADAPTADOR_HEMBRA_PPR_3IN' },
-                'HDPE->ACERO AL CARBONO': { left: 'TRANSITION_HDPE_STEEL', right: null },
-                'ACERO AL CARBONO->HDPE': { left: null, right: 'TRANSITION_HDPE_STEEL' },
-                'PVC->ACERO AL CARBONO': { left: 'UNION_CS_3000', right: null },
-                'ACERO AL CARBONO->PVC': { left: null, right: 'UNION_CS_3000' },
-                'ACERO AL CARBONO->ACERO INOXIDABLE 316L': { left: 'UNION_CS_3000', right: null }
-            };
-            const key = `${from}->${to}`;
-            if (transitionMap[key]) return transitionMap[key];
-            const metalMaterials = ['ACERO', 'INOXIDABLE', 'INOX', 'CARBONO', 'CS', 'SS'];
-            const fromIsMetal = metalMaterials.some(m => from.includes(m));
-            const toIsMetal = metalMaterials.some(m => to.includes(m));
-            if (fromIsMetal && toIsMetal) return { left: 'UNION_CS_3000', right: 'UNION_CS_3000' };
-            return null;
+        getTransitionAccessories,
+
+        // ================================================================
+        // NUEVOS MÉTODOS v5.0
+        // ================================================================
+        
+        /**
+         * Valida si una especificación es adecuada para un fluido y condiciones.
+         */
+        validateSpecForStream: function(specId, streamData) {
+            const spec = specs[specId];
+            if (!spec) {
+                return { valid: false, errors: [`Spec "${specId}" no encontrada`], warnings: [], suggestion: null };
+            }
+            
+            const criteria = spec.dimensionCriteria;
+            if (!criteria) {
+                return { valid: true, warnings: ['Spec sin criterios de dimensionamiento definidos'], errors: [] };
+            }
+            
+            if (criteria.isStructural) {
+                return { valid: false, errors: [`${specId} es una spec estructural, no para proceso`], warnings: [] };
+            }
+            
+            const errors = [];
+            const warnings = [];
+            const fluido = (streamData.fluid || '').toUpperCase();
+            const presion = streamData.pressure || 0;
+            const temperatura = streamData.temperature || 25;
+            
+            if (presion > criteria.maxPressure) {
+                errors.push(`Presión (${presion} bar) excede máximo de ${specId}: ${criteria.maxPressure} bar`);
+            } else if (presion > criteria.maxPressure * 0.8) {
+                warnings.push(`Presión (${presion} bar) cercana al límite de ${specId}: ${criteria.maxPressure} bar`);
+            }
+            
+            if (criteria.maxTemperature && temperatura > criteria.maxTemperature) {
+                errors.push(`Temperatura (${temperatura}°C) excede máximo de ${specId}: ${criteria.maxTemperature}°C`);
+            }
+            
+            if (criteria.fluids && criteria.fluids.length > 0) {
+                const fluidoCompatible = criteria.fluids.some(f => fluido.includes(f));
+                if (!fluidoCompatible) {
+                    warnings.push(`Fluido "${streamData.fluid}" no está en la lista de fluidos recomendados para ${specId}`);
+                    
+                    const alternativas = [];
+                    for (const [key, s] of Object.entries(specs)) {
+                        if (key !== specId && s.dimensionCriteria && s.dimensionCriteria.fluids) {
+                            if (s.dimensionCriteria.fluids.some(f => fluido.includes(f))) {
+                                alternativas.push(key);
+                            }
+                        }
+                    }
+                    if (alternativas.length > 0) {
+                        return {
+                            valid: errors.length === 0,
+                            errors, warnings,
+                            suggestion: alternativas[0],
+                            alternativas: alternativas.slice(0, 3),
+                            mensaje: `Se sugiere usar ${alternativas[0]} en lugar de ${specId} para ${streamData.fluid}`
+                        };
+                    }
+                }
+            }
+            
+            return { valid: errors.length === 0, errors, warnings, suggestion: null };
+        },
+        
+        /**
+         * Obtiene specs recomendadas para un fluido y condiciones.
+         */
+        suggestSpecsForStream: function(streamData) {
+            const fluido = (streamData.fluid || '').toUpperCase();
+            const presion = streamData.pressure || 0;
+            const temperatura = streamData.temperature || 25;
+            
+            const resultados = [];
+            
+            for (const [key, spec] of Object.entries(specs)) {
+                const criteria = spec.dimensionCriteria;
+                if (!criteria || criteria.isStructural) continue;
+                
+                let score = 0;
+                
+                if (criteria.fluids && criteria.fluids.some(f => fluido.includes(f))) {
+                    score += 100;
+                } else if (!criteria.fluids || criteria.fluids.length === 0) {
+                    score += 30;
+                }
+                
+                if (presion <= criteria.maxPressure) score += 50;
+                if (criteria.maxTemperature && temperatura <= criteria.maxTemperature) score += 30;
+                if (criteria.corrosionAllowance !== undefined && criteria.corrosionAllowance >= 0) score += 10;
+                
+                if (score > 0) resultados.push({ spec: key, material: spec.material, score: score });
+            }
+            
+            resultados.sort((a, b) => b.score - a.score);
+            return resultados.slice(0, 5);
         }
     };
 })();
