@@ -1,4 +1,3 @@
-
 // ============================================================
 // SMARTFLOW PFD RENDERER v1.1 - Motor de Renderizado de Diagramas
 // Archivo: js/pfd-renderer.js
@@ -6,6 +5,7 @@
 //   - Detección de cruces entre streams no conectados
 //   - Dibujo de puentes (bridges) según norma ISA
 //   - Ruteo ortogonal mejorado
+//   - Corrección: API pública fuera del constructor
 // ============================================================
 
 const SmartFlowPFDRenderer = (function() {
@@ -21,8 +21,8 @@ const SmartFlowPFDRenderer = (function() {
         LABEL_OFFSET: 15,
         STREAM_LABEL_OFFSET: 30,
         MIN_STREAM_SEGMENT: 30,
-        BRIDGE_RADIUS: 6,        // Radio del arco de puente
-        BRIDGE_GAP: 4            // Espacio del puente
+        BRIDGE_RADIUS: 6,
+        BRIDGE_GAP: 4
     };
 
     // ================================================================
@@ -42,24 +42,21 @@ const SmartFlowPFDRenderer = (function() {
             this.ctx = this.canvas.getContext('2d');
             this.options = Object.assign({}, LAYOUT, options);
             
-            // Estado del diagrama
             this.equipment = [];
             this.streams = [];
             this.connections = [];
-            this.crossings = [];        // NUEVO: lista de cruces detectados
+            this.crossings = [];
             this.selectedElement = null;
             this.hoveredElement = null;
             this.dragging = null;
             
-            // Escala y desplazamiento
             this.scale = 1.0;
             this.offsetX = 0;
             this.offsetY = 0;
             
-            // Historial de posiciones para undo
             this.positionHistory = [];
+            this.onSelectionChanged = null;
             
-            // Bindings de eventos
             this._bindEvents();
         }
 
@@ -82,7 +79,8 @@ const SmartFlowPFDRenderer = (function() {
             });
             
             processEquipment.forEach((eq, index) => {
-                const pfdSymbol = SmartFlowPFDSymbols.getPFDSymbol(eq.tipo);
+                const pfdSymbol = typeof SmartFlowPFDSymbols !== 'undefined' ? 
+                    SmartFlowPFDSymbols.getPFDSymbol(eq.tipo) : null;
                 const size = pfdSymbol ? pfdSymbol.size : { width: 80, height: 60 };
                 
                 const eqNode = {
@@ -108,10 +106,11 @@ const SmartFlowPFDRenderer = (function() {
                 });
             }
             
-            // Detectar cruces después de cargar todos los streams
             this._detectCrossings();
             
-            this.autoLayout();
+            if (this.equipment.length > 0) {
+                this.autoLayout();
+            }
             this._savePositionState();
         }
 
@@ -120,7 +119,7 @@ const SmartFlowPFDRenderer = (function() {
             const toEq = this.equipment.find(e => e.tag === streamData.to);
             
             if (!fromEq || !toEq) {
-                console.warn(`Stream ${streamData.tag}: equipo origen/destino no encontrado en PFD`);
+                console.warn('Stream ' + streamData.tag + ': equipo origen/destino no encontrado en PFD');
                 return null;
             }
             
@@ -158,10 +157,13 @@ const SmartFlowPFDRenderer = (function() {
             }
             
             const ports = Object.entries(symbol.connectionPoints);
-            const matchingPort = ports.find(([id, pt]) => pt.direccion === direction);
+            const matchingPort = ports.find(function(entry) { 
+                return entry[1].direccion === direction; 
+            });
             
             if (matchingPort) {
-                const [portId, point] = matchingPort;
+                const portId = matchingPort[0];
+                const point = matchingPort[1];
                 return {
                     x: eqNode.x + point.offsetX * eqNode.width,
                     y: eqNode.y + point.offsetY * eqNode.height,
@@ -170,7 +172,8 @@ const SmartFlowPFDRenderer = (function() {
             }
             
             if (ports.length > 0) {
-                const [portId, point] = ports[0];
+                const portId = ports[0][0];
+                const point = ports[0][1];
                 return {
                     x: eqNode.x + point.offsetX * eqNode.width,
                     y: eqNode.y + point.offsetY * eqNode.height,
@@ -191,17 +194,14 @@ const SmartFlowPFDRenderer = (function() {
             
             if (!from || !to) return;
             
-            // Ruta ortogonal inteligente
             const dx = to.x - from.x;
             const dy = to.y - from.y;
             
             let route;
             
             if (Math.abs(dx) < 20 || Math.abs(dy) < 20) {
-                // Si están muy cerca, línea directa
                 route = [from, to];
             } else if (Math.abs(dx) > Math.abs(dy)) {
-                // Predomina horizontal: salir horizontal, luego vertical
                 const midX = from.x + dx * 0.5;
                 route = [
                     { x: from.x, y: from.y },
@@ -210,7 +210,6 @@ const SmartFlowPFDRenderer = (function() {
                     { x: to.x, y: to.y }
                 ];
             } else {
-                // Predomina vertical: salir vertical, luego horizontal
                 const midY = from.y + dy * 0.5;
                 route = [
                     { x: from.x, y: from.y },
@@ -236,13 +235,9 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         // ================================================================
-        // 4. DETECCIÓN DE CRUCES ENTRE STREAMS NO CONECTADOS (NUEVO v1.1)
+        // 4. DETECCIÓN DE CRUCES ENTRE STREAMS NO CONECTADOS
         // ================================================================
         
-        /**
-         * Detecta todos los cruces entre streams que NO comparten
-         * equipos de origen/destino (no están conectados físicamente).
-         */
         _detectCrossings() {
             this.crossings = [];
             
@@ -251,13 +246,11 @@ const SmartFlowPFDRenderer = (function() {
                     const sA = this.streams[i];
                     const sB = this.streams[j];
                     
-                    // Si comparten algún equipo, están conectados → no es cruce
                     if (sA.from === sB.from || sA.from === sB.to ||
                         sA.to === sB.from || sA.to === sB.to) {
                         continue;
                     }
                     
-                    // Buscar intersecciones entre segmentos de ruta
                     if (!sA.route || !sB.route) continue;
                     
                     for (let ai = 0; ai < sA.route.length - 1; ai++) {
@@ -268,7 +261,6 @@ const SmartFlowPFDRenderer = (function() {
                             );
                             
                             if (crossing) {
-                                // Verificar que no sea en los extremos (conexiones a equipos)
                                 const distFromAStart = Math.hypot(crossing.x - sA.route[0].x, crossing.y - sA.route[0].y);
                                 const distFromAEnd = Math.hypot(crossing.x - sA.route[sA.route.length - 1].x, crossing.y - sA.route[sA.route.length - 1].y);
                                 const distFromBStart = Math.hypot(crossing.x - sB.route[0].x, crossing.y - sB.route[0].y);
@@ -278,7 +270,6 @@ const SmartFlowPFDRenderer = (function() {
                                 if (distFromAStart > minDist && distFromAEnd > minDist &&
                                     distFromBStart > minDist && distFromBEnd > minDist) {
                                     
-                                    // Determinar orientación del cruce
                                     const segA_H = Math.abs(sA.route[ai + 1].x - sA.route[ai].x) > Math.abs(sA.route[ai + 1].y - sA.route[ai].y);
                                     const segB_H = Math.abs(sB.route[bj + 1].x - sB.route[bj].x) > Math.abs(sB.route[bj + 1].y - sB.route[bj].y);
                                     
@@ -287,7 +278,6 @@ const SmartFlowPFDRenderer = (function() {
                                         y: crossing.y,
                                         streamA: sA.tag,
                                         streamB: sB.tag,
-                                        // El stream que va horizontal pasa "por encima"
                                         topStream: segA_H ? sA.tag : sB.tag,
                                         bottomStream: segA_H ? sB.tag : sA.tag
                                     });
@@ -299,16 +289,10 @@ const SmartFlowPFDRenderer = (function() {
             }
         }
         
-        /**
-         * Calcula la intersección entre dos segmentos de línea.
-         * Solo detecta cruces ortogonales (horizontal vs vertical).
-         */
         _segmentIntersection(p1, p2, p3, p4) {
-            // Determinar si los segmentos son ortogonales
             const seg1_H = Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y);
             const seg2_H = Math.abs(p4.x - p3.x) > Math.abs(p4.y - p3.y);
             
-            // Solo detectar cruces H-V u ortogonales
             if (seg1_H === seg2_H) return null;
             
             let hSeg, vSeg;
@@ -328,7 +312,6 @@ const SmartFlowPFDRenderer = (function() {
             const vY1 = Math.min(vSeg.p1.y, vSeg.p2.y);
             const vY2 = Math.max(vSeg.p1.y, vSeg.p2.y);
             
-            // Margen de tolerancia
             const margin = 3;
             
             if (vX >= hX1 - margin && vX <= hX2 + margin &&
@@ -339,39 +322,38 @@ const SmartFlowPFDRenderer = (function() {
             return null;
         }
         
-        /**
-         * Dibuja un puente (bridge) en el punto de cruce.
-         * El stream horizontal se interrumpe y dibuja un arco
-         * sobre el stream vertical.
-         */
         _drawBridge(ctx, crossing) {
             const x = crossing.x;
             const y = crossing.y;
             const gap = this.options.BRIDGE_GAP || 4;
             const radius = this.options.BRIDGE_RADIUS || 6;
             
-            // Encontrar los streams involucrados
-            const streamH = this.streams.find(s => s.tag === crossing.topStream);
-            const streamV = this.streams.find(s => s.tag === crossing.bottomStream);
+            const streamH = this.streams.find(function(s) { return s.tag === crossing.topStream; });
             
-            if (!streamH || !streamV) return;
+            if (!streamH) return;
             
-            // El stream horizontal se interrumpe
+            // Borrar el segmento horizontal en el punto de cruce
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(x - gap - 2, y - 3, gap * 2 + 4, 6);
+            
             // Dibujar el arco de puente
-            
             ctx.strokeStyle = streamH.color || '#3b82f6';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            
-            // Arco que salta sobre el stream vertical
-            // Punto izquierdo del gap → arco → punto derecho del gap
             ctx.moveTo(x - gap, y);
             ctx.quadraticCurveTo(x, y - radius, x + gap, y);
-            
             ctx.stroke();
             
-            // Restaurar el stream vertical (ya está dibujado completo)
-            // No es necesario redibujarlo porque se dibuja primero
+            // Restaurar los extremos del stream horizontal
+            ctx.beginPath();
+            ctx.moveTo(x - gap - 1, y);
+            ctx.lineTo(x - gap, y);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(x + gap, y);
+            ctx.lineTo(x + gap + 1, y);
+            ctx.stroke();
         }
 
         // ================================================================
@@ -384,12 +366,12 @@ const SmartFlowPFDRenderer = (function() {
             const graph = {};
             const inDegree = {};
             
-            this.equipment.forEach(eq => {
+            this.equipment.forEach(function(eq) {
                 graph[eq.tag] = [];
                 inDegree[eq.tag] = 0;
             });
             
-            this.streams.forEach(stream => {
+            this.streams.forEach(function(stream) {
                 if (graph[stream.from] && graph[stream.to]) {
                     graph[stream.from].push(stream.to);
                     inDegree[stream.to] = (inDegree[stream.to] || 0) + 1;
@@ -399,12 +381,12 @@ const SmartFlowPFDRenderer = (function() {
             const layers = [];
             const queue = [];
             
-            Object.entries(inDegree).forEach(([tag, degree]) => {
-                if (degree === 0) queue.push(tag);
+            Object.entries(inDegree).forEach(function(entry) {
+                if (entry[1] === 0) queue.push(entry[0]);
             });
             
             if (queue.length === 0) {
-                this.equipment.forEach(eq => queue.push(eq.tag));
+                this.equipment.forEach(function(eq) { queue.push(eq.tag); });
             }
             
             const visited = new Set();
@@ -414,11 +396,11 @@ const SmartFlowPFDRenderer = (function() {
                 layers.push(currentLayer);
                 const nextLayer = [];
                 
-                currentLayer.forEach(tag => {
+                currentLayer.forEach(function(tag) {
                     if (visited.has(tag)) return;
                     visited.add(tag);
                     
-                    (graph[tag] || []).forEach(nextTag => {
+                    (graph[tag] || []).forEach(function(nextTag) {
                         if (!visited.has(nextTag) && !nextLayer.includes(nextTag)) {
                             nextLayer.push(nextTag);
                         }
@@ -428,7 +410,7 @@ const SmartFlowPFDRenderer = (function() {
                 currentLayer = nextLayer;
             }
             
-            this.equipment.forEach(eq => {
+            this.equipment.forEach(function(eq) {
                 if (!visited.has(eq.tag)) {
                     if (layers.length === 0) layers.push([]);
                     layers[layers.length - 1].push(eq.tag);
@@ -436,18 +418,19 @@ const SmartFlowPFDRenderer = (function() {
             });
             
             const tagToEq = {};
-            this.equipment.forEach(eq => { tagToEq[eq.tag] = eq; });
+            this.equipment.forEach(function(eq) { tagToEq[eq.tag] = eq; });
             
-            layers.forEach((layer, layerIndex) => {
-                const x = this.options.MARGIN + layerIndex * this.options.SPACING_X;
-                const totalHeight = layer.length * this.options.SPACING_Y;
-                const startY = this.options.MARGIN + (this.canvas ? this.canvas.height / 2 - totalHeight / 2 : 200);
+            var self = this;
+            layers.forEach(function(layer, layerIndex) {
+                const x = self.options.MARGIN + layerIndex * self.options.SPACING_X;
+                const totalHeight = layer.length * self.options.SPACING_Y;
+                const startY = self.options.MARGIN + (self.canvas ? self.canvas.height / 2 - totalHeight / 2 : 200);
                 
-                layer.forEach((tag, itemIndex) => {
+                layer.forEach(function(tag, itemIndex) {
                     const eq = tagToEq[tag];
                     if (eq && !eq.locked) {
                         eq.x = x;
-                        eq.y = startY + itemIndex * this.options.SPACING_Y;
+                        eq.y = startY + itemIndex * self.options.SPACING_Y;
                     }
                 });
             });
@@ -457,14 +440,15 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         _updateAllRoutes() {
-            this.streams.forEach(stream => {
-                const fromEq = this.equipment.find(e => e.tag === stream.from);
-                const toEq = this.equipment.find(e => e.tag === stream.to);
+            var self = this;
+            this.streams.forEach(function(stream) {
+                const fromEq = self.equipment.find(function(e) { return e.tag === stream.from; });
+                const toEq = self.equipment.find(function(e) { return e.tag === stream.to; });
                 
                 if (fromEq && toEq) {
-                    stream.fromPoint = this._findBestPort(fromEq, 'out');
-                    stream.toPoint = this._findBestPort(toEq, 'in');
-                    this._calculateRoute(stream);
+                    stream.fromPoint = self._findBestPort(fromEq, 'out');
+                    stream.toPoint = self._findBestPort(toEq, 'in');
+                    self._calculateRoute(stream);
                 }
             });
         }
@@ -482,7 +466,6 @@ const SmartFlowPFDRenderer = (function() {
             
             ctx.clearRect(0, 0, w, h);
             
-            // Fondo
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, w, h);
             
@@ -490,20 +473,20 @@ const SmartFlowPFDRenderer = (function() {
             ctx.translate(this.offsetX, this.offsetY);
             ctx.scale(this.scale, this.scale);
             
-            // Dibujar grid
             this._renderGrid(ctx);
             
-            // Dibujar streams PRIMERO (detrás de los equipos)
-            this.streams.forEach(stream => this._renderStream(ctx, stream));
+            // Streams detrás de los equipos
+            var self = this;
+            this.streams.forEach(function(stream) { self._renderStream(ctx, stream); });
             
-            // Dibujar puentes en cruces (NUEVO v1.1)
-            this.crossings.forEach(crossing => this._drawBridge(ctx, crossing));
+            // Puentes en cruces
+            this.crossings.forEach(function(crossing) { self._drawBridge(ctx, crossing); });
             
-            // Dibujar equipos (encima de los streams)
-            this.equipment.forEach(eq => this._renderEquipment(ctx, eq));
+            // Equipos encima
+            this.equipment.forEach(function(eq) { self._renderEquipment(ctx, eq); });
             
-            // Dibujar etiquetas de streams
-            this.streams.forEach(stream => this._renderStreamLabel(ctx, stream));
+            // Etiquetas de streams
+            this.streams.forEach(function(stream) { self._renderStreamLabel(ctx, stream); });
             
             ctx.restore();
         }
@@ -532,7 +515,8 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         _renderEquipment(ctx, eq) {
-            const { x, y, width, height, symbol, tag } = eq;
+            const x = eq.x, y = eq.y, width = eq.width, height = eq.height;
+            const symbol = eq.symbol, tag = eq.tag;
             const isSelected = this.selectedElement && this.selectedElement.tag === tag;
             const isHovered = this.hoveredElement && this.hoveredElement.tag === tag;
             
@@ -573,7 +557,8 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         _renderSymbol(ctx, eq, isSelected, isHovered) {
-            const { x, y, width, height, symbol } = eq;
+            const x = eq.x, y = eq.y, width = eq.width, height = eq.height;
+            const symbol = eq.symbol;
             const shape = symbol.shape;
             
             ctx.strokeStyle = isSelected ? '#3b82f6' : (symbol.stroke ? symbol.stroke.color : '#1e293b');
@@ -585,115 +570,39 @@ const SmartFlowPFDRenderer = (function() {
             }
             
             switch (shape) {
-                case 'centrifugal_pump':
-                case 'dosing_pump':
-                case 'submersible_pump':
-                case 'compressor':
-                    this._drawPumpSymbol(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'vertical_vessel':
-                case 'reactor':
-                case 'jacketed_reactor':
-                case 'autoclave':
-                case 'crystallizer':
-                    this._drawVerticalVessel(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'horizontal_vessel':
-                case 'separator':
-                case 'three_phase_separator':
-                case 'slug_catcher':
-                    this._drawHorizontalVessel(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'heat_exchanger':
-                case 'condenser':
-                case 'boiler':
-                case 'fired_heater':
-                case 'evaporator':
-                    this._drawHeatExchanger(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'distillation_column':
-                case 'fractionation_column':
-                case 'absorber':
-                case 'stripper':
-                case 'degasifier':
-                    this._drawColumn(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'sand_filter':
-                case 'carbon_filter':
-                case 'softener':
-                case 'demineralizer':
-                    this._drawFilter(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'clarifier':
-                case 'thickener':
-                    this._drawClarifier(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'reverse_osmosis':
-                    this._drawROUnit(ctx, x, y, width, height);
-                    break;
-                    
-                case 'centrifuge':
-                case 'disc_centrifuge':
-                    this._drawCentrifuge(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'filter_press':
-                case 'duplex_filter':
-                    this._drawFilterPress(ctx, x, y, width, height);
-                    break;
-                    
-                case 'agitator':
-                    this._drawAgitator(ctx, x, y, width, height);
-                    break;
-                    
-                case 'mill':
-                case 'rotary_dryer':
-                case 'drum_filter':
-                    this._drawRotaryEquipment(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'homogenizer':
-                case 'hp_homogenizer':
-                case 'uht_sterilizer':
-                case 'pasteurizer':
-                    this._drawProcessSkid(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'cheese_vat':
-                case 'filler':
-                    this._drawFoodEquipment(ctx, x, y, width, height, shape);
-                    break;
-                    
-                case 'chemical_doser':
-                case 'injection_skid':
-                    this._drawDosingUnit(ctx, x, y, width, height);
-                    break;
-                    
-                case 'flare':
-                    this._drawFlare(ctx, x, y, width, height);
-                    break;
-                    
-                case 'flocculator':
-                    this._drawFlocculator(ctx, x, y, width, height);
-                    break;
-                    
-                case 'electrolytic_cell':
-                    this._drawElectrolyticCell(ctx, x, y, width, height);
-                    break;
-                    
-                case 'parshall_flume':
-                    this._drawParshallFlume(ctx, x, y, width, height);
-                    break;
-                    
-                default:
-                    this._renderDefaultBox(ctx, eq, isSelected, isHovered);
+                case 'centrifugal_pump': case 'dosing_pump': case 'submersible_pump': case 'compressor':
+                    this._drawPumpSymbol(ctx, x, y, width, height, shape); break;
+                case 'vertical_vessel': case 'reactor': case 'jacketed_reactor': case 'autoclave': case 'crystallizer':
+                    this._drawVerticalVessel(ctx, x, y, width, height, shape); break;
+                case 'horizontal_vessel': case 'separator': case 'three_phase_separator': case 'slug_catcher':
+                    this._drawHorizontalVessel(ctx, x, y, width, height, shape); break;
+                case 'heat_exchanger': case 'condenser': case 'boiler': case 'fired_heater': case 'evaporator':
+                    this._drawHeatExchanger(ctx, x, y, width, height, shape); break;
+                case 'distillation_column': case 'fractionation_column': case 'absorber': case 'stripper': case 'degasifier':
+                    this._drawColumn(ctx, x, y, width, height, shape); break;
+                case 'sand_filter': case 'carbon_filter': case 'softener': case 'demineralizer':
+                    this._drawFilter(ctx, x, y, width, height, shape); break;
+                case 'clarifier': case 'thickener':
+                    this._drawClarifier(ctx, x, y, width, height, shape); break;
+                case 'reverse_osmosis': this._drawROUnit(ctx, x, y, width, height); break;
+                case 'centrifuge': case 'disc_centrifuge':
+                    this._drawCentrifuge(ctx, x, y, width, height, shape); break;
+                case 'filter_press': case 'duplex_filter':
+                    this._drawFilterPress(ctx, x, y, width, height); break;
+                case 'agitator': this._drawAgitator(ctx, x, y, width, height); break;
+                case 'mill': case 'rotary_dryer': case 'drum_filter':
+                    this._drawRotaryEquipment(ctx, x, y, width, height, shape); break;
+                case 'homogenizer': case 'hp_homogenizer': case 'uht_sterilizer': case 'pasteurizer':
+                    this._drawProcessSkid(ctx, x, y, width, height, shape); break;
+                case 'cheese_vat': case 'filler':
+                    this._drawFoodEquipment(ctx, x, y, width, height, shape); break;
+                case 'chemical_doser': case 'injection_skid':
+                    this._drawDosingUnit(ctx, x, y, width, height); break;
+                case 'flare': this._drawFlare(ctx, x, y, width, height); break;
+                case 'flocculator': this._drawFlocculator(ctx, x, y, width, height); break;
+                case 'electrolytic_cell': this._drawElectrolyticCell(ctx, x, y, width, height); break;
+                case 'parshall_flume': this._drawParshallFlume(ctx, x, y, width, height); break;
+                default: this._renderDefaultBox(ctx, eq, isSelected, isHovered);
             }
             
             ctx.setLineDash([]);
@@ -912,9 +821,8 @@ const SmartFlowPFDRenderer = (function() {
         _drawProcessSkid(ctx, x, y, w, h, shape) {
             ctx.fillRect(x, y, w, h);
             ctx.strokeRect(x, y, w, h);
-            const cx = x + w/2, cy = y + h/2;
             ctx.beginPath();
-            ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+            ctx.arc(x + w/2, y + h/2, 12, 0, Math.PI * 2);
             ctx.stroke();
         }
 
@@ -938,9 +846,8 @@ const SmartFlowPFDRenderer = (function() {
         _drawDosingUnit(ctx, x, y, w, h) {
             ctx.fillRect(x, y, w, h);
             ctx.strokeRect(x, y, w, h);
-            const cx = x + w/2, cy = y + h/2;
             ctx.beginPath();
-            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            ctx.arc(x + w/2, y + h/2, 8, 0, Math.PI * 2);
             ctx.fillStyle = '#1e293b';
             ctx.fill();
         }
@@ -965,10 +872,9 @@ const SmartFlowPFDRenderer = (function() {
             ctx.fillRect(x, y, w, h);
             ctx.strokeRect(x, y, w, h);
             for (let i = 0; i < 3; i++) {
-                const px = x + w * (0.25 + i * 0.25);
                 ctx.beginPath();
-                ctx.moveTo(px, y + 10);
-                ctx.lineTo(px, y + h - 10);
+                ctx.moveTo(x + w * (0.25 + i * 0.25), y + 10);
+                ctx.lineTo(x + w * (0.25 + i * 0.25), y + h - 10);
                 ctx.stroke();
             }
         }
@@ -998,7 +904,7 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         _renderDefaultBox(ctx, eq, isSelected, isHovered) {
-            const { x, y, width, height } = eq;
+            const x = eq.x, y = eq.y, width = eq.width, height = eq.height;
             ctx.fillStyle = isHovered ? '#f1f5f9' : '#f8fafc';
             ctx.strokeStyle = isSelected ? '#3b82f6' : '#94a3b8';
             ctx.lineWidth = isSelected ? 2 : 1;
@@ -1011,7 +917,9 @@ const SmartFlowPFDRenderer = (function() {
         _renderConnectionPoints(ctx, eq) {
             const symbol = eq.symbol;
             if (!symbol || !symbol.connectionPoints) return;
-            Object.entries(symbol.connectionPoints).forEach(([portId, point]) => {
+            Object.entries(symbol.connectionPoints).forEach(function(entry) {
+                const portId = entry[0];
+                const point = entry[1];
                 const px = eq.x + point.offsetX * eq.width;
                 const py = eq.y + point.offsetY * eq.height;
                 ctx.fillStyle = point.direccion === 'in' ? '#3b82f6' : '#ef4444';
@@ -1037,7 +945,6 @@ const SmartFlowPFDRenderer = (function() {
             
             ctx.stroke();
             
-            // Flecha de dirección
             this._drawArrow(ctx, route);
         }
 
@@ -1070,7 +977,7 @@ const SmartFlowPFDRenderer = (function() {
             const to = stream.route[Math.min(midIndex + 1, stream.route.length - 1)];
             const labelX = (from.x + to.x) / 2;
             const labelY = (from.y + to.y) / 2 - this.options.STREAM_LABEL_OFFSET;
-            const labelText = `${stream.tag}: ${stream.fluid} (${stream.flow} ${stream.flowUnit})`;
+            const labelText = stream.tag + ': ' + stream.fluid + ' (' + stream.flow + ' ' + stream.flowUnit + ')';
             ctx.font = '10px Inter, sans-serif';
             const textWidth = ctx.measureText(labelText).width;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
@@ -1085,11 +992,12 @@ const SmartFlowPFDRenderer = (function() {
         // ================================================================
         
         _bindEvents() {
-            this.canvas.addEventListener('mousedown', this._onMouseDown.bind(this));
-            this.canvas.addEventListener('mousemove', this._onMouseMove.bind(this));
-            this.canvas.addEventListener('mouseup', this._onMouseUp.bind(this));
-            this.canvas.addEventListener('click', this._onClick.bind(this));
-            this.canvas.addEventListener('wheel', this._onWheel.bind(this));
+            var self = this;
+            this.canvas.addEventListener('mousedown', function(e) { self._onMouseDown(e); });
+            this.canvas.addEventListener('mousemove', function(e) { self._onMouseMove(e); });
+            this.canvas.addEventListener('mouseup', function(e) { self._onMouseUp(e); });
+            this.canvas.addEventListener('click', function(e) { self._onClick(e); });
+            this.canvas.addEventListener('wheel', function(e) { self._onWheel(e); });
         }
 
         _screenToWorld(screenX, screenY) {
@@ -1165,7 +1073,10 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         _savePositionState() {
-            const positions = this.equipment.map(eq => ({ tag: eq.tag, x: eq.x, y: eq.y }));
+            var self = this;
+            const positions = this.equipment.map(function(eq) { 
+                return { tag: eq.tag, x: eq.x, y: eq.y }; 
+            });
             this.positionHistory.push(positions);
             if (this.positionHistory.length > 20) this.positionHistory.shift();
         }
@@ -1176,8 +1087,12 @@ const SmartFlowPFDRenderer = (function() {
         
         exportLayout() {
             return {
-                equipment: this.equipment.map(eq => ({ tag: eq.tag, tipo: eq.tipo, x: eq.x, y: eq.y, locked: eq.locked })),
-                streams: this.streams.map(s => ({ tag: s.tag, from: s.from, to: s.to }))
+                equipment: this.equipment.map(function(eq) { 
+                    return { tag: eq.tag, tipo: eq.tipo, x: eq.x, y: eq.y, locked: eq.locked }; 
+                }),
+                streams: this.streams.map(function(s) { 
+                    return { tag: s.tag, from: s.from, to: s.to }; 
+                })
             };
         }
 
@@ -1186,46 +1101,53 @@ const SmartFlowPFDRenderer = (function() {
         }
 
         exportSVG() {
-            let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${this.canvas.width}" height="${this.canvas.height}">`;
-            this.streams.forEach(stream => {
+            let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.canvas.width + '" height="' + this.canvas.height + '">';
+            
+            this.streams.forEach(function(stream) {
                 if (!stream.route) return;
-                const points = stream.route.map(p => `${p.x},${p.y}`).join(' ');
-                svg += `<polyline points="${points}" stroke="${stream.color}" stroke-width="2" fill="none"/>`;
+                const points = stream.route.map(function(p) { return p.x + ',' + p.y; }).join(' ');
+                svg += '<polyline points="' + points + '" stroke="' + (stream.color || '#3b82f6') + '" stroke-width="2" fill="none"/>';
             });
-            this.equipment.forEach(eq => {
-                svg += `<rect x="${eq.x}" y="${eq.y}" width="${eq.width}" height="${eq.height}" fill="#f8fafc" stroke="#1e293b" rx="4"/>`;
-                svg += `<text x="${eq.x + eq.width/2}" y="${eq.y - 5}" text-anchor="middle" font-size="12" font-weight="bold">${eq.tag}</text>`;
+            
+            this.equipment.forEach(function(eq) {
+                svg += '<rect x="' + eq.x + '" y="' + eq.y + '" width="' + eq.width + '" height="' + eq.height + '" fill="#f8fafc" stroke="#1e293b" rx="4"/>';
+                svg += '<text x="' + (eq.x + eq.width/2) + '" y="' + (eq.y - 5) + '" text-anchor="middle" font-size="12" font-weight="bold">' + eq.tag + '</text>';
             });
+            
             svg += '</svg>';
             return svg;
         }
-
-        // ================================================================
-        // 10. API PÚBLICA
-        // ================================================================
-        return {
-            loadFromCore: function(a, b) { return PFDDiagram.prototype.loadFromCore.call(this, a, b); },
-            addStream: function(a) { return PFDDiagram.prototype.addStream.call(this, a); },
-            autoLayout: function() { return PFDDiagram.prototype.autoLayout.call(this); },
-            render: function() { return PFDDiagram.prototype.render.call(this); },
-            exportLayout: function() { return PFDDiagram.prototype.exportLayout.call(this); },
-            exportPNG: function() { return PFDDiagram.prototype.exportPNG.call(this); },
-            exportSVG: function() { return PFDDiagram.prototype.exportSVG.call(this); },
-            getEquipment: function() { return this.equipment; },
-            getStreams: function() { return this.streams; },
-            setSelectionCallback: function(cb) { this.onSelectionChanged = cb; }
-        };
     }
+    // Fin de la clase PFDDiagram
 
     // ================================================================
-    // 11. FACTORY FUNCTION
+    // 10. FACTORY FUNCTION (API PÚBLICA)
     // ================================================================
     
     function createRenderer(canvas, options) {
-        return new PFDDiagram(canvas, options);
+        const instance = new PFDDiagram(canvas, options);
+        
+        // Devolver fachada con métodos públicos
+        return {
+            loadFromCore: function(a, b) { return instance.loadFromCore(a, b); },
+            addStream: function(a) { return instance.addStream(a); },
+            autoLayout: function() { return instance.autoLayout(); },
+            render: function() { return instance.render(); },
+            exportLayout: function() { return instance.exportLayout(); },
+            exportPNG: function() { return instance.exportPNG(); },
+            exportSVG: function() { return instance.exportSVG(); },
+            getEquipment: function() { return instance.equipment; },
+            getStreams: function() { return instance.streams; },
+            setSelectionCallback: function(cb) { instance.onSelectionChanged = cb; },
+            get canvas() { return instance.canvas; }
+        };
     }
 
-    return { createRenderer, PFDDiagram, LAYOUT };
+    return { 
+        createRenderer: createRenderer, 
+        PFDDiagram: PFDDiagram, 
+        LAYOUT: LAYOUT 
+    };
 
 })();
 
