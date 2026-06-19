@@ -1,17 +1,12 @@
-
 // ============================================================
-// SMARTFLOW INTEGRITY v1.0 - Motor de Validación Cruzada
+// SMARTFLOW INTEGRITY v1.1 - Motor de Validación Cruzada
 // Archivo: js/modules/integrity.js
-// Dependencias: SmartFlowCore v6.0+, SmartFlowPFD, SmartFlowDTI
-// ============================================================
-// 
-// Valida la consistencia entre los 3 módulos:
-//   - PFD ↔ 3D: Corrientes vs Líneas
-//   - DTI ↔ 3D: Instrumentos vs Componentes
-//   - PFD ↔ DTI: Corrientes vs Instrumentos
-//   - Tags duplicados, faltantes, inconsistencias
-//   - Diámetros, especificaciones, materiales
-//
+// Dependencias: SmartFlowCore v7.1+, SmartFlowPFD, SmartFlowDTI
+// Novedades v1.1:
+//   - validateDTIvs3D sin side-effects (auto-corrección movida a autoFix)
+//   - Búsqueda estricta por tag en validación de componentes DTI
+//   - Índices locales para búsquedas O(1) en validaciones
+//   - Nuevas reglas: SPEC_MISMATCH, PUMP_SUCTION_DIRECTION
 // ============================================================
 
 const SmartFlowIntegrity = (function() {
@@ -45,7 +40,9 @@ const SmartFlowIntegrity = (function() {
         'EQUIPO_SIN_CONEXION':     { severity: 'WARNING',  module: 'GENERAL', desc: 'Equipo sin conexiones PFD ni 3D' },
         'DIAMETRO_NO_COINCIDE':    { severity: 'ERROR',    module: 'GENERAL', desc: 'Diámetro de línea no coincide con boquilla' },
         'SPEC_NO_COINCIDE':        { severity: 'WARNING',  module: 'GENERAL', desc: 'Especificación no coincide entre extremos' },
-        'MATERIAL_NO_COINCIDE':    { severity: 'WARNING',  module: 'GENERAL', desc: 'Material no coincide entre corriente y línea' }
+        'MATERIAL_NO_COINCIDE':    { severity: 'WARNING',  module: 'GENERAL', desc: 'Material no coincide entre corriente y línea' },
+        'SPEC_MISMATCH':           { severity: 'ERROR',    module: 'GENERAL', desc: 'Inconsistencia de rating entre línea y equipo conectado' },
+        'PUMP_SUCTION_DIRECTION':  { severity: 'ERROR',    module: 'GENERAL', desc: 'Flujo incorrecto en boquilla de succión/descarga de bomba' }
     };
     
     // ================================================================
@@ -188,7 +185,7 @@ const SmartFlowIntegrity = (function() {
     }
     
     // ================================================================
-    //  VALIDACIÓN DTI ↔ 3D
+    //  VALIDACIÓN DTI ↔ 3D (CORREGIDA v1.1)
     // ================================================================
     
     function validateDTIvs3D() {
@@ -222,11 +219,11 @@ const SmartFlowIntegrity = (function() {
                 return;
             }
             
-            // Verificar que el instrumento esté como componente en la línea
+            // v1.1: Verificar que el instrumento esté como componente en la línea (solo por tag)
             if (inst.lineTag && lineTags.has(inst.lineTag)) {
                 const line = _core.findObjectByTag(inst.lineTag);
                 if (line && line.components) {
-                    const found = line.components.some(c => c.tag === inst.tag || c.type === inst.type);
+                    const found = line.components.some(c => c.tag === inst.tag);
                     if (!found) {
                         issues.push({
                             type: 'INSTRUMENTO_NO_EN_LINEA',
@@ -234,18 +231,9 @@ const SmartFlowIntegrity = (function() {
                             module: 'DTI↔3D',
                             entity: inst.tag,
                             msg: 'Instrumento ' + inst.tag + ' no está como componente en línea ' + inst.lineTag,
-                            suggestion: 'El instrumento se agregará automáticamente al validar'
+                            suggestion: 'Use autofix para corregir automáticamente'
                         });
-                        
-                        // Auto-corrección: agregar el instrumento como componente
-                        if (!line.components) line.components = [];
-                        line.components.push({
-                            type: inst.type,
-                            tag: inst.tag,
-                            param: inst.position || 0.5,
-                            description: 'Instrumento ' + inst.tag + ' - ' + (inst.service || inst.type)
-                        });
-                        _core.updateLine(inst.lineTag, { components: line.components });
+                        // v1.1: NO se auto-corrige aquí. Se deja para autoFix()
                     }
                 }
             }
@@ -253,7 +241,6 @@ const SmartFlowIntegrity = (function() {
         
         // Componentes sin instrumento DTI
         const instTags = new Set(instruments.map(i => i.tag));
-        const instTypes = new Set(instruments.map(i => i.type));
         
         lines.forEach(line => {
             if (!line.components) return;
@@ -264,7 +251,7 @@ const SmartFlowIntegrity = (function() {
                     'CONTROL_VALVE', 'SAFETY_VALVE'
                 ].includes(comp.type);
                 
-                if (isInstrumentType && !instTags.has(comp.tag) && !instTypes.has(comp.type)) {
+                if (isInstrumentType && !instTags.has(comp.tag)) {
                     issues.push({
                         type: 'COMPONENTE_SIN_INSTR',
                         severity: 'INFO',
@@ -292,7 +279,6 @@ const SmartFlowIntegrity = (function() {
         streams.forEach(stream => {
             if (!stream.linkedLineTags || stream.linkedLineTags.length === 0) return;
             
-            // Buscar instrumentos en las líneas vinculadas
             const instOnLines = instruments.filter(inst => 
                 stream.linkedLineTags.includes(inst.lineTag)
             );
@@ -320,31 +306,26 @@ const SmartFlowIntegrity = (function() {
         const issues = [];
         const allTags = new Map();
         
-        // Equipos
         _core.getEquipos().forEach(e => {
             if (!allTags.has(e.tag)) allTags.set(e.tag, []);
             allTags.get(e.tag).push('EQUIPO');
         });
         
-        // Líneas
         _core.getLines().forEach(l => {
             if (!allTags.has(l.tag)) allTags.set(l.tag, []);
             allTags.get(l.tag).push('LINEA');
         });
         
-        // Streams
         _core.getStreams().forEach(s => {
             if (!allTags.has(s.tag)) allTags.set(s.tag, []);
             allTags.get(s.tag).push('STREAM');
         });
         
-        // Instruments
         _core.getInstruments().forEach(i => {
             if (!allTags.has(i.tag)) allTags.set(i.tag, []);
             allTags.get(i.tag).push('INSTRUMENT');
         });
         
-        // Loops
         _core.getLoops().forEach(l => {
             if (!allTags.has(l.tag)) allTags.set(l.tag, []);
             allTags.get(l.tag).push('LOOP');
@@ -366,7 +347,7 @@ const SmartFlowIntegrity = (function() {
     }
     
     // ================================================================
-    //  VALIDACIÓN DE CONSISTENCIA DE INGENIERÍA
+    //  VALIDACIÓN DE CONSISTENCIA DE INGENIERÍA (MEJORADA v1.1)
     // ================================================================
     
     function validateEngineeringConsistency() {
@@ -374,12 +355,19 @@ const SmartFlowIntegrity = (function() {
         const lines = _core.getLines();
         const equipos = _core.getEquipos();
         
+        // v1.1: Construir índices locales para búsqueda O(1)
+        const equiposMap = new Map();
+        equipos.forEach(eq => equiposMap.set(eq.tag, eq));
+        
+        const linesMap = new Map();
+        lines.forEach(line => linesMap.set(line.tag, line));
+        
         // Validar diámetros línea vs boquilla
         lines.forEach(line => {
             const diamLinea = line.diameter || 0;
             
             if (line.origin && line.origin.objTag) {
-                const obj = _core.findObjectByTag(line.origin.objTag);
+                const obj = equiposMap.get(line.origin.objTag) || linesMap.get(line.origin.objTag);
                 if (obj && obj.puertos) {
                     const nozzle = obj.puertos.find(p => p.id === line.origin.portId);
                     if (nozzle && nozzle.diametro && nozzle.diametro !== diamLinea) {
@@ -396,7 +384,7 @@ const SmartFlowIntegrity = (function() {
             }
             
             if (line.destination && line.destination.objTag) {
-                const obj = _core.findObjectByTag(line.destination.objTag);
+                const obj = equiposMap.get(line.destination.objTag) || linesMap.get(line.destination.objTag);
                 if (obj && obj.puertos) {
                     const nozzle = obj.puertos.find(p => p.id === line.destination.portId);
                     if (nozzle && nozzle.diametro && nozzle.diametro !== diamLinea) {
@@ -407,6 +395,90 @@ const SmartFlowIntegrity = (function() {
                             entity: line.tag,
                             msg: 'Diámetro línea ' + line.tag + ' (' + diamLinea + '") ≠ boquilla ' + 
                                  line.destination.objTag + '.' + line.destination.portId + ' (' + nozzle.diametro + '")'
+                        });
+                    }
+                }
+            }
+            
+            // v1.1: SPEC_MISMATCH - inconsistencia de rating entre línea y equipo
+            if (line.spec && line.origin && line.origin.objTag) {
+                const origEq = equiposMap.get(line.origin.objTag);
+                if (origEq && origEq.spec && origEq.spec !== line.spec) {
+                    // Verificar si son compatibles (misma clase de presión)
+                    const lineSpec = _core.getDb ? (_core.getDb().specs[line.spec] || {}) : {};
+                    const eqSpec = _core.getDb ? (_core.getDb().specs[origEq.spec] || {}) : {};
+                    if (lineSpec.rating && eqSpec.rating && lineSpec.rating !== eqSpec.rating) {
+                        issues.push({
+                            type: 'SPEC_MISMATCH',
+                            severity: 'ERROR',
+                            module: 'GENERAL',
+                            entity: line.tag,
+                            msg: 'Rating incompatible: línea ' + line.tag + ' (' + line.spec + 
+                                 ', ' + lineSpec.rating + '#) vs equipo ' + origEq.tag + 
+                                 ' (' + origEq.spec + ', ' + eqSpec.rating + '#)'
+                        });
+                    }
+                }
+            }
+        });
+        
+        // v1.1: PUMP_SUCTION_DIRECTION - validar dirección de flujo en bombas
+        const streams = _core.getStreams();
+        lines.forEach(line => {
+            if (!line.origin || !line.destination) return;
+            
+            // Verificar si el destino es una bomba
+            const destTag = line.destination.objTag || line.destination.equipTag;
+            if (!destTag) return;
+            
+            const destEq = equiposMap.get(destTag);
+            if (!destEq) return;
+            
+            const isPump = ['bomba', 'bomba_centrifuga', 'bomba_dosificacion', 'bomba_z', 'bomba_sumergible']
+                .includes(destEq.tipo || '');
+            
+            if (isPump) {
+                // Verificar que la conexión sea a una boquilla de succión
+                const nozzle = destEq.puertos ? destEq.puertos.find(p => p.id === line.destination.portId) : null;
+                if (nozzle) {
+                    const isSuction = nozzle.id === 'SUC' || nozzle.id === 'IN' || 
+                                     (nozzle.label && nozzle.label.toUpperCase().includes('SUCC'));
+                    if (!isSuction) {
+                        issues.push({
+                            type: 'PUMP_SUCTION_DIRECTION',
+                            severity: 'ERROR',
+                            module: 'GENERAL',
+                            entity: line.tag,
+                            msg: 'Línea ' + line.tag + ' conectada a boquilla ' + nozzle.id + 
+                                 ' de bomba ' + destEq.tag + '. ¿Debería ser succión?'
+                        });
+                    }
+                }
+            }
+            
+            // Verificar si el origen es una bomba (salida = descarga)
+            const origTag = line.origin.objTag || line.origin.equipTag;
+            if (!origTag) return;
+            
+            const origEq = equiposMap.get(origTag);
+            if (!origEq) return;
+            
+            const isOrigPump = ['bomba', 'bomba_centrifuga', 'bomba_dosificacion', 'bomba_z', 'bomba_sumergible']
+                .includes(origEq.tipo || '');
+            
+            if (isOrigPump) {
+                const nozzle = origEq.puertos ? origEq.puertos.find(p => p.id === line.origin.portId) : null;
+                if (nozzle) {
+                    const isDischarge = nozzle.id === 'DESC' || nozzle.id === 'OUT' || 
+                                       (nozzle.label && nozzle.label.toUpperCase().includes('DESC'));
+                    if (!isDischarge) {
+                        issues.push({
+                            type: 'PUMP_SUCTION_DIRECTION',
+                            severity: 'ERROR',
+                            module: 'GENERAL',
+                            entity: line.tag,
+                            msg: 'Línea ' + line.tag + ' sale de boquilla ' + nozzle.id + 
+                                 ' de bomba ' + origEq.tag + '. ¿Debería ser descarga?'
                         });
                     }
                 }
@@ -496,7 +568,6 @@ const SmartFlowIntegrity = (function() {
             report += 'DETALLE DE ISSUES:\n';
             report += '══════════════════════════════════════\n';
             
-            // Agrupar por severidad
             ['ERROR', 'WARNING', 'INFO'].forEach(severity => {
                 const items = allIssues.filter(i => i.severity === severity);
                 if (items.length === 0) return;
@@ -573,7 +644,7 @@ const SmartFlowIntegrity = (function() {
     }
     
     // ================================================================
-    //  AUTO-CORRECCIÓN
+    //  AUTO-CORRECCIÓN (MEJORADA v1.1)
     // ================================================================
     
     function autoFix() {
@@ -584,7 +655,7 @@ const SmartFlowIntegrity = (function() {
             fixed += _pfd.autoLinkStreams();
         }
         
-        // Corregir instrumentos que no están como componentes
+        // v1.1: Corregir instrumentos que no están como componentes (movido desde validateDTIvs3D)
         const instruments = _core.getInstruments();
         instruments.forEach(inst => {
             if (!inst.lineTag) return;
@@ -592,6 +663,7 @@ const SmartFlowIntegrity = (function() {
             if (!line) return;
             
             if (!line.components) line.components = [];
+            // Búsqueda estricta por tag
             const found = line.components.some(c => c.tag === inst.tag);
             
             if (!found) {
@@ -619,7 +691,7 @@ const SmartFlowIntegrity = (function() {
         _pfd = pfdInstance || null;
         _dti = dtiInstance || null;
         _notify = notifyFn || _notify;
-        console.log('SmartFlowIntegrity v1.0 inicializado | Core: ' + (_core ? '✅' : '❌') + 
+        console.log('SmartFlowIntegrity v1.1 inicializado | Core: ' + (_core ? '✅' : '❌') + 
                     ' | PFD: ' + (_pfd ? '✅' : '⚠️') + ' | DTI: ' + (_dti ? '✅' : '⚠️'));
     }
     
@@ -640,3 +712,5 @@ const SmartFlowIntegrity = (function() {
         ISSUE_TYPES: ISSUE_TYPES
     };
 })();
+
+if (typeof window !== 'undefined') window.SmartFlowIntegrity = SmartFlowIntegrity;
