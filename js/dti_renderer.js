@@ -1,16 +1,14 @@
+
 // ============================================================
-// SMARTFLOW DTI RENDERER v1.0 - Renderizado de Diagrama de Tuberías e Instrumentación
+// SMARTFLOW DTI RENDERER v1.1 - Renderizado de Diagrama de Tuberías e Instrumentación
 // Archivo: js/modules/dti_renderer.js
-// Dependencias: SmartFlowCore v6.0+, SmartFlowDTI v1.1+
-// Características:
-//   - Layout automático basado en líneas 3D existentes
-//   - Ruteo ortogonal de tuberías (solo horizontal/vertical)
-//   - Saltos/puentes en cruces de líneas no conectadas (ISA-5.1)
-//   - Símbolos de instrumentos estándar ISA-5.1
-//   - Válvulas de control con actuador y señal
-//   - Lazos de control con líneas de señal (eléctrica, neumática)
-//   - Tags de instrumentos con burbuja ISA
-//   - Equipos con boquillas visibles
+// Dependencias: SmartFlowCore v7.1+, SmartFlowDTI v1.2+
+// Novedades v1.1:
+//   - Línea de conexión instrumento ↔ tubería ortogonal
+//   - Arco de salto hacia arriba (ISO 10628)
+//   - Leyenda corregida (panel: relleno #fef3c7, borde #1e293b)
+//   - Señales neumáticas diferenciadas de eléctricas
+//   - Offset dinámico en ruteo de señales
 // ============================================================
 
 const SmartFlowDTIRenderer = (function() {
@@ -44,8 +42,8 @@ const SmartFlowDTIRenderer = (function() {
     const ISA_COLORS = {
         'PIPE':           '#1e293b',
         'SIGNAL_ELECTRIC': '#e11d48',
-        'SIGNAL_PNEUMATIC': '#2563eb',
-        'SIGNAL_HYDRAULIC': '#d97706',
+        'SIGNAL_PNEUMATIC':'#2563eb',
+        'SIGNAL_HYDRAULIC':'#d97706',
         'SIGNAL_DIGITAL':  '#7c3aed',
         'INSTRUMENT_FIELD': '#ffffff',
         'INSTRUMENT_PANEL': '#fef3c7',
@@ -92,7 +90,6 @@ const SmartFlowDTIRenderer = (function() {
             if (to) connectedEquipos.add(to);
         });
         
-        // BFS para ordenar equipos
         const sources = equipos
             .filter(eq => connectedEquipos.has(eq.tag) && 
                    !lines.some(l => (l.destination && (l.destination.equipTag || l.destination.objTag) === eq.tag)))
@@ -184,7 +181,8 @@ const SmartFlowDTIRenderer = (function() {
             return {
                 loop: loop,
                 points: calculateSignalRoute(sensorPos, valvePos, _lineRoutes),
-                type: loop.type || 'FEEDBACK'
+                type: loop.type || 'FEEDBACK',
+                signalType: sensorInst.signalType || 'ANALOG'
             };
         }).filter(r => r !== null);
         
@@ -218,14 +216,15 @@ const SmartFlowDTIRenderer = (function() {
         };
     }
     
+    // v1.1: Offset dinámico basado en espaciado real
     function calculateSignalRoute(sensorPos, valvePos, lineRoutes) {
         const points = [
             { x: sensorPos.x, y: sensorPos.y }
         ];
         
-        // Ruta ortogonal con desvío
         const midY = (sensorPos.y + valvePos.y) / 2;
-        const offsetX = 60;
+        // Offset dinámico: fracción del espaciado entre equipos
+        const offsetX = Math.max(40, LAYOUT.spacingX * 0.25);
         
         points.push({ x: sensorPos.x + offsetX, y: sensorPos.y });
         points.push({ x: sensorPos.x + offsetX, y: midY });
@@ -316,14 +315,11 @@ const SmartFlowDTIRenderer = (function() {
         const x = pos.x, y = pos.y, s = LAYOUT.equipmentSize / 2;
         
         ctx.save();
-        
-        // Sombra
         ctx.fillStyle = 'rgba(0,0,0,0.08)';
         ctx.beginPath();
         ctx.arc(x + 2, y + 2, s, 0, Math.PI * 2);
         ctx.fill();
         
-        // Cuerpo
         const gradient = ctx.createRadialGradient(x - s*0.3, y - s*0.3, s*0.1, x, y, s);
         gradient.addColorStop(0, '#ffffff');
         gradient.addColorStop(1, '#e2e8f0');
@@ -336,13 +332,11 @@ const SmartFlowDTIRenderer = (function() {
         ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Tag
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 10px Segoe UI';
         ctx.textAlign = 'center';
         ctx.fillText(eq.tag, x, y + s + 14);
         
-        // Boquillas
         if (eq.puertos) {
             eq.puertos.forEach(nozzle => {
                 const nx = x + (nozzle.relX || 0) / (eq.diametro || 1000) * s;
@@ -356,7 +350,6 @@ const SmartFlowDTIRenderer = (function() {
                 ctx.lineWidth = 1;
                 ctx.stroke();
                 
-                // Tag de boquilla
                 ctx.fillStyle = '#92400e';
                 ctx.font = '6px Segoe UI';
                 ctx.textAlign = 'center';
@@ -391,7 +384,6 @@ const SmartFlowDTIRenderer = (function() {
             ctx.stroke();
         }
         
-        // Etiqueta de línea
         const midPt = getPointOnRoute(points, 0.5);
         if (midPt) {
             ctx.fillStyle = '#ffffff';
@@ -413,7 +405,7 @@ const SmartFlowDTIRenderer = (function() {
     }
     
     // ================================================================
-    //  DIBUJO DE SALTOS
+    //  DIBUJO DE SALTOS (CORREGIDO v1.1 - Arco hacia arriba)
     // ================================================================
     
     function drawJump(ctx, crossing) {
@@ -440,8 +432,9 @@ const SmartFlowDTIRenderer = (function() {
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(point.x - gap, point.y);
             ctx.stroke();
+            // v1.1: Arco hacia arriba (ISO 10628)
             ctx.beginPath();
-            ctx.arc(point.x, point.y - gap, gap, 0, Math.PI, false);
+            ctx.arc(point.x, point.y, gap, Math.PI, 0, false);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
             ctx.stroke();
@@ -455,7 +448,7 @@ const SmartFlowDTIRenderer = (function() {
             ctx.lineTo(point.x, point.y - gap);
             ctx.stroke();
             ctx.beginPath();
-            ctx.arc(point.x + gap, point.y, gap, -Math.PI/2, Math.PI/2, false);
+            ctx.arc(point.x, point.y, gap, Math.PI, 0, false);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
             ctx.stroke();
@@ -469,7 +462,7 @@ const SmartFlowDTIRenderer = (function() {
     }
     
     // ================================================================
-    //  DIBUJO DE INSTRUMENTOS (ISA-5.1)
+    //  DIBUJO DE INSTRUMENTOS (ISA-5.1) - CORREGIDO v1.1
     // ================================================================
     
     function drawInstrument(ctx, pos) {
@@ -477,23 +470,29 @@ const SmartFlowDTIRenderer = (function() {
         
         const { x, y, instrument } = pos;
         const size = LAYOUT.instrumentSize;
+        const isPanel = instrument.location === 'PANEL' || instrument.location === 'CONTROL_ROOM' || instrument.location === 'DCS';
         
         ctx.save();
         
-        // Línea de conexión a la tubería
+        // v1.1: Línea de conexión ortogonal a la tubería
+        const lineY = pos.lineRoute ? getPointOnRoute(pos.lineRoute.points, instrument.position || 0.5) : null;
+        const connectionTargetX = lineY ? lineY.x : x;
+        const connectionTargetY = lineY ? lineY.y : y + size * 3;
+        
         ctx.beginPath();
         ctx.setLineDash([2, 2]);
         ctx.moveTo(x, y + size);
-        const lineY = pos.lineRoute ? getPointOnRoute(pos.lineRoute.points, instrument.position || 0.5) : null;
-        ctx.lineTo(x, lineY ? lineY.y : y + size * 3);
+        // Trazo ortogonal: primero vertical hasta la altura de la tubería, luego horizontal
+        ctx.lineTo(x, connectionTargetY);
+        if (lineY) {
+            ctx.lineTo(connectionTargetX, connectionTargetY);
+        }
         ctx.strokeStyle = '#64748b';
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.setLineDash([]);
         
         // Burbuja del instrumento
-        const isPanel = instrument.location === 'PANEL' || instrument.location === 'CONTROL_ROOM';
-        
         ctx.beginPath();
         ctx.arc(x, y, size, 0, Math.PI * 2);
         ctx.fillStyle = isPanel ? ISA_COLORS['INSTRUMENT_PANEL'] : '#ffffff';
@@ -549,7 +548,7 @@ const SmartFlowDTIRenderer = (function() {
     }
     
     // ================================================================
-    //  DIBUJO DE SEÑALES DE CONTROL
+    //  DIBUJO DE SEÑALES DE CONTROL (MEJORADO v1.1)
     // ================================================================
     
     function drawSignalRoute(ctx, route) {
@@ -557,10 +556,29 @@ const SmartFlowDTIRenderer = (function() {
         
         ctx.save();
         
-        // Línea de señal eléctrica (punteada)
-        ctx.setLineDash([5, 4]);
-        ctx.strokeStyle = ISA_COLORS['SIGNAL_ELECTRIC'];
-        ctx.lineWidth = 1.5;
+        // v1.1: Diferenciar tipo de señal
+        const signalType = route.signalType || 'ANALOG';
+        let dashPattern, strokeColor, lineWidth;
+        
+        if (signalType === 'PNEUMATIC' || signalType === '3-15psi') {
+            // Señal neumática: trazos inclinados simulados con patrón
+            dashPattern = [2, 6];
+            strokeColor = ISA_COLORS['SIGNAL_PNEUMATIC'];
+            lineWidth = 1.8;
+        } else if (signalType === 'DIGITAL' || signalType === 'HART' || signalType === 'FIELDBUS') {
+            dashPattern = [8, 3, 2, 3];
+            strokeColor = ISA_COLORS['SIGNAL_DIGITAL'];
+            lineWidth = 1.5;
+        } else {
+            // Eléctrica analógica (default)
+            dashPattern = [5, 4];
+            strokeColor = ISA_COLORS['SIGNAL_ELECTRIC'];
+            lineWidth = 1.5;
+        }
+        
+        ctx.setLineDash(dashPattern);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = lineWidth;
         
         ctx.beginPath();
         ctx.moveTo(route.points[0].x, route.points[0].y);
@@ -576,7 +594,7 @@ const SmartFlowDTIRenderer = (function() {
         if (midPt && route.loop) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(midPt.x - 20, midPt.y - 7, 40, 12);
-            ctx.fillStyle = ISA_COLORS['SIGNAL_ELECTRIC'];
+            ctx.fillStyle = strokeColor;
             ctx.font = 'bold 7px Segoe UI';
             ctx.textAlign = 'center';
             ctx.fillText(route.loop.tag, midPt.x, midPt.y + 4);
@@ -598,11 +616,9 @@ const SmartFlowDTIRenderer = (function() {
         
         _ctx.clearRect(0, 0, displayWidth, displayHeight);
         
-        // Fondo
         _ctx.fillStyle = '#fafbfc';
         _ctx.fillRect(0, 0, displayWidth, displayHeight);
         
-        // Título
         _ctx.fillStyle = '#0f172a';
         _ctx.font = 'bold 15px Segoe UI';
         _ctx.textAlign = 'left';
@@ -610,7 +626,7 @@ const SmartFlowDTIRenderer = (function() {
         
         _ctx.fillStyle = '#64748b';
         _ctx.font = '8px Segoe UI';
-        _ctx.fillText('ISA-5.1 | Ruteo: Ortogonal | Señales: Eléctricas', 20, 42);
+        _ctx.fillText('ISA-5.1 | Ruteo: Ortogonal | Señales: Eléctricas/Neumáticas', 20, 42);
         
         calculateLayout();
         
@@ -653,6 +669,7 @@ const SmartFlowDTIRenderer = (function() {
         drawDTILegend(_ctx);
     }
     
+    // v1.1: Leyenda corregida con representación fiel
     function drawDTILegend(ctx) {
         const x = 15, y = 80;
         
@@ -661,25 +678,37 @@ const SmartFlowDTIRenderer = (function() {
         ctx.fillText('LEYENDA ISA-5.1', x, y);
         
         const items = [
-            { label: 'Tubería de proceso', style: ISA_COLORS['PIPE'], dash: [], width: 3, y: y + 16 },
-            { label: 'Señal eléctrica', style: ISA_COLORS['SIGNAL_ELECTRIC'], dash: [5, 4], width: 1.5, y: y + 30 },
-            { label: 'Instrumento campo', style: '#1e293b', dash: [], width: 1.5, y: y + 44 },
-            { label: 'Instrumento panel', style: '#d97706', dash: [], width: 1.5, y: y + 58 }
+            { label: 'Tubería de proceso', draw: function(cx, cy) {
+                ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 30, cy);
+                ctx.strokeStyle = ISA_COLORS['PIPE']; ctx.lineWidth = 3; ctx.stroke();
+            }, y: y + 16 },
+            { label: 'Señal eléctrica (4-20mA)', draw: function(cx, cy) {
+                ctx.beginPath(); ctx.setLineDash([5, 4]); ctx.moveTo(cx, cy); ctx.lineTo(cx + 30, cy);
+                ctx.strokeStyle = ISA_COLORS['SIGNAL_ELECTRIC']; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+            }, y: y + 30 },
+            { label: 'Señal neumática (3-15psi)', draw: function(cx, cy) {
+                ctx.beginPath(); ctx.setLineDash([2, 6]); ctx.moveTo(cx, cy); ctx.lineTo(cx + 30, cy);
+                ctx.strokeStyle = ISA_COLORS['SIGNAL_PNEUMATIC']; ctx.lineWidth = 1.8; ctx.stroke(); ctx.setLineDash([]);
+            }, y: y + 44 },
+            { label: 'Instrumento campo', draw: function(cx, cy) {
+                ctx.beginPath(); ctx.arc(cx + 6, cy, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1.5; ctx.stroke();
+            }, y: y + 58 },
+            { label: 'Instrumento panel/DCS', draw: function(cx, cy) {
+                ctx.beginPath(); ctx.arc(cx + 6, cy, 6, 0, Math.PI * 2);
+                ctx.fillStyle = ISA_COLORS['INSTRUMENT_PANEL']; ctx.fill();
+                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(cx + 1, cy); ctx.lineTo(cx + 11, cy);
+                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1; ctx.stroke();
+            }, y: y + 72 }
         ];
         
         items.forEach(item => {
-            ctx.beginPath();
-            ctx.setLineDash(item.dash);
-            ctx.moveTo(x, item.y);
-            ctx.lineTo(x + 35, item.y);
-            ctx.strokeStyle = item.style;
-            ctx.lineWidth = item.width;
-            ctx.stroke();
-            ctx.setLineDash([]);
+            item.draw(x, item.y);
             ctx.fillStyle = '#334155';
             ctx.font = '8px Segoe UI';
             ctx.textAlign = 'left';
-            ctx.fillText(item.label, x + 42, item.y + 3);
+            ctx.fillText(item.label, x + 40, item.y + 3);
         });
     }
     
@@ -709,7 +738,7 @@ const SmartFlowDTIRenderer = (function() {
         }
         
         setTimeout(render, 300);
-        console.log('SmartFlowDTIRenderer v1.0 inicializado | ISA-5.1 | Ruteo: Ortogonal');
+        console.log('SmartFlowDTIRenderer v1.1 inicializado | ISA-5.1 | Ortogonal | Señales: Eléctrica+Neumática');
     }
     
     function resizeCanvas() {
@@ -742,3 +771,4 @@ const SmartFlowDTIRenderer = (function() {
     };
 })();
 
+if (typeof window !== 'undefined') window.SmartFlowDTIRenderer = SmartFlowDTIRenderer;
