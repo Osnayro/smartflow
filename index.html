@@ -1,276 +1,144 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>EngineFlow PFD/DTI | Smart Engineering</title>
+    <title>SmartFlow Pro v5.0 | AcQuaBlue</title>
+    
+    <!-- Three.js Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <!-- Librerías externas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
         :root {
-            --primary-bg: #0a0e17;
-            --panel-bg: rgba(20, 28, 45, 0.95);
-            --accent-cyan: #00f2ff;
-            --accent-blue: #1e4eb8;
-            --accent-green: #10b981;
-            --text-main: #e0e6ed;
-            --toolbar-bg: #0f172a;
-            --button-bg: #1e293b;
-            --button-border: #334155;
+            --primary-bg: #0a0e17; --panel-bg: rgba(20,28,45,0.95); --accent-cyan: #00f2ff;
+            --accent-blue: #1e4eb8; --accent-green: #10b981; --accent-orange: #f59e0b;
+            --accent-purple: #8b5cf6; --accent-red: #ef4444; --text-main: #e0e6ed;
+            --toolbar-bg: #0f172a; --button-bg: #1e293b; --button-border: #334155;
         }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            background: var(--primary-bg);
-            color: var(--text-main);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        #splash-screen {
-            position: fixed; top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: radial-gradient(circle at center, #10172a 0%, #020617 100%);
-            z-index: 10000;
-            display: flex; justify-content: center; align-items: center;
-            transition: opacity 0.8s ease, visibility 0.8s;
-        }
-        .splash-content { text-align: center; width: 350px; }
-        .corporate-header { margin-bottom: 25px; }
-        .company-name { font-size: 11px; letter-spacing: 3px; color: #fff; opacity: 0.6; text-transform: uppercase; display: block; }
-        .powered-by { font-size: 8px; color: var(--accent-cyan); letter-spacing: 1px; text-transform: uppercase; }
-        .hex-container {
-            width: 120px; height: 120px; margin: 0 auto 30px;
-            border: 1px solid var(--accent-cyan);
-            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-            display: flex; justify-content: center; align-items: center;
-            background: rgba(0, 242, 255, 0.05);
-            animation: hex-pulse 2.5s infinite ease-in-out;
-        }
-        .hex-container img { width: 70%; filter: drop-shadow(0 0 10px #00f2ff); }
-        @keyframes hex-pulse {
-            0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(0,242,255,0.1); }
-            50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(0,242,255,0.3); }
-        }
-        .splash-title { font-size: 30px; letter-spacing: 8px; color: white; font-weight: 900; text-transform: uppercase; margin-bottom: 5px; }
-        .splash-subtitle { color: var(--accent-cyan); letter-spacing: 4px; font-size: 10px; margin-bottom: 35px; opacity: 0.8; font-weight: bold; }
-        .loading-bar-container { width: 200px; height: 1px; background: rgba(255,255,255,0.1); margin: 0 auto 15px; overflow: hidden; }
-        .loading-bar-fill { width: 0%; height: 100%; background: var(--accent-cyan); animation: fill-bar 3s forwards cubic-bezier(0.19, 1, 0.22, 1); }
-        .splash-status { font-family: monospace; font-size: 9px; color: #64748b; text-transform: uppercase; margin-bottom: 50px; height: 15px; }
-        .author-footer { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
-        .leader-by { font-size: 9px; color: #fff; opacity: 0.5; text-transform: uppercase; }
-        .engineer-name { font-size: 13px; font-weight: bold; color: #fff; display: block; letter-spacing: 1.5px; margin-top: 4px; }
-        @keyframes fill-bar { 0% { width: 0%; } 100% { width: 100%; } }
-        .splash-hidden { opacity: 0; visibility: hidden; }
-
-        #welcome-panel {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--primary-bg); z-index: 9000;
-            display: flex; justify-content: center; align-items: center;
-            transition: opacity 0.6s ease, visibility 0.6s;
-        }
-        .welcome-container {
-            width: 90%; max-width: 520px; padding: 35px 25px;
-            background: rgba(15, 23, 42, 0.85);
-            border: 1px solid var(--accent-cyan); border-radius: 16px;
-            backdrop-filter: blur(12px); box-shadow: 0 20px 40px rgba(0,0,0,0.6); text-align: center;
-        }
-        .home-logo-wrapper { margin-bottom: 20px; }
-        .home-logo-img { width: 110px; margin: 10px 0 20px; filter: drop-shadow(0 0 15px rgba(0,242,255,0.4)); }
-        .header-names { display: flex; justify-content: space-between; margin-bottom: 30px; text-align: left; }
-        .corp-name { color: var(--accent-cyan); font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-        .user-name { color: #fff; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; text-align: right; }
-        .button-group { display: flex; flex-direction: column; gap: 14px; }
-        .welcome-btn {
-            background: transparent; border: 1px solid var(--accent-cyan); color: var(--accent-cyan);
-            padding: 14px 20px; font-size: 15px; font-weight: bold; text-transform: uppercase;
-            letter-spacing: 2px; border-radius: 8px; cursor: pointer; transition: all 0.3s;
-        }
-        .welcome-btn:hover { background: var(--accent-cyan); color: #000; }
-        .welcome-btn.secondary { border-color: #64748b; color: #94a3b8; }
-        .welcome-btn.secondary:hover { background: #334155; border-color: #94a3b8; color: white; }
-        .welcome-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-
-        #project-name-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 9500; display: none;
-            justify-content: center; align-items: center;
-        }
-        .modal-content {
-            width: 90%; max-width: 400px; padding: 30px; background: var(--panel-bg);
-            border: 1px solid var(--accent-cyan); border-radius: 16px; text-align: center;
-        }
-        .modal-content h3 { color: var(--accent-cyan); margin-bottom: 20px; font-size: 18px; }
-        .modal-content input { width: 100%; padding: 12px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 8px; margin-bottom: 25px; font-size: 14px; }
-        .modal-actions { display: flex; gap: 15px; justify-content: center; }
-        .modal-btn { padding: 10px 24px; background: var(--accent-blue); border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        .modal-btn.cancel { background: #334155; }
-
-        .toolbar {
-            background: var(--toolbar-bg); padding: 6px 10px; display: flex;
-            align-items: center; flex-wrap: wrap; gap: 5px;
-            border-bottom: 1px solid var(--accent-blue); box-shadow: 0 2px 10px rgba(0,0,0,0.4); z-index: 500;
-        }
-        .toolbar-logo { display: flex; align-items: center; margin-right: 8px; }
-        .toolbar-logo img { height: 22px; margin-right: 5px; }
-        .toolbar-title { 
-            color: var(--accent-cyan); font-size: 15px; font-weight: 800; 
-            text-transform: uppercase; letter-spacing: 2px; 
-        }
-        .toolbar-subtitle { color: #64748b; font-size: 9px; margin-left: 6px; letter-spacing: 1px; }
-
-        button {
-            background: var(--button-bg); border: 1px solid var(--button-border); color: white;
-            padding: 5px 9px; border-radius: 4px; font-size: 10px; font-weight: 600;
-            cursor: pointer; transition: all 0.2s; text-transform: uppercase; white-space: nowrap;
-            font-family: inherit;
-        }
-        button:hover { background: var(--accent-blue); border-color: var(--accent-cyan); }
-        button.active { background: var(--accent-cyan); color: #000; border-color: var(--accent-cyan); }
-        button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .separator { width: 1px; height: 22px; background: #334155; margin: 0 4px; flex-shrink: 0; }
-
-        .dropdown { position: relative; display: inline-block; }
-        .dropdown-content {
-            display: none; position: absolute; background: var(--panel-bg);
-            min-width: 180px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 100; border: 1px solid var(--accent-cyan); border-radius: 4px;
-            backdrop-filter: blur(8px); right: 0;
-        }
-        .dropdown-content button { width: 100%; text-align: left; border: none; border-radius: 0; font-size: 10px; }
-        .dropdown.open > .dropdown-content { display: block; }
-
-        .main-container { 
-            flex: 1; display: flex; flex-direction: column;
-            background: #000; position: relative; overflow: hidden;
-        }
-        
-        .workspace {
-            flex: 1; display: flex; justify-content: center; align-items: center;
-            background: #ffffff; position: relative; overflow: hidden;
-        }
-        .workspace canvas {
-            display: block; width: 100%; height: 100%; cursor: grab; touch-action: none;
-        }
-        .workspace canvas:active { cursor: grabbing; }
-        
-        .workspace-placeholder {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            background: radial-gradient(circle at center, #f8fafc 0%, #e2e8f0 100%);
-            pointer-events: none; z-index: 1;
-        }
-        .workspace-placeholder .icon { font-size: 60px; margin-bottom: 15px; opacity: 0.4; }
-        .workspace-placeholder .text { font-size: 14px; letter-spacing: 1px; color: #475569; font-weight: 600; }
-        .workspace-placeholder .hint { font-size: 10px; margin-top: 8px; color: #94a3b8; }
-
-        .console-output {
-            height: 180px; min-height: 100px; max-height: 35vh;
-            background: rgba(0,0,0,0.6); border-top: 1px solid #1e293b;
-            overflow-y: auto; padding: 10px 14px;
-            font-family: 'Courier New', monospace; font-size: 11px;
-            resize: vertical;
-        }
-        .console-line { padding: 2px 0; }
-        .console-line.cmd { color: var(--accent-cyan); }
-        .console-line.ok { color: #3fb950; }
-        .console-line.err { color: #f85149; }
-        .console-line.info { color: #8b949e; }
-        .console-line.warn { color: #f59e0b; }
-
-        #commandPanel {
-            position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-            width: 92%; max-width: 500px; background: rgba(15, 23, 42, 0.95);
-            border-radius: 12px; border: 1px solid var(--accent-cyan);
-            z-index: 1000; display: none; backdrop-filter: blur(10px); padding: 10px;
-        }
-        .command-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--accent-cyan); font-size: 12px; }
-        textarea {
-            width: 100%; margin: 0; background: #0f0f17; color: #eee;
-            border: 1px solid #3a3a4a; border-radius: 8px; padding: 10px;
-            font-family: 'Courier New', monospace; font-size: 12px; resize: vertical;
-        }
-        .command-buttons { display: flex; gap: 8px; margin-top: 8px; }
-        .history-indicator { font-size: 9px; color: #64748b; margin-top: 4px; text-align: right; }
-
-        .notification {
-            position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
-            background: #238636; padding: 8px 16px; border-radius: 8px;
-            z-index: 2000; display: none; font-weight: bold; font-size: 12px; pointer-events: none;
-        }
-
-        .status-bar {
-            position: fixed; bottom: 8px; left: 12px; z-index: 300;
-            background: rgba(2, 6, 23, 0.7); padding: 4px 12px; font-size: 9px;
-            border-radius: 4px; color: var(--accent-cyan); pointer-events: none;
-            backdrop-filter: blur(4px); border: 1px solid rgba(0,242,255,0.2);
-        }
-
-        #summary-panel {
-            position: absolute; top: 10px; right: 10px; width: 280px; max-width: 85vw; max-height: 65vh;
-            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 242, 255, 0.3); border-radius: 8px;
-            padding: 12px; z-index: 100; overflow-y: auto; display: none;
-            font-size: 11px; line-height: 1.6;
-        }
-        #summary-panel h4 { color: var(--accent-cyan); margin-bottom: 10px; font-size: 12px; text-align: center; }
-        #summary-panel .sum-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        #summary-panel .sum-label { color: #94a3b8; }
-        #summary-panel .sum-value { color: #e0e6ed; font-weight: 600; }
-        #summary-panel button { width: 100%; margin-top: 10px; }
-
-        #fullscreen-controls {
-            display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 9999; gap: 12px;
-        }
-        body.fullscreen-mode .toolbar,
-        body.fullscreen-mode #commandPanel,
-        body.fullscreen-mode .status-bar,
-        body.fullscreen-mode #notification,
-        body.fullscreen-mode #summary-panel { display: none !important; }
-        body.fullscreen-mode .main-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
-        body.fullscreen-mode #fullscreen-controls { display: flex !important; }
-
-        @media (max-width: 768px) {
-            .toolbar button { font-size: 8px; padding: 4px 5px; }
-            .toolbar-title { font-size: 13px; }
-            .toolbar-subtitle { display: none; }
-            .separator { display: none; }
-            #summary-panel { width: 250px; right: 5px; font-size: 10px; }
-            .welcome-container { padding: 25px 15px; }
-            .welcome-btn { font-size: 13px; padding: 12px 16px; }
-            .console-output { height: 120px; font-size: 10px; }
-        }
-
-        @media (max-width: 480px) {
-            .toolbar { gap: 3px; padding: 4px 6px; }
-            .toolbar button { font-size: 7px; padding: 3px 4px; }
-            .toolbar-logo img { height: 16px; }
-            .toolbar-title { font-size: 11px; letter-spacing: 1px; }
-            .dropdown-content { min-width: 140px; right: auto; left: 0; }
-            .dropdown-content button { font-size: 9px; }
-        }
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:var(--primary-bg);color:var(--text-main);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+        #splash-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle at center,#10172a 0%,#020617 100%);z-index:10000;display:flex;justify-content:center;align-items:center;transition:opacity .8s ease,visibility .8s}
+        .splash-content{text-align:center;width:350px}
+        .corporate-header{margin-bottom:25px}
+        .company-name{font-size:11px;letter-spacing:3px;color:#fff;opacity:.6;text-transform:uppercase;display:block}
+        .powered-by{font-size:8px;color:var(--accent-cyan);letter-spacing:1px;text-transform:uppercase}
+        .hex-container{width:120px;height:120px;margin:0 auto 30px;border:1px solid var(--accent-cyan);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;justify-content:center;align-items:center;background:rgba(0,242,255,0.05);animation:hex-pulse 2.5s infinite ease-in-out}
+        .hex-container img{width:70%;filter:drop-shadow(0 0 10px #00f2ff)}
+        @keyframes hex-pulse{0%,100%{transform:scale(1);box-shadow:0 0 15px rgba(0,242,255,0.1)}50%{transform:scale(1.05);box-shadow:0 0 30px rgba(0,242,255,0.3)}}
+        .splash-title{font-size:30px;letter-spacing:8px;color:#fff;font-weight:900;text-transform:uppercase;margin-bottom:5px}
+        .splash-subtitle{color:var(--accent-cyan);letter-spacing:4px;font-size:10px;margin-bottom:35px;opacity:.8;font-weight:700}
+        .loading-bar-container{width:200px;height:1px;background:rgba(255,255,255,0.1);margin:0 auto 15px;overflow:hidden}
+        .loading-bar-fill{width:0%;height:100%;background:var(--accent-cyan);animation:fill-bar 4.5s forwards cubic-bezier(.19,1,.22,1)}
+        .splash-status{font-family:monospace;font-size:9px;color:#64748b;text-transform:uppercase;margin-bottom:50px;height:15px}
+        .author-footer{border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
+        .leader-by{font-size:9px;color:#fff;opacity:.5;text-transform:uppercase}
+        .engineer-name{font-size:13px;font-weight:700;color:#fff;display:block;letter-spacing:1.5px;margin-top:4px}
+        @keyframes fill-bar{0%{width:0%}100%{width:100%}}
+        .splash-hidden{opacity:0;visibility:hidden}
+        #welcome-panel{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--primary-bg);z-index:9000;display:flex;justify-content:center;align-items:center;transition:opacity .6s ease,visibility .6s}
+        .welcome-container{width:600px;padding:40px;background:rgba(15,23,42,0.85);border:1px solid var(--accent-cyan);border-radius:16px;backdrop-filter:blur(12px);box-shadow:0 20px 40px rgba(0,0,0,0.6);text-align:center}
+        .home-logo-img{width:130px;margin:10px 0 25px;filter:drop-shadow(0 0 15px rgba(0,242,255,0.4))}
+        .header-names{display:flex;justify-content:space-between;margin-bottom:35px;text-align:left}
+        .corp-name{color:var(--accent-cyan);font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:2px}
+        .user-name{color:#fff;font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:2px;text-align:right}
+        .button-group{display:flex;flex-direction:column;gap:16px}
+        .welcome-btn{background:transparent;border:1px solid var(--accent-cyan);color:var(--accent-cyan);padding:16px 24px;font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:3px;border-radius:8px;cursor:pointer;transition:all .3s}
+        .welcome-btn:hover{background:var(--accent-cyan);color:#000}
+        .welcome-btn.secondary{border-color:#64748b;color:#94a3b8}
+        .welcome-btn.secondary:hover{background:#334155;border-color:#94a3b8;color:#fff}
+        .welcome-hidden{opacity:0;visibility:hidden;pointer-events:none}
+        #project-name-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9500;display:none;justify-content:center;align-items:center}
+        .modal-content{width:400px;padding:30px;background:var(--panel-bg);border:1px solid var(--accent-cyan);border-radius:16px;text-align:center}
+        .modal-content h3{color:var(--accent-cyan);margin-bottom:20px;font-size:18px}
+        .modal-content input{width:100%;padding:12px;background:#0f172a;border:1px solid #334155;color:#fff;border-radius:8px;margin-bottom:25px}
+        .modal-actions{display:flex;gap:15px;justify-content:center}
+        .modal-btn{padding:10px 24px;background:var(--accent-blue);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer}
+        .modal-btn.cancel{background:#334155}
+        .toolbar{background:var(--toolbar-bg);padding:6px 12px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--accent-blue);box-shadow:0 2px 10px rgba(0,0,0,0.4);z-index:500}
+        .toolbar-logo{display:flex;align-items:center;margin-right:10px}
+        .toolbar-logo img{height:24px;margin-right:6px}
+        .toolbar-title{color:var(--accent-cyan);font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:2px}
+        .toolbar-separator{width:1px;height:22px;background:var(--button-border);margin:0 4px}
+        button{background:var(--button-bg);border:1px solid var(--button-border);color:#fff;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;text-transform:uppercase;white-space:nowrap}
+        button:hover{background:var(--accent-blue);border-color:var(--accent-cyan)}
+        button.active{background:var(--accent-cyan);color:#000;border-color:var(--accent-cyan)}
+        .btn-pfd{border-color:var(--accent-green);color:var(--accent-green)}
+        .btn-pfd:hover,.btn-pfd.active{background:var(--accent-green);color:#000;border-color:var(--accent-green)}
+        .btn-dti{border-color:var(--accent-purple);color:var(--accent-purple)}
+        .btn-dti:hover,.btn-dti.active{background:var(--accent-purple);color:#fff;border-color:var(--accent-purple)}
+        .btn-iso{border-color:var(--accent-cyan);color:var(--accent-cyan)}
+        .btn-iso:hover,.btn-iso.active{background:var(--accent-cyan);color:#000;border-color:var(--accent-cyan)}
+        #btnExportPCF{border-color:var(--accent-green);color:var(--accent-green)}#btnExportPCF:hover{background:var(--accent-green);color:#000}
+        #btnImportPCF{border-color:var(--accent-orange);color:var(--accent-orange)}#btnImportPCF:hover{background:var(--accent-orange);color:#000}
+        #btnExportDB{border-color:#06b6d4;color:#06b6d4}#btnExportDB:hover{background:#06b6d4;color:#000}
+        #btnValidate{border-color:var(--accent-red);color:var(--accent-red)}#btnValidate:hover{background:var(--accent-red);color:#fff}
+        #btnSummary{border-color:#eab308;color:#eab308}#btnSummary:hover{background:#eab308;color:#000}
+        .dropdown{position:relative;display:inline-block}
+        .dropdown-content{display:none;position:absolute;background:var(--panel-bg);min-width:190px;box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);z-index:1;border:1px solid var(--accent-cyan);border-radius:4px;backdrop-filter:blur(8px);right:0}
+        .dropdown-content button{width:100%;text-align:left;border:none;border-radius:0}
+        .dropdown.open>.dropdown-content{display:block}
+        .module-tabs{display:flex;gap:2px;padding:0 12px;background:var(--toolbar-bg);border-bottom:2px solid var(--button-border)}
+        .module-tab{padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;border:none;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;text-transform:uppercase;letter-spacing:1px}
+        .module-tab:hover{color:#e2e8f0}
+        .module-tab.pfd-tab.active{color:var(--accent-green);border-bottom-color:var(--accent-green)}
+        .module-tab.dti-tab.active{color:var(--accent-purple);border-bottom-color:var(--accent-purple)}
+        .module-tab.iso-tab.active{color:var(--accent-cyan);border-bottom-color:var(--accent-cyan)}
+        .canvas-container{flex:1;background:#fff;position:relative;overflow:hidden}
+        #pfd-canvas,#dti-canvas,#isoCanvas{position:absolute;top:0;left:0;width:100%;height:100%;display:none}
+        #viewer-3d{position:absolute;top:0;left:0;width:100%;height:100%;display:none}
+        #side-panel{position:absolute;top:10px;right:10px;width:280px;max-width:85vw;max-height:60vh;background:rgba(15,23,42,0.85);backdrop-filter:blur(12px);border:1px solid rgba(0,242,255,0.3);border-radius:8px;padding:12px;z-index:100;overflow-y:auto;transition:transform .3s ease}
+        #side-panel.hidden{transform:translateX(320px)}
+        #panel-content{max-height:calc(60vh - 50px);overflow-y:auto}
+        #commandPanel{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);width:90%;max-width:560px;background:rgba(15,23,42,0.95);border-radius:12px;border:1px solid var(--accent-cyan);z-index:1000;display:none;backdrop-filter:blur(10px);padding:10px}
+        .command-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:var(--accent-cyan)}
+        textarea{width:100%;margin:0;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:10px;font-family:'Courier New',monospace;font-size:12px;resize:vertical}
+        .command-buttons{display:flex;gap:8px;margin-top:8px}
+        .history-indicator{font-size:10px;color:#64748b;margin-top:4px;text-align:right}
+        .notification{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#238636;padding:8px 16px;border-radius:8px;z-index:2000;display:none;font-weight:700;font-size:13px;pointer-events:none}
+        .status-bar{position:fixed;bottom:8px;left:12px;z-index:300;background:rgba(2,6,23,0.7);padding:4px 12px;font-size:10px;border-radius:4px;color:var(--accent-cyan);pointer-events:none;backdrop-filter:blur(4px);border:1px solid rgba(0,242,255,0.2)}
+        .tools-panel{position:fixed;left:10px;top:110px;background:rgba(15,23,42,0.9);border-radius:10px;padding:6px;z-index:400;border:1px solid rgba(0,242,255,0.3);backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:4px;transition:all .3s}
+        .tools-panel.collapsed #toolsButtons{display:none}
+        #toolsButtons{display:flex;flex-direction:column;gap:4px}
+        #toolsButtons button{font-size:10px;padding:4px 8px}
+        .elevation-inline{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px}
+        .elevation-inline span{font-size:10px;color:var(--accent-cyan)}
+        .elevation-inline button{font-size:10px;padding:2px 6px}
+        .elevation-inline input{width:60px;background:#0f172a;border:1px solid #334155;color:#fff;font-size:10px;padding:2px 4px;border-radius:4px}
+        #fullscreen-controls{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;gap:12px}
+        body.fullscreen-mode .toolbar,body.fullscreen-mode .module-tabs,body.fullscreen-mode #side-panel,body.fullscreen-mode #commandPanel,body.fullscreen-mode .status-bar,body.fullscreen-mode .tools-panel,body.fullscreen-mode #notification{display:none!important}
+        body.fullscreen-mode .canvas-container{position:fixed;top:0;left:0;width:100%;height:100%;z-index:10}
+        body.fullscreen-mode #fullscreen-controls{display:flex!important}
+        @media(max-width:768px){.toolbar button{font-size:9px;padding:4px 6px}.toolbar-title{font-size:13px}.module-tab{font-size:10px;padding:6px 10px}#side-panel{width:240px;right:5px}.tools-panel{top:100px;left:4px}}
     </style>
 </head>
 <body>
 
+    <!-- ===== SPLASH SCREEN ===== -->
     <div id="splash-screen">
         <div class="splash-content">
             <div class="corporate-header">
-                <span class="company-name">EngineFlow Systems</span>
-                <span class="powered-by">Process & Instrumentation Engineering</span>
+                <span class="company-name">AcQuaBlue International Corp.</span>
+                <span class="powered-by">Smart Engineering Systems</span>
             </div>
             <div class="hex-container">
                 <img src="img/logo.PNG" alt="Logo" onerror="this.style.display='none'">
             </div>
-            <h1 class="splash-title">EngineFlow</h1>
-            <p class="splash-subtitle">PFD &amp; DTI · INGENIERÍA DE PROCESOS</p>
+            <h1 class="splash-title">SmartFlow</h1>
+            <p class="splash-subtitle">INGENIERÍA INTELIGENTE</p>
             <div class="loading-bar-container"><div class="loading-bar-fill"></div></div>
-            <div class="splash-status" id="splash-status">Inicializando módulos PFD/DTI...</div>
+            <div class="splash-status" id="splash-status">Inicializando SmartFlow Pro v5.0...</div>
             <div class="author-footer">
                 <span class="leader-by">Ingeniero Líder de Proyecto:</span>
                 <span class="engineer-name">Ing. Osnay Romero</span>
@@ -278,13 +146,14 @@
         </div>
     </div>
 
+    <!-- ===== WELCOME PANEL ===== -->
     <div id="welcome-panel">
         <div class="welcome-container">
             <div class="home-logo-wrapper">
                 <img src="img/logo.PNG" alt="Logo" class="home-logo-img" onerror="this.style.display='none'">
             </div>
             <div class="header-names">
-                <h1 class="corp-name">ENGINEFLOW<br>PFD &amp; DTI</h1>
+                <h1 class="corp-name">ACQUABLUE<br>INTERNATIONAL CORP.</h1>
                 <h2 class="user-name">ING.<br>OSNAY ROMERO</h2>
             </div>
             <div class="button-group">
@@ -294,10 +163,11 @@
         </div>
     </div>
 
+    <!-- ===== MODAL NOMBRE PROYECTO ===== -->
     <div id="project-name-modal">
         <div class="modal-content">
-            <h3>Nuevo Proyecto PFD/DTI</h3>
-            <input type="text" id="project-name-input" placeholder="Nombre del proyecto" value="Proyecto_EngineFlow">
+            <h3>Nuevo Proyecto</h3>
+            <input type="text" id="project-name-input" placeholder="Nombre del proyecto" value="Proyecto_SmartFlow">
             <div class="modal-actions">
                 <button class="modal-btn" id="modal-accept">Aceptar</button>
                 <button class="modal-btn cancel" id="modal-skip">Saltar</button>
@@ -305,573 +175,284 @@
         </div>
     </div>
 
+    <!-- ===== TOOLBAR PRINCIPAL ===== -->
     <div class="toolbar" role="toolbar">
         <div class="toolbar-logo">
-            <img src="img/logo.PNG" alt="Logo" style="height: 22px;" onerror="this.style.display='none'">
-            <span class="toolbar-title">EngineFlow</span>
-            <span class="toolbar-subtitle">PFD/DTI</span>
+            <img src="img/logo.PNG" alt="Logo" style="height:24px" onerror="this.style.display='none'">
+            <span class="toolbar-title">SmartFlow Pro v5.0</span>
         </div>
-        
+        <div class="toolbar-separator"></div>
         <div class="dropdown">
-            <button id="btnFileMenu" title="Operaciones de archivo">📂 Archivo</button>
+            <button id="btnFileMenu">📂 Archivo</button>
             <div class="dropdown-content">
-                <button id="btnNew" title="Crear nuevo proyecto">🆕 Nuevo</button>
-                <button id="btnOpen" title="Abrir proyecto desde localStorage">📂 Abrir</button>
-                <button id="btnSave" title="Guardar proyecto en localStorage">💾 Guardar</button>
-                <button id="btnExportProject" title="Exportar proyecto como archivo JSON">📤 Exportar JSON</button>
-                <button id="btnImportProject" title="Importar proyecto desde archivo JSON">📥 Importar JSON</button>
+                <button id="btnOpen">📂 Abrir Proyecto</button>
+                <button id="btnSave">💾 Guardar Proyecto</button>
+                <button id="btnExportProject">📤 Exportar JSON</button>
+                <button id="btnImportProject">📥 Importar JSON</button>
+                <hr style="border-color:#334155;margin:4px 0">
+                <button id="btnExportDB">🗄️ Exportar DB Excel</button>
+                <button id="btnExportPCF">📥 Exportar PCF</button>
+                <button id="btnImportPCF">📤 Importar PCF</button>
+                <button id="btnMTO">📊 Exportar MTO</button>
+                <hr style="border-color:#334155;margin:4px 0">
+                <button id="btnExportPFD">📄 Exportar PFD (PDF)</button>
+                <button id="btnExportDTI">📄 Exportar DTI (PDF)</button>
             </div>
         </div>
-        
-        <div class="separator"></div>
-        
-        <button id="btnFullscreen" title="Pantalla completa para captura">⛶ Full</button>
-        <button id="btnSummary" title="Mostrar/ocultar resumen del proyecto">📋 Resumen</button>
-        <button id="btnAudit" title="Auditar integridad del proyecto">🔍 Auditar</button>
-        
-        <div class="separator"></div>
-        
-        <button id="btnExportPDF" title="Exportar diagrama PFD como PDF entregable">📄 PDF</button>
-        <button id="btnExportPNG" title="Exportar diagrama como imagen PNG">🖼️ PNG</button>
-        
-        <div class="separator"></div>
-        
-        <button id="btnAssistedCmd" title="Abrir comandos asistidos PFD/DTI">🧭 Asistido</button>
-        <button id="btnCommand" title="Abrir consola de comandos de texto">⌨️ Cmd</button>
-        
-        <div class="separator"></div>
-        
-        <button id="btnUndo" title="Deshacer última acción">↩️</button>
-        <button id="btnRedo" title="Rehacer última acción">↪️</button>
-        <button id="btnVoice" title="Activar/desactivar notificaciones de voz">🔊 Voz</button>
-    </div>
-
-    <div class="main-container" id="main-container">
-        <div class="workspace" id="workspace">
-            <canvas id="pfdCanvas"></canvas>
-            <div class="workspace-placeholder" id="workspace-placeholder">
-                <div class="icon">📊</div>
-                <div class="text">ENGINEFLOW PFD/DTI</div>
-                <div class="hint">Use 🧭 Asistido o ⌨️ Cmd para crear equipos y streams</div>
-                <div class="hint" style="margin-top:4px;">El diagrama aparecerá aquí al crear elementos</div>
+        <div class="toolbar-separator"></div>
+        <button id="btn-mode-pfd" class="btn-pfd active">📊 PFD</button>
+        <button id="btn-mode-dti" class="btn-dti">🔧 DTI</button>
+        <button id="btn-mode-iso" class="btn-iso">🧊 ISO</button>
+        <div class="toolbar-separator"></div>
+        <button id="btnValidate" title="Validación cruzada PFD↔DTI↔3D">🔍 Validar</button>
+        <button id="btnSummary" title="Resumen del proyecto">📋 Resumen</button>
+        <div class="toolbar-separator"></div>
+        <button id="btnReset">🔄 Centrar</button>
+        <button id="btnFullscreen">⛶ Full</button>
+        <button id="btnCommand">🤖 Cmd</button>
+        <button id="btnTogglePanels">👁️</button>
+        <div class="toolbar-separator"></div>
+        <div class="dropdown">
+            <button id="btnMoreMenu">⚙️ +</button>
+            <div class="dropdown-content">
+                <button id="btnUndo">↩️ Undo</button>
+                <button id="btnRedo">↪️ Redo</button>
+                <button id="btnVoice">🔊 Voz ON</button>
+                <button id="btnRecalc">🔄 Recalcular</button>
+                <button id="btnSpeakSummary">📢 Resumen Voz</button>
             </div>
         </div>
-        
-        <div class="console-output" id="consoleOutput">
-            <div class="console-line info">💡 EngineFlow PFD/DTI listo. Escriba un comando o use el modo asistido.</div>
-            <div class="console-line info">   Comandos: CREATE_EQUIPMENT | CREATE_STREAM | BUILD_PROCESS_LINE | ADD_LOOP | PROJECT_SUMMARY</div>
+    </div>
+
+    <!-- ===== MODULE TABS ===== -->
+    <div class="module-tabs" id="moduleTabs">
+        <button class="module-tab pfd-tab active" data-module="pfd">📊 PFD — Diagrama de Flujo</button>
+        <button class="module-tab dti-tab" data-module="dti">🔧 DTI — Tubería e Instrumentación</button>
+        <button class="module-tab iso-tab" data-module="iso">🧊 ISO — Isométrico 3D</button>
+    </div>
+
+    <!-- ===== CANVAS CONTAINER ===== -->
+    <div class="canvas-container" id="canvas-container">
+        <canvas id="pfd-canvas" style="display:block"></canvas>
+        <canvas id="dti-canvas" style="display:none"></canvas>
+        <canvas id="isoCanvas" style="display:none"></canvas>
+        <div id="viewer-3d" style="display:none"></div>
+        <div id="side-panel" class="property-panel hidden">
+            <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="color:var(--accent-cyan);font-weight:700">PROPIEDADES TÉCNICAS</span>
+                <button id="btnClosePanel" style="background:none;border:none;color:#fff;font-size:18px;padding:0;width:24px">×</button>
+            </div>
+            <div id="panel-content"><p class="empty-msg">Seleccione un elemento para ver sus detalles</p></div>
         </div>
     </div>
 
-    <div id="summary-panel">
-        <h4>📋 RESUMEN DEL PROYECTO</h4>
-        <div id="summary-content">
-            <div class="sum-row"><span class="sum-label">Equipos</span><span class="sum-value" id="sum-equipos">0</span></div>
-            <div class="sum-row"><span class="sum-label">Líneas</span><span class="sum-value" id="sum-lineas">0</span></div>
-            <div class="sum-row"><span class="sum-label">Corrientes</span><span class="sum-value" id="sum-streams">0</span></div>
-            <div class="sum-row"><span class="sum-label">Instrumentos</span><span class="sum-value" id="sum-instrumentos">0</span></div>
-            <div class="sum-row"><span class="sum-label">Lazos de control</span><span class="sum-value" id="sum-lazos">0</span></div>
-            <div class="sum-row"><span class="sum-label">Corrientes sin línea</span><span class="sum-value" id="sum-huerfanos">0</span></div>
-        </div>
-        <button id="btnRefreshSummary" title="Actualizar resumen">🔄 Actualizar</button>
-        <button id="btnCloseSummary" title="Cerrar panel de resumen">✕ Cerrar</button>
-    </div>
-
-    <div id="commandPanel">
+    <!-- ===== COMMAND PANEL ===== -->
+    <div id="commandPanel" class="command-panel">
         <div class="command-header">
-            <strong>⌨️ Comandos PFD/DTI</strong>
-            <button id="closeCommand" style="background:none;border:none;color:white;font-size:18px;padding:0;width:28px;">✖</button>
+            <strong>🤖 Comandos IA — SmartFlow Pro v5.0</strong>
+            <button id="closeCommand" style="background:none;border:none;color:#fff;font-size:20px;padding:0;width:30px">✖</button>
         </div>
-        <textarea id="commandText" rows="3" placeholder="Ej: CREATE_EQUIPMENT TYPE=bomba TAG=P-101A&#10;Ej: CREATE_STREAM TAG=S-100 FROM=P-101A TO=T-201 FLUID=AGUA CAUDAL=50&#10;Ej: BUILD_PROCESS_LINE FROM=P-101A TO=T-201 FLUID=CRUDO CAUDAL=180 PRESION=5"></textarea>
+        <textarea id="commandText" rows="4" placeholder="PFD: create stream S1 from TK-01 to B-01 fluid WATER flow 50&#10;DTI: create instrument PI-101 type PRESSURE_GAUGE on L-1 at 0.3&#10;3D:  connect TK-01 N1 to B-01 SUC diametro 6&#10;VAL: validate all | project summary | export db&#10;PDF: export pfd | export dti"></textarea>
         <div class="history-indicator" id="historyIndicator"></div>
         <div class="command-buttons">
-            <button id="runCommands" title="Ejecutar comando">▶ Ejecutar</button>
-            <button id="clearCommand" title="Limpiar campo de comando">🧹 Limpiar</button>
+            <button id="runCommands">▶ Ejecutar</button>
+            <button id="clearCommand">🗑️ Limpiar</button>
         </div>
     </div>
 
+    <!-- ===== NOTIFICATION ===== -->
     <div id="notification" class="notification"></div>
-    <div class="status-bar" id="statusMsg">ENGINEFLOW PFD/DTI | LISTO</div>
+    <div class="status-bar" id="statusMsg">SISTEMA LISTO | SmartFlow Pro v5.0</div>
 
-    <div id="fullscreen-controls">
-        <button id="btnFullscreenExit" style="padding:12px 20px; border-radius:30px; background:#ef4444; color:white; font-weight:bold; border:none;">✕ Salir de Pantalla Completa</button>
+    <!-- ===== TOOLS PANEL ===== -->
+    <div class="tools-panel" id="toolsPanel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:10px;color:var(--accent-cyan)">HERRAMIENTAS</span>
+            <button id="toolToggleHide" style="padding:2px 6px;font-size:10px;background:none;border:1px solid #334155">−</button>
+        </div>
+        <div id="toolsButtons">
+            <button id="toolSelect" class="active">🔍 Seleccionar</button>
+            <button id="toolMoveEq">✋ Mover equipo</button>
+            <button id="toolEditPipe">✏️ Editar tubería</button>
+            <button id="toolAddPoint">➕ Añadir punto</button>
+            <div class="elevation-inline">
+                <span>📐 Elev:</span>
+                <button id="btnElev0" data-level="0">0</button>
+                <button id="btnElev2500" data-level="2500">2.5m</button>
+                <button id="btnElev5000" data-level="5000">5.0m</button>
+                <input type="number" id="customElev" value="0" step="100" style="width:60px">
+                <button id="btnSetElev">Set</button>
+            </div>
+        </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ -->
-    <!-- SCRIPTS                                                   -->
-    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- ===== FULLSCREEN CONTROLS ===== -->
+    <div id="fullscreen-controls">
+        <button id="btnFullscreenCenter" style="padding:12px 20px;border-radius:30px;background:var(--accent-cyan);color:#000;font-weight:700;border:none">🔄 Centrar</button>
+        <button id="btnFullscreenExit" style="padding:12px 20px;border-radius:30px;background:#ef4444;color:#fff;font-weight:700;border:none">✕ Salir</button>
+    </div>
+
+    <!-- ================================================================ -->
+    <!--  SCRIPTS - MÓDULOS SMARTFLOW PRO v5.0                             -->
+    <!--  Orden de carga: Dependencias → Core → Catálogo → Módulos        -->
+    <!-- ================================================================ -->
     
-    <!-- Librería jsPDF para exportación PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
-    <!-- Core y Catálogo -->
+    <!-- 1. Motor de Datos (Core v7.0) -->
     <script src="js/core.js"></script>
+    
+    <!-- 2. Catálogo Industrial -->
     <script src="js/catalog.js"></script>
     
-    <!-- Módulos PFD/DTI -->
-    <script src="js/dimensionamiento.js"></script>
-    <script src="js/pfd-symbols.js"></script>
-    <script src="js/pfd-renderer.js"></script>
-    <script src="js/loops.js"></script>
+    <!-- 3. Router de Tuberías -->
+    <script src="js/router.js"></script>
     
-    <!-- Módulo de Exportación PDF -->
-    <script src="js/pfd-export.js"></script>
+    <!-- 4. Módulos de Proceso (PFD) -->
+    <script src="js/pfd_engine.js"></script>
+    <script src="js/pfd_renderer.js"></script>
     
-    <!-- Engine (voz + notificaciones + comandos) -->
-    <script src="js/smartflow-engine.js"></script>
+    <!-- 5. Módulos de Instrumentación (DTI) -->
+    <script src="js/dti_engine.js"></script>
+    <script src="js/dti_renderer.js"></script>
     
-    <!-- Sistema de Comandos Adaptativo PFD/DTI -->
-    <script src="js/adaptiveCommandsPFD.js"></script>
-    <script src="js/adaptiveUIPFD.js"></script>
+    <!-- 6. Validación Cruzada -->
+    <script src="js/integrity.js"></script>
+    
+    <!-- 7. Renderer 2D Isométrico -->
+    <script src="js/renderer.js"></script>
+    
+    <!-- 8. I/O (Import/Export) -->
+    <script src="js/smartflow_io.js"></script>
+    
+    <!-- 9. DB Export (Excel) -->
+    <script src="js/smartflow_db_export.js"></script>
+    
+    <!-- 10. Factory (Catálogo → Core) -->
+    <script src="js/factory.js"></script>
+    
+    <!-- 11. Deliverables (PDFs normativos PFD/DTI) ★ NUEVO -->
+    <script src="js/deliverables.js"></script>
+    
+    <!-- 12. Despachador de Comandos -->
+    <script src="js/commands.js"></script>
+    
+    <!-- 13. Módulos de Comandos Independientes ★ NUEVOS -->
+    <script src="js/commands-pfd.js"></script>
+    <script src="js/commands-dti.js"></script>
+    <script src="js/commands-3d.js"></script>
+    
+    <!-- 14. Comandos Adaptativos (tu sistema existente) -->
+    <script src="js/adaptiveCommands.js"></script>
+    <script src="js/adaptiveCommandsUI.js"></script>
+    
+    <!-- 15. Módulos Adaptativos -->
+    <script src="js/modules/adaptive_iso_update_flows.js"></script>
+    <script src="js/modules/adaptive_pfd_dti_flows.js"></script>
+    <script src="js/modules/adaptive_bridge.js"></script>
+    
+    <!-- 16. Three.js (Módulos ES6 - se cargan como type="module") -->
+    <script type="module" src="js/ThreeJsEngine.js"></script>
+    <script type="module" src="js/render.js"></script>
+    <script type="module" src="js/SmartFlowLabels3D.js"></script>
+    
+    <!-- 17. Inicialización Principal ★ ACTUALIZADO -->
+    <script src="js/main.js"></script>
 
+    <!-- ================================================================ -->
+    <!--  INICIALIZACIÓN DE EVENTOS UI                                    -->
+    <!-- ================================================================ -->
     <script>
         window.voiceEnabled = true;
-        window.currentProjectName = 'Proyecto_EngineFlow';
+        window.currentProjectName = 'Proyecto_SmartFlow';
+        window.currentModule = 'pfd';
+        window.currentViewMode = '2d';
 
         document.addEventListener("DOMContentLoaded", function() {
             
-            // ===== REFERENCIAS =====
-            const consoleOutput = document.getElementById('consoleOutput');
-            const notificationEl = document.getElementById('notification');
-            const statusMsgEl = document.getElementById('statusMsg');
-            const splashScreen = document.getElementById('splash-screen');
-            const splashStatus = document.getElementById('splash-status');
-            const welcomePanel = document.getElementById('welcome-panel');
-            const projectModal = document.getElementById('project-name-modal');
-            const projectInput = document.getElementById('project-name-input');
-            let pfdRenderer = null;
-            let pfdExport = null;
-            
-            // ===== CONSOLA =====
-            window.addConsoleLine = function(text, type) {
-                if (!consoleOutput) return;
-                const line = document.createElement('div');
-                line.className = 'console-line ' + (type || 'info');
-                line.textContent = (type === 'cmd' ? '> ' : '') + text;
-                consoleOutput.appendChild(line);
-                consoleOutput.scrollTop = consoleOutput.scrollHeight;
-            };
-            var addConsoleLine = window.addConsoleLine;
-
-            // ===== NOTIFICACIONES =====
-            window.notify = function(msg, isErr) {
-                if (notificationEl) {
-                    notificationEl.textContent = msg;
-                    notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636';
-                    notificationEl.style.display = 'block';
-                }
-                if (statusMsgEl) statusMsgEl.textContent = msg;
-                setTimeout(function() { if (notificationEl) notificationEl.style.display = 'none'; }, 4000);
-            };
-            var notify = window.notify;
-
-            // ===== SPLASH =====
-            const messages = [
-                "Cargando módulos PFD/DTI...",
-                "Inicializando catálogo de equipos...",
-                "Cargando criterios de dimensionamiento...",
-                "Preparando sistema de lazos de control...",
-                "¡EngineFlow PFD/DTI Activo!"
-            ];
-            let msgIndex = 0;
-            const interval = setInterval(function() {
-                if (msgIndex < messages.length && splashStatus) {
-                    splashStatus.textContent = messages[msgIndex];
-                    msgIndex++;
-                }
-            }, 600);
-
-            // ===== WELCOME =====
-            document.getElementById('welcome-new-project').addEventListener('click', function() {
-                if (projectModal) projectModal.style.display = 'flex';
-            });
-            
-            document.getElementById('welcome-open-project').addEventListener('click', function() {
-                cargarProyecto();
-                if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
-            });
-
-            document.getElementById('modal-accept').addEventListener('click', function() {
-                const name = projectInput ? projectInput.value.trim() : '';
-                if (name) window.currentProjectName = name;
-                if (projectModal) projectModal.style.display = 'none';
-                if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
-                if (SmartFlowCore) SmartFlowCore.nuevoProyecto();
-                if (statusMsgEl) statusMsgEl.textContent = 'Proyecto: ' + window.currentProjectName + ' | Listo';
-                addConsoleLine('✅ Nuevo proyecto: ' + window.currentProjectName, 'ok');
-                if (pfdRenderer) { pfdRenderer.loadFromCore([], []); pfdRenderer.render(); }
-                actualizarResumen();
-            });
-
-            document.getElementById('modal-skip').addEventListener('click', function() {
-                if (projectModal) projectModal.style.display = 'none';
-                if (welcomePanel) welcomePanel.classList.add('welcome-hidden');
-                if (statusMsgEl) statusMsgEl.textContent = 'Proyecto: ' + window.currentProjectName + ' | Listo';
-            });
-
-            // ===== TOOLBAR: ARCHIVO =====
-            document.getElementById('btnNew').addEventListener('click', function() {
-                if (confirm("¿Crear nuevo proyecto? Se perderán los cambios no guardados.")) {
-                    if (SmartFlowCore) SmartFlowCore.nuevoProyecto();
-                    if (pfdRenderer) { pfdRenderer.loadFromCore([], []); pfdRenderer.render(); }
-                    addConsoleLine('✅ Nuevo proyecto creado', 'ok');
-                    actualizarResumen();
-                }
-            });
-            document.getElementById('btnOpen').addEventListener('click', cargarProyecto);
-            document.getElementById('btnSave').addEventListener('click', guardarProyecto);
-            document.getElementById('btnExportProject').addEventListener('click', exportarProyectoArchivo);
-            document.getElementById('btnImportProject').addEventListener('click', importarProyectoArchivo);
-
-            // ===== TOOLBAR: VISTA =====
-            document.getElementById('btnFullscreen').addEventListener('click', function() {
-                document.body.classList.add('fullscreen-mode');
-                addConsoleLine('⛶ Pantalla completa', 'info');
-                setTimeout(function() {
-                    if (pfdRenderer) {
-                        const c = document.getElementById('pfdCanvas');
-                        if (c) { c.width = c.parentElement.clientWidth; c.height = c.parentElement.clientHeight; }
-                        pfdRenderer.render();
-                    }
-                }, 100);
-            });
-            document.getElementById('btnFullscreenExit').addEventListener('click', function() {
-                document.body.classList.remove('fullscreen-mode');
-                setTimeout(function() {
-                    if (pfdRenderer) {
-                        const c = document.getElementById('pfdCanvas');
-                        if (c) { c.width = c.parentElement.clientWidth; c.height = c.parentElement.clientHeight; }
-                        pfdRenderer.render();
-                    }
-                }, 100);
-            });
-
-            // ===== TOOLBAR: RESUMEN =====
-            document.getElementById('btnSummary').addEventListener('click', function() {
-                const panel = document.getElementById('summary-panel');
-                if (panel) {
-                    if (panel.style.display === 'block') { panel.style.display = 'none'; }
-                    else { actualizarResumen(); panel.style.display = 'block'; }
-                }
-            });
-            document.getElementById('btnCloseSummary').addEventListener('click', function() {
-                document.getElementById('summary-panel').style.display = 'none';
-            });
-            document.getElementById('btnRefreshSummary').addEventListener('click', actualizarResumen);
-
-            // ===== TOOLBAR: AUDITORÍA =====
-            document.getElementById('btnAudit').addEventListener('click', function() {
-                if (typeof SmartFlowEngine !== 'undefined') {
-                    const result = SmartFlowEngine.execute('AUDIT_PROJECT');
-                    if (result && result.ui) {
-                        const lines = result.ui.text.split('\n');
-                        lines.forEach(function(l) { addConsoleLine(l, result.error ? 'err' : 'info'); });
-                    }
-                }
-            });
-
-            // ===== TOOLBAR: EXPORTACIÓN PDF/PNG =====
-            document.getElementById('btnExportPDF').addEventListener('click', function() {
-                if (pfdExport) {
-                    pfdExport.exportPDF();
-                } else if (pfdRenderer) {
-                    // Fallback: exportar PNG del canvas
-                    const link = document.createElement('a');
-                    link.download = (window.currentProjectName || 'PFD') + '.png';
-                    link.href = pfdRenderer.exportPNG();
-                    link.click();
-                    addConsoleLine('📄 PNG exportado (PDF no disponible)', 'info');
-                } else {
-                    addConsoleLine('⚠️ No hay diagrama para exportar', 'warn');
-                }
-            });
-            
-            document.getElementById('btnExportPNG').addEventListener('click', function() {
-                if (pfdRenderer) {
-                    const link = document.createElement('a');
-                    link.download = (window.currentProjectName || 'PFD') + '.png';
-                    link.href = pfdRenderer.exportPNG();
-                    link.click();
-                    addConsoleLine('🖼️ PNG exportado', 'ok');
-                } else {
-                    addConsoleLine('⚠️ No hay diagrama para exportar', 'warn');
-                }
-            });
-
-            // ===== TOOLBAR: COMANDOS =====
-            document.getElementById('btnAssistedCmd').addEventListener('click', function(e) {
-                e.preventDefault();
-                if (typeof AdaptiveUIPFD !== 'undefined') {
-                    AdaptiveUIPFD.openPanel('assisted');
-                } else {
-                    addConsoleLine('⚠️ Módulo asistido PFD no disponible', 'warn');
-                }
-            });
-            document.getElementById('btnCommand').addEventListener('click', function() {
-                const panel = document.getElementById('commandPanel');
-                if (panel) { panel.style.display = 'block'; document.getElementById('commandText')?.focus(); }
-            });
-            document.getElementById('closeCommand').addEventListener('click', function() {
-                document.getElementById('commandPanel').style.display = 'none';
-            });
-            document.getElementById('clearCommand').addEventListener('click', function() {
-                const ta = document.getElementById('commandText'); if (ta) ta.value = '';
-            });
-            document.getElementById('runCommands').addEventListener('click', ejecutarComando);
-            document.getElementById('commandText').addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ejecutarComando(); }
-                if (e.key === 'Escape') { document.getElementById('commandPanel').style.display = 'none'; }
-            });
-
-            // ===== TOOLBAR: UNDO/REDO/VOZ =====
-            document.getElementById('btnUndo').addEventListener('click', function() {
-                if (SmartFlowCore) { SmartFlowCore.undo(); addConsoleLine('↩️ Deshecho', 'info'); actualizarResumen(); }
-            });
-            document.getElementById('btnRedo').addEventListener('click', function() {
-                if (SmartFlowCore) { SmartFlowCore.redo(); addConsoleLine('↪️ Rehecho', 'info'); actualizarResumen(); }
-            });
-            document.getElementById('btnVoice').addEventListener('click', function() {
-                window.voiceEnabled = !window.voiceEnabled;
-                if (typeof SmartFlowEngine !== 'undefined') SmartFlowEngine.setVoiceEnabled(window.voiceEnabled);
-                document.getElementById('btnVoice').textContent = window.voiceEnabled ? '🔊 Voz' : '🔇 Voz';
-                addConsoleLine(window.voiceEnabled ? '🔊 Voz activada' : '🔇 Voz desactivada', 'info');
-            });
-
-            // ===== DROPDOWN =====
-            function setupDropdown(buttonId) {
-                const btn = document.getElementById(buttonId);
-                if (!btn) return;
-                btn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const parent = this.closest('.dropdown');
-                    if (parent) parent.classList.toggle('open');
+            // Cerrar panel de propiedades
+            var btnClosePanel = document.getElementById('btnClosePanel');
+            if (btnClosePanel) {
+                btnClosePanel.addEventListener('click', function() { 
+                    if (typeof togglePanel === 'function') togglePanel(false); 
                 });
             }
-            setupDropdown('btnFileMenu');
-            document.addEventListener('click', function(e) {
-                if (!e.target.closest('.dropdown')) {
-                    document.querySelectorAll('.dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+
+            // Botones de elevación rápida
+            ['btnElev0', 'btnElev2500', 'btnElev5000'].forEach(function(id) {
+                var btn = document.getElementById(id);
+                if (btn) {
+                    btn.addEventListener('click', function() {
+                        var level = parseInt(this.getAttribute('data-level'), 10);
+                        if (typeof setElevation === 'function') setElevation(level);
+                    });
                 }
             });
 
-            // ===== ATAJOS GLOBALES =====
-            document.addEventListener('keydown', function(e) {
-                if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-                    e.preventDefault();
-                    if (typeof AdaptiveUIPFD !== 'undefined') AdaptiveUIPFD.openPanel('assisted');
+            // Tabs de módulos
+            document.querySelectorAll('.module-tab').forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    var module = this.getAttribute('data-module');
+                    if (typeof window.switchModule === 'function') {
+                        window.switchModule(module);
+                    }
+                });
+            });
+            
+            // Botones de modo rápido
+            var btnPFD = document.getElementById('btn-mode-pfd');
+            var btnDTI = document.getElementById('btn-mode-dti');
+            var btnISO = document.getElementById('btn-mode-iso');
+            if (btnPFD) btnPFD.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('pfd'); });
+            if (btnDTI) btnDTI.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('dti'); });
+            if (btnISO) btnISO.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('iso'); });
+
+            // Botones de exportación PDF PFD/DTI ★ NUEVOS
+            var btnExportPFD = document.getElementById('btnExportPFD');
+            var btnExportDTI = document.getElementById('btnExportDTI');
+            if (btnExportPFD) btnExportPFD.addEventListener('click', function() {
+                if (typeof SmartFlowDeliverables !== 'undefined') {
+                    SmartFlowDeliverables.generatePFD();
+                } else if (typeof SmartFlowIO !== 'undefined' && typeof SmartFlowIO.downloadPFD === 'function') {
+                    SmartFlowIO.downloadPFD();
                 }
-                if (e.ctrlKey && e.key === 's') { e.preventDefault(); guardarProyecto(); }
-                if (e.ctrlKey && e.key === 'p') { e.preventDefault(); document.getElementById('btnExportPDF').click(); }
-                if (e.key === 'Escape') {
-                    if (typeof AdaptiveUIPFD !== 'undefined') AdaptiveUIPFD.closeOverlay();
-                    document.body.classList.remove('fullscreen-mode');
+            });
+            if (btnExportDTI) btnExportDTI.addEventListener('click', function() {
+                if (typeof SmartFlowDeliverables !== 'undefined') {
+                    SmartFlowDeliverables.generateDTI();
+                } else if (typeof SmartFlowIO !== 'undefined' && typeof SmartFlowIO.downloadDTI === 'function') {
+                    SmartFlowIO.downloadDTI();
                 }
             });
 
-            // ===== FUNCIONES DE PROYECTO =====
-            function guardarProyecto() {
-                if (!SmartFlowCore) return;
-                const state = SmartFlowCore.exportProject();
-                localStorage.setItem('engineflow_pfd_project', state);
-                localStorage.setItem('engineflow_pfd_name', window.currentProjectName || 'Proyecto_EngineFlow');
-                addConsoleLine('💾 Proyecto guardado', 'ok');
-                notify('✅ Proyecto guardado', false);
-            }
-
-            function cargarProyecto() {
-                const data = localStorage.getItem('engineflow_pfd_project');
-                const name = localStorage.getItem('engineflow_pfd_name');
-                if (name) window.currentProjectName = name;
-                if (data && SmartFlowCore) {
-                    try {
-                        const state = JSON.parse(data);
-                        SmartFlowCore.importState(state.data || state);
-                        addConsoleLine('📂 Proyecto cargado: ' + window.currentProjectName, 'ok');
-                        notify('✅ Proyecto cargado', false);
-                        if (pfdRenderer) {
-                            pfdRenderer.loadFromCore(SmartFlowCore.getEquipos(), SmartFlowCore.getStreams());
-                            pfdRenderer.render();
-                        }
-                        actualizarResumen();
-                    } catch (e) {
-                        addConsoleLine('❌ Error al cargar', 'err');
-                        notify('Error al cargar proyecto', true);
-                    }
-                } else {
-                    addConsoleLine('ℹ️ No hay proyecto guardado', 'info');
-                    notify('No hay proyecto guardado', true);
-                }
-            }
-
-            function exportarProyectoArchivo() {
-                if (!SmartFlowCore) return;
-                const state = SmartFlowCore.exportProject();
-                const blob = new Blob([state], { type: 'application/json' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = (window.currentProjectName || 'Proyecto') + '_PFD.json';
-                a.click();
-                addConsoleLine('📤 Proyecto exportado', 'ok');
-                notify('✅ Proyecto exportado', false);
-            }
-
-            function importarProyectoArchivo() {
-                const input = document.createElement('input');
-                input.type = 'file'; input.accept = '.json';
-                input.onchange = function(e) {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = function(ev) {
-                        try {
-                            const state = JSON.parse(ev.target.result);
-                            if (SmartFlowCore) {
-                                SmartFlowCore.importState(state.data || state);
-                                addConsoleLine('📥 Proyecto importado', 'ok');
-                                notify('✅ Proyecto importado', false);
-                                if (pfdRenderer) {
-                                    pfdRenderer.loadFromCore(SmartFlowCore.getEquipos(), SmartFlowCore.getStreams());
-                                    pfdRenderer.render();
-                                }
-                                actualizarResumen();
-                            }
-                        } catch (err) {
-                            addConsoleLine('❌ Error al importar', 'err');
-                            notify('Error al importar', true);
-                        }
-                    };
-                    reader.readAsText(file);
-                };
-                input.click();
-            }
-
-            function ejecutarComando() {
-                const textarea = document.getElementById('commandText');
-                if (!textarea) return;
-                const cmd = textarea.value.trim();
-                if (!cmd) return;
-                addConsoleLine(cmd, 'cmd');
-                if (typeof SmartFlowEngine !== 'undefined') {
-                    const result = SmartFlowEngine.execute(cmd);
-                    if (result && result.ui) {
-                        const lines = result.ui.text.split('\n');
-                        lines.forEach(function(l) {
-                            addConsoleLine(l, result.error ? 'err' : 'ok');
-                        });
-                    }
-                }
-                textarea.value = '';
-                actualizarResumen();
-            }
-
-            function actualizarResumen() {
-                if (!SmartFlowCore) return;
-                const equipos = SmartFlowCore.getEquipos ? SmartFlowCore.getEquipos().length : 0;
-                const lineas = SmartFlowCore.getLines ? SmartFlowCore.getLines().length : 0;
-                const streams = SmartFlowCore.getStreams ? SmartFlowCore.getStreams().length : 0;
-                const instrumentos = SmartFlowCore.getInstruments ? SmartFlowCore.getInstruments().length : 0;
-                const lazos = SmartFlowCore.getLoops ? SmartFlowCore.getLoops().length : 0;
-                let huerfanos = 0;
-                if (SmartFlowCore.getStreams) {
-                    huerfanos = SmartFlowCore.getStreams().filter(function(s) { return !s.linkedLineTags || s.linkedLineTags.length === 0; }).length;
-                }
-                document.getElementById('sum-equipos').textContent = equipos;
-                document.getElementById('sum-lineas').textContent = lineas;
-                document.getElementById('sum-streams').textContent = streams;
-                document.getElementById('sum-instrumentos').textContent = instrumentos;
-                document.getElementById('sum-lazos').textContent = lazos;
-                document.getElementById('sum-huerfanos').textContent = huerfanos;
-                if (statusMsgEl) {
-                    statusMsgEl.textContent = 'Proyecto: ' + window.currentProjectName + ' | Eq: ' + equipos + ' | Ln: ' + lineas + ' | St: ' + streams + ' | In: ' + instrumentos + ' | Lz: ' + lazos;
-                }
-            }
-
-            // ===== INICIALIZACIÓN =====
-            function bootstrap() {
-                if (typeof SmartFlowCore === 'undefined' || typeof SmartFlowPFDRenderer === 'undefined') {
-                    setTimeout(bootstrap, 100);
-                    return;
-                }
-                
-                if (typeof SmartFlowEngine !== 'undefined') {
-                    SmartFlowEngine.init({
-                        voiceEnabled: window.voiceEnabled,
-                        notificationCallback: function(data) {
-                            if (data.type === 'error') notify(data.message, true);
-                        }
-                    });
-                }
-                
-                if (SmartFlowCore.init) {
-                    SmartFlowCore.init(
-                        function(msg, isErr) { notify(msg, isErr); },
-                        function() { if (pfdRenderer) pfdRenderer.render(); },
-                        function(info) {}
-                    );
-                }
-                
-                const pfdCanvas = document.getElementById('pfdCanvas');
-                if (pfdCanvas && SmartFlowPFDRenderer) {
-                    pfdCanvas.width = pfdCanvas.parentElement.clientWidth || 1200;
-                    pfdCanvas.height = pfdCanvas.parentElement.clientHeight || 700;
-                    
-                    pfdRenderer = SmartFlowPFDRenderer.createRenderer(pfdCanvas, {
-                        SPACING_X: 220,
-                        SPACING_Y: 160,
-                        MARGIN: 80
-                    });
-                    
-                    pfdRenderer.setSelectionCallback(function(eq) {
-                        if (eq) addConsoleLine('📌 ' + eq.tag + ' (' + eq.tipo + ')', 'info');
-                    });
-                    
-                    pfdRenderer.loadFromCore(SmartFlowCore.getEquipos(), SmartFlowCore.getStreams());
-                    pfdRenderer.render();
-                    
-                    document.getElementById('workspace-placeholder').style.display = 'none';
-                    addConsoleLine('✅ Renderizador PFD inicializado', 'ok');
-                }
-                
-                // Inicializar exportador PDF
-                if (typeof SmartFlowPFDExport !== 'undefined') {
-                    pfdExport = SmartFlowPFDExport;
-                    SmartFlowPFDExport.init(pfdRenderer, SmartFlowCore, window.currentProjectName);
-                }
-                
-                if (SmartFlowCore.on) {
-                    SmartFlowCore.on('modelChanged', function() {
-                        if (pfdRenderer) {
-                            setTimeout(function() {
-                                pfdRenderer.loadFromCore(SmartFlowCore.getEquipos(), SmartFlowCore.getStreams());
-                                pfdRenderer.render();
-                                actualizarResumen();
-                            }, 100);
-                        }
-                    });
-                }
-                
-                if (splashScreen) splashScreen.classList.add('splash-hidden');
-                clearInterval(interval);
-                
-                setTimeout(function() {
-                    if (welcomePanel) welcomePanel.classList.remove('welcome-hidden');
-                }, 300);
-                
-                addConsoleLine('✅ EngineFlow PFD/DTI inicializado', 'ok');
-                actualizarResumen();
-            }
-            
-            setTimeout(bootstrap, 2500);
-            
+            // Redimensionamiento responsivo
             window.addEventListener('resize', function() {
-                const c = document.getElementById('pfdCanvas');
-                if (c && pfdRenderer) {
-                    c.width = c.parentElement.clientWidth;
-                    c.height = c.parentElement.clientHeight;
-                    pfdRenderer.render();
+                var m = window.currentModule || 'pfd';
+                if (m === 'pfd' && typeof SmartFlowPFDRenderer !== 'undefined') {
+                    SmartFlowPFDRenderer.resizeCanvas();
+                    SmartFlowPFDRenderer.render();
+                } else if (m === 'dti' && typeof SmartFlowDTIRenderer !== 'undefined') {
+                    SmartFlowDTIRenderer.resizeCanvas();
+                    SmartFlowDTIRenderer.render();
+                } else if (m === 'iso' && typeof SmartFlowRenderer !== 'undefined') {
+                    SmartFlowRenderer.resizeCanvas();
                 }
             });
         });
+
+        function setElevation(level) {
+            if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.setElevation) {
+                SmartFlowCore.setElevation(level);
+            }
+            var elevInput = document.getElementById('customElev');
+            if (elevInput) elevInput.value = level;
+        }
+
+        function togglePanel(show) {
+            var panel = document.getElementById('side-panel');
+            if (panel) {
+                if (show) panel.classList.remove('hidden');
+                else panel.classList.add('hidden');
+            }
+        }
     </script>
 </body>
 </html>
