@@ -1,15 +1,14 @@
+
 // ============================================================
-// SMARTFLOW PFD RENDERER v1.1 - Renderizado de Diagrama de Flujo
+// SMARTFLOW PFD RENDERER v1.2 - Renderizado de Diagrama de Flujo
 // Archivo: js/modules/pfd_renderer.js
-// Dependencias: SmartFlowCore v6.0+, SmartFlowPFD v1.1+
-// Características:
-//   - Layout automático de equipos (izquierda → derecha)
-//   - Ruteo ortogonal de corrientes (solo horizontal/vertical)
-//   - Saltos/puentes en cruces de líneas no conectadas (ISO 10628)
-//   - Etiquetas de corriente (fluido, caudal, presión, temperatura)
-//   - Símbolos estándar ISO 10628
-//   - Colores por tipo de fluido
-//   - Leyenda automática
+// Dependencias: SmartFlowCore v7.1+, SmartFlowPFD v1.2+
+// Novedades v1.2:
+//   - Corrección: Saltos múltiples en un mismo segmento
+//   - Arco de salto hacia arriba según ISO 10628
+//   - Etiquetas de torres/columnas correctamente posicionadas
+//   - Texto de corrientes en color neutro (#1e293b) con fondo
+//   - Soporte para recirculación (ciclos) en el layout
 // ============================================================
 
 const SmartFlowPFDRenderer = (function() {
@@ -58,7 +57,6 @@ const SmartFlowPFDRenderer = (function() {
         'BRINE':           '#0891b2',
         'GLYCOL':          '#4f46e5',
         'LUBE_OIL':        '#854d0e',
-        'STEAM_COND':      '#fbbf24',
         'AMMONIA':         '#84cc16',
         'CHLORINE':        '#65a30d',
         'H2SO4':           '#ca8a04',
@@ -75,7 +73,7 @@ const SmartFlowPFDRenderer = (function() {
     let _crossings = [];
     
     // ================================================================
-    //  ALGORITMO DE LAYOUT AUTOMÁTICO
+    //  ALGORITMO DE LAYOUT AUTOMÁTICO (MEJORADO v1.2)
     // ================================================================
     
     function calculateLayout() {
@@ -107,7 +105,7 @@ const SmartFlowPFDRenderer = (function() {
             }
         });
         
-        // Ordenamiento topológico
+        // Ordenamiento topológico con salvaguarda para ciclos (v1.2)
         const colMap = new Map();
         const columns = [];
         
@@ -115,7 +113,10 @@ const SmartFlowPFDRenderer = (function() {
             .filter(eq => (inDegree.get(eq.tag) || 0) === 0)
             .map(eq => eq.tag);
         
-        const queue = sources.map(tag => ({ tag, col: 0 }));
+        // Si no hay fuentes (todo es un ciclo), tomar el primer equipo
+        const queue = sources.length > 0 
+            ? sources.map(tag => ({ tag, col: 0 }))
+            : (equipos.length > 0 ? [{ tag: equipos[0].tag, col: 0 }] : []);
         
         while (queue.length > 0) {
             const { tag, col } = queue.shift();
@@ -135,7 +136,7 @@ const SmartFlowPFDRenderer = (function() {
             }
         }
         
-        // Equipos no conectados
+        // v1.2: Salvaguarda para equipos en ciclos (recirculación)
         equipos.forEach(eq => {
             if (!colMap.has(eq.tag)) {
                 const col = columns.length;
@@ -186,25 +187,19 @@ const SmartFlowPFDRenderer = (function() {
         const toY = toPos.y;
         
         const points = [];
-        
-        // Punto de salida
         points.push({ x: fromX, y: fromY });
         
-        // Punto de llegada
         const endPoint = { x: toX, y: toY };
         
-        // Si están alineados horizontalmente → línea recta
         if (Math.abs(fromY - toY) < 10) {
             points.push(endPoint);
         } else {
-            // Ruta ortogonal: H + V + H
             const midX = (fromX + toX) / 2;
             points.push({ x: midX, y: fromY });
             points.push({ x: midX, y: toY });
             points.push(endPoint);
         }
         
-        // Snap a grilla
         const snappedPoints = points.map(p => ({
             x: Math.round(p.x / LAYOUT.gridSize) * LAYOUT.gridSize,
             y: Math.round(p.y / LAYOUT.gridSize) * LAYOUT.gridSize
@@ -229,8 +224,6 @@ const SmartFlowPFDRenderer = (function() {
                 const routeA = routes[i];
                 const routeB = routes[j];
                 if (!routeA || !routeB) continue;
-                
-                // No detectar cruces entre la misma ruta
                 if (routeA.stream.tag === routeB.stream.tag) continue;
                 
                 for (let a = 0; a < routeA.points.length - 1; a++) {
@@ -284,7 +277,7 @@ const SmartFlowPFDRenderer = (function() {
     }
     
     // ================================================================
-    //  DIBUJO DE EQUIPOS
+    //  DIBUJO DE EQUIPOS (MEJORADO v1.2 - etiquetas en torres)
     // ================================================================
     
     function drawEquipment(ctx, eq) {
@@ -297,6 +290,8 @@ const SmartFlowPFDRenderer = (function() {
         
         ctx.save();
         
+        let halfHeight = s; // altura del gráfico para posicionar etiqueta
+        
         switch (eq.tipo) {
             case 'tanque_v':
             case 'torre':
@@ -304,8 +299,20 @@ const SmartFlowPFDRenderer = (function() {
             case 'reactor_encamisado':
             case 'autoclave':
             case 'caldera':
+                halfHeight = s;
                 ctx.beginPath();
                 ctx.arc(x, y, s, 0, Math.PI * 2);
+                ctx.fillStyle = '#e8f4f8';
+                ctx.fill();
+                ctx.strokeStyle = '#1e40af';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+                break;
+                
+            case 'columna_fraccionadora':
+                halfHeight = s * 2;
+                ctx.beginPath();
+                ctx.ellipse(x, y, s * 0.6, s * 2, 0, 0, Math.PI * 2);
                 ctx.fillStyle = '#e8f4f8';
                 ctx.fill();
                 ctx.strokeStyle = '#1e40af';
@@ -316,6 +323,7 @@ const SmartFlowPFDRenderer = (function() {
             case 'bomba':
             case 'bomba_dosificacion':
             case 'bomba_z':
+                halfHeight = s * 0.8;
                 ctx.beginPath();
                 ctx.arc(x, y, s * 0.8, 0, Math.PI * 2);
                 ctx.fillStyle = '#fef3c7';
@@ -334,6 +342,7 @@ const SmartFlowPFDRenderer = (function() {
                 
             case 'intercambiador':
             case 'condensador':
+                halfHeight = s;
                 ctx.beginPath();
                 ctx.arc(x, y, s, 0, Math.PI * 2);
                 ctx.fillStyle = '#fce7f3';
@@ -356,6 +365,7 @@ const SmartFlowPFDRenderer = (function() {
             case 'separador_trifasico':
             case 'filtro_prensa':
             case 'filtro_duplex':
+                halfHeight = s * 0.65;
                 ctx.beginPath();
                 ctx.ellipse(x, y, s * 1.3, s * 0.65, 0, 0, Math.PI * 2);
                 ctx.fillStyle = '#dbeafe';
@@ -366,6 +376,7 @@ const SmartFlowPFDRenderer = (function() {
                 break;
                 
             case 'compresor':
+                halfHeight = s;
                 ctx.beginPath();
                 ctx.arc(x, y, s, 0, Math.PI * 2);
                 ctx.fillStyle = '#fee2e2';
@@ -382,19 +393,10 @@ const SmartFlowPFDRenderer = (function() {
                 ctx.stroke();
                 break;
                 
-            case 'columna_fraccionadora':
-                ctx.beginPath();
-                ctx.ellipse(x, y, s * 0.6, s * 2, 0, 0, Math.PI * 2);
-                ctx.fillStyle = '#e8f4f8';
-                ctx.fill();
-                ctx.strokeStyle = '#1e40af';
-                ctx.lineWidth = 2.5;
-                ctx.stroke();
-                break;
-                
             case 'agitador':
             case 'molino':
             case 'centrifuga':
+                halfHeight = s;
                 ctx.beginPath();
                 ctx.arc(x, y, s, 0, Math.PI * 2);
                 ctx.fillStyle = '#f1f5f9';
@@ -407,6 +409,7 @@ const SmartFlowPFDRenderer = (function() {
             case 'skid_inyeccion':
             case 'llenadora':
             case 'osmosis':
+                halfHeight = s * 0.6;
                 ctx.fillStyle = '#e2e8f0';
                 ctx.fillRect(x - s * 0.9, y - s * 0.6, s * 1.8, s * 1.2);
                 ctx.strokeStyle = '#475569';
@@ -415,6 +418,7 @@ const SmartFlowPFDRenderer = (function() {
                 break;
                 
             default:
+                halfHeight = s * 0.5;
                 ctx.fillStyle = '#f8fafc';
                 ctx.fillRect(x - s * 0.7, y - s * 0.5, s * 1.4, s * 1.0);
                 ctx.strokeStyle = '#64748b';
@@ -422,16 +426,16 @@ const SmartFlowPFDRenderer = (function() {
                 ctx.strokeRect(x - s * 0.7, y - s * 0.5, s * 1.4, s * 1.0);
         }
         
-        // Tag del equipo
+        // v1.2: Tag posicionado según la altura real del gráfico
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 11px Segoe UI';
         ctx.textAlign = 'center';
-        ctx.fillText(eq.tag, x, y + s + 16);
+        ctx.fillText(eq.tag, x, y + halfHeight + 16);
         
         // Tipo de equipo
         ctx.fillStyle = '#64748b';
         ctx.font = '8px Segoe UI';
-        ctx.fillText(getEquipmentLabel(eq.tipo), x, y + s + 30);
+        ctx.fillText(getEquipmentLabel(eq.tipo), x, y + halfHeight + 30);
         
         ctx.restore();
     }
@@ -453,33 +457,139 @@ const SmartFlowPFDRenderer = (function() {
     }
     
     // ================================================================
-    //  DIBUJO DE CORRIENTES CON SALTOS
+    //  DIBUJO DE CORRIENTES CON SALTOS (CORREGIDO v1.2)
     // ================================================================
     
-    function drawStreamWithJumps(ctx, route, jumpSegments) {
-        if (!route || route.points.length < 2) return;
+    function drawAllStreams(ctx) {
+        // v1.2: Agrupar cruces por segmento de ruta
+        const segmentCrossings = new Map(); // key: "routeTag_segIdx" → array de puntos de cruce ordenados
         
-        const { points, color } = route;
-        
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        for (let i = 0; i < points.length - 1; i++) {
-            const segKey = route.stream.tag + '_' + i;
+        _crossings.forEach(crossing => {
+            const segADir = getSegmentDirection(crossing.routeA.points[crossing.segA], crossing.routeA.points[crossing.segA + 1]);
+            const segBDir = getSegmentDirection(crossing.routeB.points[crossing.segB], crossing.routeB.points[crossing.segB + 1]);
             
-            // Si este segmento tiene salto, lo saltamos
-            if (jumpSegments.has(segKey)) continue;
+            // Determinar qué ruta salta (la horizontal)
+            let jumpingRoute, jumpingSeg;
+            if (segADir === 'HORIZONTAL') {
+                jumpingRoute = crossing.routeA;
+                jumpingSeg = crossing.segA;
+            } else if (segBDir === 'HORIZONTAL') {
+                jumpingRoute = crossing.routeB;
+                jumpingSeg = crossing.segB;
+            } else {
+                jumpingRoute = crossing.routeA;
+                jumpingSeg = crossing.segA;
+            }
             
-            ctx.beginPath();
-            ctx.moveTo(points[i].x, points[i].y);
-            ctx.lineTo(points[i + 1].x, points[i + 1].y);
-            ctx.stroke();
-        }
+            const key = jumpingRoute.stream.tag + '_' + jumpingSeg;
+            if (!segmentCrossings.has(key)) {
+                segmentCrossings.set(key, {
+                    route: jumpingRoute,
+                    segIdx: jumpingSeg,
+                    crossings: []
+                });
+            }
+            segmentCrossings.get(key).crossings.push(crossing);
+        });
         
-        ctx.restore();
+        // Dibujar cada ruta
+        _streamRoutes.forEach(route => {
+            if (!route || route.points.length < 2) return;
+            
+            const { points, color } = route;
+            
+            // Construir mapa de segmentos con cruces para esta ruta
+            const routeSegmentCrossings = new Map();
+            for (let i = 0; i < points.length - 1; i++) {
+                const key = route.stream.tag + '_' + i;
+                if (segmentCrossings.has(key)) {
+                    // Ordenar cruces por posición a lo largo del segmento
+                    const segData = segmentCrossings.get(key);
+                    const segPoints = segData.crossings.map(c => c.point);
+                    const p1 = points[i], p2 = points[i + 1];
+                    // Ordenar por distancia desde p1
+                    segPoints.sort((a, b) => {
+                        const dA = Math.hypot(a.x - p1.x, a.y - p1.y);
+                        const dB = Math.hypot(b.x - p1.x, b.y - p1.y);
+                        return dA - dB;
+                    });
+                    routeSegmentCrossings.set(i, segPoints);
+                }
+            }
+            
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Dibujar cada segmento, subdividiendo si hay cruces
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const crossings = routeSegmentCrossings.get(i);
+                
+                if (!crossings || crossings.length === 0) {
+                    // Segmento sin cruces: dibujar completo
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.stroke();
+                } else {
+                    // Segmento con cruces: subdividir
+                    const gap = LAYOUT.jumpSize;
+                    const isHorizontal = Math.abs(p2.y - p1.y) < Math.abs(p2.x - p1.x);
+                    
+                    let prevPoint = p1;
+                    
+                    crossings.forEach(crossPoint => {
+                        const jumpX = crossPoint.x;
+                        const jumpY = crossPoint.y;
+                        
+                        // Tramo desde prevPoint hasta el inicio del salto
+                        if (isHorizontal) {
+                            ctx.beginPath();
+                            ctx.moveTo(prevPoint.x, prevPoint.y);
+                            ctx.lineTo(jumpX - gap, jumpY);
+                            ctx.stroke();
+                            
+                            // v1.2: Arco hacia arriba (ISO 10628)
+                            ctx.beginPath();
+                            ctx.arc(jumpX, jumpY - gap, gap, Math.PI, 0, true);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fill();
+                            ctx.strokeStyle = color;
+                            ctx.stroke();
+                            
+                            prevPoint = { x: jumpX + gap, y: jumpY };
+                        } else {
+                            ctx.beginPath();
+                            ctx.moveTo(prevPoint.x, prevPoint.y);
+                            ctx.lineTo(jumpX, jumpY - gap);
+                            ctx.stroke();
+                            
+                            // v1.2: Arco hacia la derecha
+                            ctx.beginPath();
+                            ctx.arc(jumpX + gap, jumpY, gap, Math.PI, 0, true);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fill();
+                            ctx.strokeStyle = color;
+                            ctx.stroke();
+                            
+                            prevPoint = { x: jumpX, y: jumpY + gap };
+                        }
+                    });
+                    
+                    // Tramo final hasta p2
+                    ctx.beginPath();
+                    ctx.moveTo(prevPoint.x, prevPoint.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.stroke();
+                }
+            }
+            
+            ctx.restore();
+        });
     }
     
     function drawStreamLabels(ctx, route) {
@@ -489,23 +599,31 @@ const SmartFlowPFDRenderer = (function() {
         
         ctx.save();
         
-        // Tag en el primer segmento (arriba de la línea)
+        // v1.2: Texto de etiqueta en color neutro oscuro con fondo semitransparente
+        const labelColor = '#1e293b';
+        const bgColor = 'rgba(255, 255, 255, 0.85)';
+        
+        // Tag en el primer segmento
         const firstMidX = (points[0].x + points[1].x) / 2;
-        const firstMidY = points[0].y - 10;
+        const firstMidY = points[0].y - 14;
         
-        ctx.fillStyle = color;
+        // Fondo del tag
+        ctx.fillStyle = bgColor;
         ctx.font = 'bold 10px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText(stream.tag, firstMidX, firstMidY);
+        const tagWidth = ctx.measureText(stream.tag).width + 12;
+        ctx.fillRect(firstMidX - tagWidth / 2, firstMidY - 9, tagWidth, 16);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(firstMidX - tagWidth / 2, firstMidY - 9, tagWidth, 16);
         
-        // Condiciones en segmento vertical o en línea recta
+        ctx.fillStyle = labelColor;
+        ctx.textAlign = 'center';
+        ctx.fillText(stream.tag, firstMidX, firstMidY + 3);
+        
+        // Condiciones en segmento vertical
         if (points.length >= 3) {
-            const labelX = points[1].x + 10;
+            const labelX = points[1].x + 14;
             const labelY = (points[1].y + points[2].y) / 2;
-            
-            ctx.fillStyle = '#1e293b';
-            ctx.font = '8px Segoe UI';
-            ctx.textAlign = 'left';
             
             const lines = [
                 (stream.fluid || 'N/D'),
@@ -514,21 +632,24 @@ const SmartFlowPFDRenderer = (function() {
                 formatValue(stream.temperature, stream.temperatureUnit || '°C')
             ];
             
-            const startY2 = labelY - (lines.length * 11) / 2;
-            lines.forEach((line, idx) => {
-                ctx.fillText(line, labelX, startY2 + idx * 11 + 8);
-            });
-        } else if (points.length === 2) {
-            const cx = (points[0].x + points[1].x) / 2;
-            const cy = points[0].y - 10;
+            const lineHeight = 12;
+            const boxHeight = lines.length * lineHeight + 10;
+            const boxWidth = 110;
             
-            ctx.fillStyle = '#1e293b';
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(labelX - 4, labelY - boxHeight / 2, boxWidth, boxHeight);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(labelX - 4, labelY - boxHeight / 2, boxWidth, boxHeight);
+            
+            ctx.fillStyle = labelColor;
             ctx.font = '8px Segoe UI';
-            ctx.textAlign = 'center';
-            ctx.fillText(
-                stream.fluid + ' ' + formatValue(stream.flow, stream.flowUnit || 'm³/h'),
-                cx, cy
-            );
+            ctx.textAlign = 'left';
+            
+            const startY2 = labelY - (lines.length * lineHeight) / 2;
+            lines.forEach((line, idx) => {
+                ctx.fillText(line, labelX + 2, startY2 + idx * lineHeight + 10);
+            });
         }
         
         ctx.restore();
@@ -537,99 +658,6 @@ const SmartFlowPFDRenderer = (function() {
     function formatValue(value, unit) {
         if (value === undefined || value === null || value === 0) return 'N/D';
         return value + ' ' + unit;
-    }
-    
-    // ================================================================
-    //  DIBUJO DE SALTOS (JUMPS)
-    // ================================================================
-    
-    function drawJump(ctx, crossing) {
-        const { point, routeA, routeB, segA, segB } = crossing;
-        
-        const segADir = getSegmentDirection(routeA.points[segA], routeA.points[segA + 1]);
-        const segBDir = getSegmentDirection(routeB.points[segB], routeB.points[segB + 1]);
-        
-        // La línea horizontal es la que salta
-        let jumpingRoute, jumpingSeg;
-        
-        if (segADir === 'HORIZONTAL') {
-            jumpingRoute = routeA;
-            jumpingSeg = segA;
-        } else if (segBDir === 'HORIZONTAL') {
-            jumpingRoute = routeB;
-            jumpingSeg = segB;
-        } else {
-            // Ambas verticales: la primera salta
-            jumpingRoute = routeA;
-            jumpingSeg = segA;
-        }
-        
-        const p1 = jumpingRoute.points[jumpingSeg];
-        const p2 = jumpingRoute.points[jumpingSeg + 1];
-        const isHorizontal = Math.abs(p2.y - p1.y) < Math.abs(p2.x - p1.x);
-        const gapSize = LAYOUT.jumpSize;
-        
-        ctx.save();
-        
-        if (isHorizontal) {
-            const jumpX = point.x;
-            const jumpY = point.y;
-            
-            // Línea antes del salto
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(jumpX - gapSize, jumpY);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            
-            // Arco del salto (semicírculo hacia arriba)
-            ctx.beginPath();
-            ctx.arc(jumpX, jumpY - gapSize, gapSize, 0, Math.PI, false);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            ctx.stroke();
-            
-            // Línea después del salto
-            ctx.beginPath();
-            ctx.moveTo(jumpX + gapSize, jumpY);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-        } else {
-            const jumpX = point.x;
-            const jumpY = point.y;
-            
-            // Línea antes del salto
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(jumpX, jumpY - gapSize);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            
-            // Arco del salto (semicírculo hacia la derecha)
-            ctx.beginPath();
-            ctx.arc(jumpX + gapSize, jumpY, gapSize, -Math.PI / 2, Math.PI / 2, false);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            ctx.stroke();
-            
-            // Línea después del salto
-            ctx.beginPath();
-            ctx.moveTo(jumpX, jumpY + gapSize);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = jumpingRoute.color;
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-        }
-        
-        ctx.restore();
     }
     
     // ================================================================
@@ -732,38 +760,10 @@ const SmartFlowPFDRenderer = (function() {
             return;
         }
         
-        // Mapa de segmentos que tienen salto
-        const jumpSegments = new Set();
-        _crossings.forEach(crossing => {
-            const segADir = getSegmentDirection(
-                crossing.routeA.points[crossing.segA],
-                crossing.routeA.points[crossing.segA + 1]
-            );
-            const segBDir = getSegmentDirection(
-                crossing.routeB.points[crossing.segB],
-                crossing.routeB.points[crossing.segB + 1]
-            );
-            
-            if (segADir === 'HORIZONTAL') {
-                jumpSegments.add(crossing.routeA.stream.tag + '_' + crossing.segA);
-            } else if (segBDir === 'HORIZONTAL') {
-                jumpSegments.add(crossing.routeB.stream.tag + '_' + crossing.segB);
-            } else {
-                jumpSegments.add(crossing.routeA.stream.tag + '_' + crossing.segA);
-            }
-        });
+        // v1.2: Nuevo método unificado para dibujar corrientes con saltos
+        drawAllStreams(_ctx);
         
-        // PASO 1: Dibujar líneas principales
-        _streamRoutes.forEach(route => {
-            drawStreamWithJumps(_ctx, route, jumpSegments);
-        });
-        
-        // PASO 2: Dibujar saltos
-        _crossings.forEach(crossing => {
-            drawJump(_ctx, crossing);
-        });
-        
-        // PASO 3: Flechas en extremos
+        // Flechas en extremos
         _streamRoutes.forEach(route => {
             if (route.points.length >= 2) {
                 const last = route.points[route.points.length - 1];
@@ -772,16 +772,16 @@ const SmartFlowPFDRenderer = (function() {
             }
         });
         
-        // PASO 4: Etiquetas
+        // Etiquetas
         _streamRoutes.forEach(route => {
             drawStreamLabels(_ctx, route);
         });
         
-        // PASO 5: Equipos encima
+        // Equipos encima
         const equipos = _core.getEquipos();
         equipos.forEach(eq => drawEquipment(_ctx, eq));
         
-        // PASO 6: Leyenda
+        // Leyenda
         drawLegend(_ctx);
     }
     
@@ -811,7 +811,7 @@ const SmartFlowPFDRenderer = (function() {
         }
         
         setTimeout(render, 300);
-        console.log('SmartFlowPFDRenderer v1.1 inicializado | Ruteo: Ortogonal | Saltos: ✅');
+        console.log('SmartFlowPFDRenderer v1.2 inicializado | Ruteo: Ortogonal | Saltos: ✅ (múltiples) | Arcos: ISO 10628 | Ciclos: ✅');
     }
     
     function resizeCanvas() {
@@ -843,3 +843,5 @@ const SmartFlowPFDRenderer = (function() {
         getCrossings: function() { return _crossings; }
     };
 })();
+
+if (typeof window !== 'undefined') window.SmartFlowPFDRenderer = SmartFlowPFDRenderer;
