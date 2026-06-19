@@ -1,8 +1,7 @@
-
 // ============================================================
-// SMARTFLOW DELIVERABLES v1.0
+// SMARTFLOW DELIVERABLES v1.1
 // Archivo: js/deliverables.js
-// Dependencias: core.js v7.0, jspdf (CDN)
+// Dependencias: core.js v7.1, jspdf (CDN)
 // Normas: ISO 10628 (PFD), ISO 15519 (PFD), ISA-5.1 (DTI), ISO 14617 (DTI)
 // ============================================================
 
@@ -11,9 +10,6 @@ const SmartFlowDeliverables = (function() {
     let _core = null;
     let _renderer = null;
     
-    // ================================================================
-    //  CONFIGURACIÓN DEL PROYECTO (Cajetín)
-    // ================================================================
     let _projectConfig = {
         projectName: 'PROYECTO',
         projectNumber: 'SF-001',
@@ -27,17 +23,8 @@ const SmartFlowDeliverables = (function() {
         unit: 'mm'
     };
     
-    function setProjectConfig(config) {
-        Object.assign(_projectConfig, config);
-    }
-    
-    function getProjectConfig() {
-        return Object.assign({}, _projectConfig);
-    }
-    
-    // ================================================================
-    //  UTILIDADES PDF
-    // ================================================================
+    function setProjectConfig(config) { Object.assign(_projectConfig, config); }
+    function getProjectConfig() { return Object.assign({}, _projectConfig); }
     
     function checkJSPDF() {
         if (typeof window.jspdf === 'undefined') {
@@ -51,27 +38,20 @@ const SmartFlowDeliverables = (function() {
         const tbW = 180, tbH = 40;
         const tbX = pageW - tbW - 10, tbY = pageH - tbH - 10;
         
-        // Marco exterior
         doc.setDrawColor(0);
         doc.setLineWidth(0.5);
         doc.rect(10, 10, pageW - 20, pageH - 20);
-        
-        // Línea interior
         doc.setLineWidth(0.3);
         doc.rect(15, 15, pageW - 30, pageH - 30);
-        
-        // Cajetín
         doc.setLineWidth(0.5);
         doc.rect(tbX, tbY, tbW, tbH);
         
-        // Divisiones
         const colW = tbW * 0.35;
         doc.line(tbX + colW, tbY, tbX + colW, tbY + tbH);
         doc.line(tbX, tbY + tbH * 0.5, tbX + tbW, tbY + tbH * 0.5);
         doc.line(tbX + colW, tbY + tbH * 0.25, tbX + tbW, tbY + tbH * 0.25);
         doc.line(tbX + colW, tbY + tbH * 0.75, tbX + tbW, tbY + tbH * 0.75);
         
-        // Textos del cajetín
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.text(title, tbX + colW + 2, tbY + 5);
@@ -98,42 +78,27 @@ const SmartFlowDeliverables = (function() {
         doc.text(_projectConfig.scale, tbX + 35, tbY + 32);
     }
     
-    // ================================================================
-    //  COLORES POR FLUIDO (ISO 10628)
-    // ================================================================
+    // v1.1: Formateo de tamaño de tubería según unidad del proyecto
+    function formatPipeSize(diameter) {
+        if (_projectConfig.unit === 'mm') {
+            const dn = Math.round((diameter || 4) * 25.4);
+            return 'DN ' + dn;
+        }
+        return (diameter || 4) + '"';
+    }
+    
     function getFluidColor(fluid) {
         const colors = {
-            'WATER': [59, 130, 246],
-            'STEAM': [239, 68, 68],
-            'CONDENSATE': [245, 158, 11],
-            'AIR': [148, 163, 184],
-            'NITROGEN': [139, 92, 246],
-            'NATURAL_GAS': [249, 115, 22],
-            'CRUDE_OIL': [30, 41, 59],
-            'DIESEL': [146, 64, 14],
-            'GASOLINE': [234, 88, 12],
-            'ETHANOL': [168, 85, 247],
-            'METHANOL': [124, 58, 237],
-            'PROCESS_WATER': [6, 182, 212],
-            'COOLING_WATER': [14, 165, 233],
-            'CHILLED_WATER': [37, 99, 235],
-            'HOT_OIL': [220, 38, 38],
-            'THERMAL_FLUID': [185, 28, 28],
-            'BRINE': [8, 145, 178],
-            'GLYCOL': [79, 70, 229],
-            'LUBE_OIL': [133, 77, 14],
-            'AMMONIA': [132, 204, 22],
-            'CHLORINE': [101, 163, 13],
-            'H2SO4': [202, 138, 4],
-            'NAOH': [234, 179, 8],
-            'HCL': [163, 230, 53]
+            'WATER': [59, 130, 246], 'STEAM': [239, 68, 68], 'CONDENSATE': [245, 158, 11],
+            'AIR': [148, 163, 184], 'NITROGEN': [139, 92, 246], 'NATURAL_GAS': [249, 115, 22],
+            'CRUDE_OIL': [30, 41, 59], 'DIESEL': [146, 64, 14], 'GASOLINE': [234, 88, 12],
+            'PROCESS_WATER': [6, 182, 212], 'COOLING_WATER': [14, 165, 233],
+            'HOT_OIL': [220, 38, 38], 'GLYCOL': [79, 70, 229], 'AMMONIA': [132, 204, 22]
         };
         return colors[fluid] || [100, 116, 139];
     }
     
-    // ================================================================
-    //  SÍMBOLOS DE EQUIPO PFD (ISO 10628)
-    // ================================================================
+    // v1.1: Intercambiador según ISO 10628 (círculo con línea interna)
     function drawPFDEquipment(doc, x, y, eq) {
         const tipo = (eq.tipo || '').toLowerCase();
         const s = 12;
@@ -150,10 +115,11 @@ const SmartFlowDeliverables = (function() {
             doc.circle(x, y, s * 0.8);
             doc.line(x - s * 0.4, y - s * 0.5, x + s * 0.4, y + s * 0.5);
         } else if (tipo.includes('intercambiador') || tipo.includes('condensador')) {
-            doc.circle(x - s * 0.5, y, s * 0.6);
-            doc.circle(x + s * 0.5, y, s * 0.6);
-            doc.line(x - s * 0.8, y - s * 0.8, x + s * 0.8, y - s * 0.8);
-            doc.line(x - s * 0.8, y + s * 0.8, x + s * 0.8, y + s * 0.8);
+            // v1.1: ISO 10628 - círculo con línea interna (haz de tubos)
+            doc.circle(x, y, s);
+            doc.setLineWidth(1.2);
+            doc.line(x - s * 0.7, y - s * 0.4, x + s * 0.7, y + s * 0.4);
+            doc.setLineWidth(0.8);
         } else if (tipo.includes('compresor')) {
             doc.circle(x, y, s);
             doc.setFillColor(220, 38, 38);
@@ -164,12 +130,10 @@ const SmartFlowDeliverables = (function() {
             doc.rect(x - s * 0.8, y - s * 0.6, s * 1.6, s * 1.2);
         }
         
-        // Tag del equipo
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
         doc.text(eq.tag, x, y + s + 8, { align: 'center' });
         
-        // Tipo
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6);
         doc.setTextColor(100);
@@ -178,8 +142,7 @@ const SmartFlowDeliverables = (function() {
     }
     
     // ================================================================
-    //  GENERADOR PFD (Diagrama de Flujo de Proceso)
-    //  Norma: ISO 10628 / ISO 15519
+    //  GENERADOR PFD (CORREGIDO v1.1)
     // ================================================================
     
     function generatePFD() {
@@ -193,7 +156,6 @@ const SmartFlowDeliverables = (function() {
         
         drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE FLUJO DE PROCESO', 'PFD-001');
         
-        // Título
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(16);
         doc.setTextColor(0);
@@ -203,20 +165,17 @@ const SmartFlowDeliverables = (function() {
         doc.text('ISO 10628 / ISO 15519', pageW / 2, 31, { align: 'center' });
         doc.setTextColor(0);
         
-        // Obtener datos
         const equipos = _core.getEquipos ? _core.getEquipos() : (_core.getDb ? _core.getDb().equipos : []);
         const streams = _core.getStreams ? _core.getStreams() : (_core.getDb ? _core.getDb().streams : []);
         
         if (equipos.length === 0) {
             doc.setFontSize(14);
             doc.text('Sin equipos definidos en el proyecto', pageW / 2, pageH / 2, { align: 'center' });
-            doc.text('Use: create equipo TIPO TAG', pageW / 2, pageH / 2 + 10, { align: 'center' });
             const filename = 'PFD_' + _projectConfig.projectName + '_' + new Date().toISOString().slice(0,10) + '.pdf';
             doc.save(filename);
             return { success: true, filename };
         }
         
-        // Layout automático
         const drawAreaW = pageW - 50;
         const eqPerRow = Math.max(2, Math.floor(drawAreaW / 90));
         const eqSpacingX = drawAreaW / Math.min(eqPerRow, equipos.length || 1);
@@ -232,7 +191,6 @@ const SmartFlowDeliverables = (function() {
             drawPFDEquipment(doc, x, y, eq);
         });
         
-        // Dibujar corrientes (flechas + etiquetas)
         streams.forEach(function(stream) {
             const from = eqPositions[stream.from];
             const to = eqPositions[stream.to];
@@ -241,22 +199,14 @@ const SmartFlowDeliverables = (function() {
             const color = getFluidColor((stream.fluid || 'WATER').toUpperCase());
             doc.setDrawColor(color[0], color[1], color[2]);
             doc.setLineWidth(1.8);
-            
-            // Línea principal
             doc.line(from.x + 15, from.y, to.x - 15, to.y);
             
-            // Flecha
             const angle = Math.atan2(to.y - from.y, to.x - from.x);
             const arrowLen = 7;
             doc.setFillColor(color[0], color[1], color[2]);
-            doc.line(to.x - 15, to.y,
-                     to.x - 15 - arrowLen * Math.cos(angle - 0.5),
-                     to.y - arrowLen * Math.sin(angle - 0.5));
-            doc.line(to.x - 15, to.y,
-                     to.x - 15 - arrowLen * Math.cos(angle + 0.5),
-                     to.y - arrowLen * Math.sin(angle + 0.5));
+            doc.line(to.x - 15, to.y, to.x - 15 - arrowLen * Math.cos(angle - 0.5), to.y - arrowLen * Math.sin(angle - 0.5));
+            doc.line(to.x - 15, to.y, to.x - 15 - arrowLen * Math.cos(angle + 0.5), to.y - arrowLen * Math.sin(angle + 0.5));
             
-            // Etiqueta de corriente
             const midX = (from.x + to.x) / 2;
             const midY = (from.y + to.y) / 2;
             doc.setFont('helvetica', 'bold');
@@ -270,9 +220,11 @@ const SmartFlowDeliverables = (function() {
             doc.setTextColor(0);
         });
         
-        // Tabla de balance de masa
+        // v1.1: Balance de masa con paginación correcta
         if (streams.length > 0) {
-            const tableY = pageH - 80;
+            let tableY = pageH - 80;
+            let rowY = tableY + 13;
+            
             doc.setDrawColor(0);
             doc.setLineWidth(0.4);
             doc.setFont('helvetica', 'bold');
@@ -289,8 +241,24 @@ const SmartFlowDeliverables = (function() {
             });
             
             streams.forEach(function(s, row) {
-                const ry = tableY + 13 + row * 5;
-                if (ry > pageH - 15) return;
+                // v1.1: Salto de página en lugar de return
+                if (rowY > pageH - 20) {
+                    doc.addPage('landscape', 'a3');
+                    drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE FLUJO DE PROCESO', 'PFD-001');
+                    tableY = 35;
+                    rowY = tableY + 13;
+                    // Redibujar encabezados
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(10);
+                    doc.text('BALANCE DE MASA Y CONDICIONES DE OPERACIÓN (cont.)', 25, tableY);
+                    doc.line(25, tableY + 2, pageW - 25, tableY + 2);
+                    headers.forEach(function(h, i) {
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(6);
+                        doc.text(h, colX[i], tableY + 8);
+                    });
+                }
+                
                 const data = [
                     s.tag, s.from || '', s.to || '', s.fluid || '',
                     (s.flow || '') + ' ' + (s.flowUnit || ''),
@@ -299,17 +267,17 @@ const SmartFlowDeliverables = (function() {
                 ];
                 doc.setFont('helvetica', 'normal');
                 data.forEach(function(d, i) {
-                    doc.text(String(d || ''), colX[i], ry);
+                    doc.text(String(d || ''), colX[i], rowY);
                 });
+                rowY += 5;
             });
         }
         
-        // Leyenda
         const legendY = pageH - 18;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6);
         doc.setTextColor(80);
-        doc.text('LEYENDA: ● Tanque/Torre/Reactor | ◐ Bomba | ◎ Intercambiador | ◇ Compresor | ▭ Otros | → Corriente de proceso', 25, legendY);
+        doc.text('LEYENDA: ● Tanque/Torre/Reactor | ◐ Bomba | ⊗ Intercambiador (ISO 10628) | ◇ Compresor | ▭ Otros | → Corriente', 25, legendY);
         
         const filename = 'PFD_' + _projectConfig.projectName + '_' + new Date().toISOString().slice(0,10) + '.pdf';
         doc.save(filename);
@@ -318,8 +286,7 @@ const SmartFlowDeliverables = (function() {
     }
     
     // ================================================================
-    //  GENERADOR DTI (Diagrama de Tuberías e Instrumentación)
-    //  Norma: ISA-5.1 / ISO 14617
+    //  GENERADOR DTI (CORREGIDO v1.1)
     // ================================================================
     
     function generateDTI() {
@@ -333,7 +300,6 @@ const SmartFlowDeliverables = (function() {
         
         drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
         
-        // Título
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(16);
         doc.setTextColor(0);
@@ -343,7 +309,6 @@ const SmartFlowDeliverables = (function() {
         doc.text('ISA-5.1 / ISO 14617', pageW / 2, 31, { align: 'center' });
         doc.setTextColor(0);
         
-        // Obtener datos
         const instruments = _core.getInstruments ? _core.getInstruments() : [];
         const loops = _core.getLoops ? _core.getLoops() : [];
         const lines = _core.getLines ? _core.getLines() : [];
@@ -351,10 +316,19 @@ const SmartFlowDeliverables = (function() {
         if (instruments.length === 0 && loops.length === 0 && lines.length === 0) {
             doc.setFontSize(14);
             doc.text('Sin instrumentos, lazos ni líneas definidos', pageW / 2, pageH / 2, { align: 'center' });
-            doc.text('Use: create instrument | create loop | create line', pageW / 2, pageH / 2 + 10, { align: 'center' });
             const filename = 'DTI_' + _projectConfig.projectName + '_' + new Date().toISOString().slice(0,10) + '.pdf';
             doc.save(filename);
             return { success: true, filename };
+        }
+        
+        // v1.1: Función auxiliar para verificar espacio antes de cada sección
+        function ensureSpace(needed) {
+            if (currentY + needed > pageH - 20) {
+                doc.addPage('landscape', 'a3');
+                drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
+                return 35;
+            }
+            return currentY;
         }
         
         let currentY = 42;
@@ -362,6 +336,7 @@ const SmartFlowDeliverables = (function() {
         // ========================================
         //  SECCIÓN 1: LISTADO DE INSTRUMENTOS
         // ========================================
+        currentY = ensureSpace(15);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(12);
         doc.text('1. LISTADO DE INSTRUMENTOS', 25, currentY);
@@ -374,6 +349,7 @@ const SmartFlowDeliverables = (function() {
             const instCols = [25, 50, 72, 112, 148, 178, 210, 248, 282];
             const instHeaders = ['Tag', 'ISA', 'Tipo', 'Línea/Equipo', 'Ubicación', 'Señal', 'Rango', 'Lazo', 'SIL/IP'];
             
+            currentY = ensureSpace(8);
             doc.setFontSize(6);
             instHeaders.forEach(function(h, i) {
                 doc.setFont('helvetica', 'bold');
@@ -382,25 +358,14 @@ const SmartFlowDeliverables = (function() {
             currentY += 5;
             
             instruments.forEach(function(inst, row) {
-                if (currentY > pageH - 80) {
-                    doc.addPage('landscape', 'a3');
-                    drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
-                    currentY = 35;
-                }
-                
+                currentY = ensureSpace(8);
                 const isa = inst.isaSymbol || {};
                 const data = [
-                    inst.tag,
-                    isa.symbol || '??',
-                    inst.type || '',
-                    inst.lineTag || inst.equipmentTag || '',
-                    inst.location || 'FIELD',
-                    inst.signal || '',
-                    inst.range || '',
-                    inst.loopTag || '',
+                    inst.tag, isa.symbol || '??', inst.type || '',
+                    inst.lineTag || inst.equipmentTag || '', inst.location || 'FIELD',
+                    inst.signal || '', inst.range || '', inst.loopTag || '',
                     (inst.silRating || '') + (inst.ipRating ? ' / ' + inst.ipRating : '')
                 ];
-                
                 doc.setFont('helvetica', 'normal');
                 data.forEach(function(d, i) {
                     doc.text(String(d || ''), instCols[i], currentY);
@@ -408,6 +373,7 @@ const SmartFlowDeliverables = (function() {
                 currentY += 5.5;
             });
         } else {
+            currentY = ensureSpace(8);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.text('No hay instrumentos definidos', 25, currentY);
@@ -418,11 +384,7 @@ const SmartFlowDeliverables = (function() {
         //  SECCIÓN 2: LAZOS DE CONTROL
         // ========================================
         currentY += 8;
-        if (currentY > pageH - 60) {
-            doc.addPage('landscape', 'a3');
-            drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
-            currentY = 35;
-        }
+        currentY = ensureSpace(20);
         
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(12);
@@ -434,6 +396,7 @@ const SmartFlowDeliverables = (function() {
             const loopCols = [25, 65, 130, 195, 260];
             const loopHeaders = ['Tag Lazo', 'Sensor', 'Controlador', 'Válvula', 'Tipo / Setpoint'];
             
+            currentY = ensureSpace(8);
             doc.setFontSize(6);
             loopHeaders.forEach(function(h, i) {
                 doc.setFont('helvetica', 'bold');
@@ -442,11 +405,7 @@ const SmartFlowDeliverables = (function() {
             currentY += 5;
             
             loops.forEach(function(loop) {
-                if (currentY > pageH - 30) {
-                    doc.addPage('landscape', 'a3');
-                    drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
-                    currentY = 35;
-                }
+                currentY = ensureSpace(8);
                 const typeInfo = loop.type + (loop.setpoint ? ' / SP: ' + loop.setpoint : '');
                 const data = [loop.tag, loop.sensor, loop.controller, loop.valve, typeInfo];
                 doc.setFont('helvetica', 'normal');
@@ -456,6 +415,7 @@ const SmartFlowDeliverables = (function() {
                 currentY += 5.5;
             });
         } else {
+            currentY = ensureSpace(8);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.text('No hay lazos de control definidos', 25, currentY);
@@ -463,14 +423,10 @@ const SmartFlowDeliverables = (function() {
         }
         
         // ========================================
-        //  SECCIÓN 3: ESPECIFICACIONES DE TUBERÍAS
+        //  SECCIÓN 3: LISTADO DE LÍNEAS
         // ========================================
         currentY += 8;
-        if (currentY > pageH - 60) {
-            doc.addPage('landscape', 'a3');
-            drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
-            currentY = 35;
-        }
+        currentY = ensureSpace(20);
         
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(12);
@@ -479,9 +435,10 @@ const SmartFlowDeliverables = (function() {
         currentY += 10;
         
         if (lines.length > 0) {
-            const pipeCols = [25, 60, 95, 135, 175, 215, 265];
-            const pipeHeaders = ['Tag', 'Diámetro', 'Material', 'Spec', 'Servicio', 'Origen', 'Destino'];
+            const pipeCols = [25, 65, 100, 140, 175, 215, 265];
+            const pipeHeaders = ['Tag', 'Tamaño', 'Material', 'Spec', 'Servicio', 'Origen', 'Destino'];
             
+            currentY = ensureSpace(8);
             doc.setFontSize(6);
             pipeHeaders.forEach(function(h, i) {
                 doc.setFont('helvetica', 'bold');
@@ -490,16 +447,17 @@ const SmartFlowDeliverables = (function() {
             currentY += 5;
             
             lines.forEach(function(line) {
-                if (currentY > pageH - 25) {
-                    doc.addPage('landscape', 'a3');
-                    drawTitleBlock(doc, pageW, pageH, 'DIAGRAMA DE TUBERÍAS E INSTRUMENTACIÓN', 'DTI-001');
-                    currentY = 35;
-                }
+                currentY = ensureSpace(8);
                 const fromTag = line.origin ? (line.origin.equipTag || line.origin.objTag || '') : '';
                 const toTag = line.destination ? (line.destination.equipTag || line.destination.objTag || '') : '';
                 const data = [
-                    line.tag, line.diameter + '"', line.material || '', line.spec || '',
-                    line.service || '', fromTag, toTag
+                    line.tag,
+                    formatPipeSize(line.diameter),
+                    line.material || '',
+                    line.spec || '',
+                    line.service || '',
+                    fromTag,
+                    toTag
                 ];
                 doc.setFont('helvetica', 'normal');
                 data.forEach(function(d, i) {
@@ -508,17 +466,17 @@ const SmartFlowDeliverables = (function() {
                 currentY += 5.5;
             });
         } else {
+            currentY = ensureSpace(8);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.text('No hay líneas definidas', 25, currentY);
         }
         
-        // Leyenda ISA-5.1
         const legendY = pageH - 18;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6);
         doc.setTextColor(80);
-        doc.text('LEYENDA ISA-5.1: ○ Campo | ○─ DCS/Sala Control | PT = Transmisor Presión | FIC = Controlador Indicador Flujo | PIC = Controlador Indicador Presión | LIC = Controlador Indicador Nivel | CV = Válvula Control | PSV = Válvula Seguridad', 25, legendY);
+        doc.text('LEYENDA ISA-5.1: ○ Campo | ○─ DCS | PT = Transmisor Presión | FIC = Controlador Flujo | PIC = Controlador Presión | CV = Válvula Control | PSV = Seguridad', 25, legendY);
         
         const filename = 'DTI_' + _projectConfig.projectName + '_' + new Date().toISOString().slice(0,10) + '.pdf';
         doc.save(filename);
@@ -527,7 +485,7 @@ const SmartFlowDeliverables = (function() {
     }
     
     // ================================================================
-    //  GENERADOR ISOMÉTRICO (Captura del Canvas)
+    //  GENERADOR ISOMÉTRICO (CORREGIDO v1.1)
     // ================================================================
     
     function generateIsometric() {
@@ -539,14 +497,26 @@ const SmartFlowDeliverables = (function() {
             return null;
         }
         
+        // v1.1: Normalizar por devicePixelRatio para pantallas HiDPI
+        const dpr = window.devicePixelRatio || 1;
+        const displayWidth = canvas.width / dpr;
+        const displayHeight = canvas.height / dpr;
+        
+        // Crear canvas temporal a resolución normalizada
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = displayWidth;
+        tempCanvas.height = displayHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(canvas, 0, 0, displayWidth, displayHeight);
+        
+        const imgData = tempCanvas.toDataURL('image/png');
+        
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         
         drawTitleBlock(doc, pageW, pageH, 'PLANO ISOMÉTRICO', 'ISO-001');
-        
-        const imgData = canvas.toDataURL('image/png');
         doc.addImage(imgData, 'PNG', 15, 35, pageW - 30, pageH - 85);
         
         const filename = 'ISO_' + _projectConfig.projectName + '_' + new Date().toISOString().slice(0,10) + '.pdf';
@@ -555,21 +525,13 @@ const SmartFlowDeliverables = (function() {
         return { success: true, filename };
     }
     
-    // ================================================================
-    //  INICIALIZACIÓN
-    // ================================================================
-    
     function init(coreInstance, rendererInstance) {
         _core = coreInstance;
         _renderer = rendererInstance || null;
-        console.log('SmartFlowDeliverables v1.0 inicializado | Core: ' + (_core ? '✅' : '❌') + 
+        console.log('SmartFlowDeliverables v1.1 inicializado | Core: ' + (_core ? '✅' : '❌') + 
                     ' | Renderer: ' + (_renderer ? '✅' : '⚠️') +
                     ' | jsPDF: ' + (typeof window.jspdf !== 'undefined' ? '✅' : '❌'));
     }
-    
-    // ================================================================
-    //  API PÚBLICA
-    // ================================================================
     
     return {
         init: init,
