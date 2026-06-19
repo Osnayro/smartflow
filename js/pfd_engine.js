@@ -1,11 +1,12 @@
 // ============================================================
-// SMARTFLOW PFD ENGINE v1.1 - Motor de Diagrama de Flujo de Proceso
+// SMARTFLOW PFD ENGINE v1.2 - Motor de Diagrama de Flujo de Proceso
 // Archivo: js/modules/pfd_engine.js
-// Dependencias: SmartFlowCore v6.0+, SmartFlowCatalog (opcional)
-// Novedades v1.1:
-//   - Validación de tipos de equipo contra catálogo
-//   - Creación de equipos lógicos (sin posición 3D)
-//   - Los equipos creados desde PFD se comparten con DTI y 3D
+// Dependencias: SmartFlowCore v7.1+, SmartFlowCatalog (opcional)
+// Novedades v1.2:
+//   - checkMassBalance prioriza flujo másico (massFlow en kg/h)
+//   - indexOf reemplazado por includes (modernización ES6+)
+//   - DEFAULT_PHASES parametrizable para asignación automática de fase
+//   - validatePFD categoriza issues por severidad (ERROR vs WARNING)
 // ============================================================
 
 const SmartFlowPFD = (function() {
@@ -26,6 +27,17 @@ const SmartFlowPFD = (function() {
     ];
     
     const PHASE_TYPES = ['LIQUID', 'GAS', 'TWO_PHASE', 'SOLID', 'SLURRY', 'SUPERCRITICAL'];
+    
+    // v1.2: Fases automáticas según fluido y temperatura
+    const DEFAULT_PHASES = {
+        'STEAM': (t) => (t >= 100 ? 'GAS' : 'TWO_PHASE'),
+        'NATURAL_GAS': () => 'GAS',
+        'NITROGEN': (t) => (t > -196 ? 'GAS' : 'LIQUID'),
+        'OXYGEN': (t) => (t > -183 ? 'GAS' : 'LIQUID'),
+        'AMMONIA': (t) => (t > -33 ? 'GAS' : 'LIQUID'),
+        'CHLORINE': (t) => (t > 34 ? 'GAS' : 'LIQUID'),
+        'AIR': () => 'GAS'
+    };
     
     // ================================================================
     //  VALIDACIÓN CONTRA CATÁLOGO
@@ -93,7 +105,10 @@ const SmartFlowPFD = (function() {
             material: params.material || 'PPR',
             spec: params.spec || 'PPR_PN12_5',
             puertos: params.puertos || [],
-            isLogical: params.isLogical !== false  // Marcar como equipo lógico
+            isLogical: params.isLogical !== false,  // Marcar como equipo lógico
+            allowsMassAccumulation: params.allowsMassAccumulation !== undefined ? 
+                params.allowsMassAccumulation : 
+                ['tanque_v', 'tanque_h', 'tanque_acero', 'tanque_aseptico'].includes(tipo)
         };
         
         // Si el catálogo tiene puertos por defecto, usarlos
@@ -150,8 +165,18 @@ const SmartFlowPFD = (function() {
             _notify('⚠️ Equipo destino ' + params.to + ' no existe. Créelo primero con: create equipo TIPO TAG', false);
         }
         
-        if (params.fluid && FLUID_TYPES.indexOf(params.fluid.toUpperCase()) === -1) {
+        // v1.2: Validar fluido con includes en lugar de indexOf
+        if (params.fluid && !FLUID_TYPES.includes(params.fluid.toUpperCase())) {
             _notify('⚠️ Fluido "' + params.fluid + '" fuera de la lista estándar', false);
+        }
+        
+        // v1.2: Asignación automática de fase usando DEFAULT_PHASES
+        let phase = params.phase;
+        if (!phase && params.fluid) {
+            const fluidUpper = params.fluid.toUpperCase();
+            if (DEFAULT_PHASES[fluidUpper]) {
+                phase = DEFAULT_PHASES[fluidUpper](params.temperature || 25);
+            }
         }
         
         const streamData = {
@@ -161,19 +186,19 @@ const SmartFlowPFD = (function() {
             fluid: params.fluid || 'WATER',
             flow: params.flow || 0,
             flowUnit: params.flowUnit || 'm3/h',
+            massFlow: params.massFlow || 0,
+            massFlowUnit: params.massFlowUnit || 'kg/h',
             pressure: params.pressure || 0,
             pressureUnit: params.pressureUnit || 'bar',
             temperature: params.temperature || 25,
             temperatureUnit: params.temperatureUnit || '°C',
-            phase: params.phase || 'LIQUID',
+            phase: phase || 'LIQUID',
             density: params.density || 1000,
             viscosity: params.viscosity || 1,
             service: params.service || '',
             description: params.description || '',
             linkedLineTags: [],
             designCase: params.designCase || 'NORMAL',
-            massFlow: params.massFlow || 0,
-            massFlowUnit: params.massFlowUnit || 'kg/h',
             velocity: params.velocity || 0,
             velocityUnit: params.velocityUnit || 'm/s'
         };
@@ -181,14 +206,11 @@ const SmartFlowPFD = (function() {
         const result = _core.addStream(streamData);
         
         if (result) {
-            if (!params.phase && params.fluid === 'STEAM' && params.temperature >= 100) {
-                _core.updateStream(params.tag, { phase: 'GAS' });
-            }
-            
             const fromStr = params.from || '?';
             const toStr = params.to || '?';
+            const phaseInfo = phase ? ' | Fase: ' + phase : '';
             _notify('✅ Corriente ' + params.tag + ': ' + fromStr + ' → ' + toStr + 
-                    ' | ' + streamData.fluid + ' ' + streamData.flow + ' ' + streamData.flowUnit);
+                    ' | ' + streamData.fluid + ' ' + streamData.flow + ' ' + streamData.flowUnit + phaseInfo);
         }
         
         return result ? _core.getStreamByTag(params.tag) : null;
@@ -233,6 +255,7 @@ const SmartFlowPFD = (function() {
         msg += '🧪 FLUIDO: ' + stream.fluid + ' | Fase: ' + stream.phase + '\n';
         msg += '📐 CONDICIONES:\n';
         msg += '   Flujo: ' + stream.flow + ' ' + stream.flowUnit + '\n';
+        msg += '   Flujo másico: ' + (stream.massFlow || 'N/D') + ' ' + (stream.massFlowUnit || 'kg/h') + '\n';
         msg += '   Presión: ' + stream.pressure + ' ' + stream.pressureUnit + '\n';
         msg += '   Temperatura: ' + stream.temperature + ' ' + stream.temperatureUnit + '\n';
         
@@ -409,11 +432,77 @@ const SmartFlowPFD = (function() {
     }
     
     // ================================================================
-    //  VALIDACIÓN PFD
+    //  BALANCE DE MASA (MEJORADO v1.2)
+    // ================================================================
+    
+    function checkMassBalance(equipmentTag) {
+        const streams = _core.getStreams();
+        const inflows = streams.filter(s => s.to === equipmentTag);
+        const outflows = streams.filter(s => s.from === equipmentTag);
+        
+        if (inflows.length === 0 && outflows.length === 0) {
+            _notify('⚠️ El equipo ' + equipmentTag + ' no tiene corrientes asociadas', true);
+            return null;
+        }
+        
+        // v1.2: Priorizar flujo másico (kg/h) sobre volumétrico (m³/h)
+        const hasMassFlow = [...inflows, ...outflows].some(s => (s.massFlow || 0) > 0);
+        
+        let totalIn = 0, totalOut = 0;
+        let unit = '';
+        
+        if (hasMassFlow) {
+            // Balance másico (kg/h) - físicamente correcto para gases
+            inflows.forEach(s => totalIn += (s.massFlow || 0));
+            outflows.forEach(s => totalOut += (s.massFlow || 0));
+            unit = 'kg/h';
+        } else {
+            // Fallback a balance volumétrico (m³/h) - solo para líquidos
+            inflows.forEach(s => totalIn += (s.flow || 0));
+            outflows.forEach(s => totalOut += (s.flow || 0));
+            unit = 'm³/h';
+        }
+        
+        const balance = totalIn - totalOut;
+        const percentDiff = totalIn > 0 ? Math.abs(balance) / totalIn * 100 : 0;
+        
+        let msg = '⚖️ BALANCE DE MASA: ' + equipmentTag + '\n';
+        msg += '══════════════════════════\n';
+        msg += (hasMassFlow ? '📐 Modo: Másico (' + unit + ')\n' : '📐 Modo: Volumétrico (' + unit + ')\n');
+        msg += '📥 Entradas (' + inflows.length + '): ' + totalIn.toFixed(2) + ' ' + unit + '\n';
+        inflows.forEach(s => {
+            const val = hasMassFlow ? (s.massFlow || 0) : (s.flow || 0);
+            msg += '   ' + s.tag + ': ' + val + ' ' + unit + '\n';
+        });
+        msg += '📤 Salidas (' + outflows.length + '): ' + totalOut.toFixed(2) + ' ' + unit + '\n';
+        outflows.forEach(s => {
+            const val = hasMassFlow ? (s.massFlow || 0) : (s.flow || 0);
+            msg += '   ' + s.tag + ': ' + val + ' ' + unit + '\n';
+        });
+        msg += '──────────────────────────\n';
+        
+        if (percentDiff < 1) {
+            msg += '✅ Balance OK (diferencia: ' + balance.toFixed(2) + ' ' + unit + ', ' + percentDiff.toFixed(1) + '%)';
+        } else if (percentDiff < 5) {
+            msg += '⚠️ Balance ACEPTABLE (diferencia: ' + balance.toFixed(2) + ' ' + unit + ', ' + percentDiff.toFixed(1) + '%)';
+        } else {
+            msg += '❌ Balance INCORRECTO (diferencia: ' + balance.toFixed(2) + ' ' + unit + ', ' + percentDiff.toFixed(1) + '%)';
+        }
+        
+        _notify(msg, percentDiff >= 5);
+        
+        return { 
+            equipmentTag, totalIn, totalOut, balance, percentDiff, 
+            inflows, outflows, hasMassFlow, unit 
+        };
+    }
+    
+    // ================================================================
+    //  VALIDACIÓN PFD (MEJORADA v1.2 - Severidad por tipo)
     // ================================================================
     
     function validatePFD() {
-        if (!_core) return { valid: true, issues: [] };
+        if (!_core) return { valid: true, issues: [], report: '' };
         
         const issues = [];
         const streams = _core.getStreams();
@@ -425,6 +514,7 @@ const SmartFlowPFD = (function() {
             if (stream.from && !equiposTags.has(stream.from)) {
                 issues.push({
                     type: 'ORIGEN_FALTANTE',
+                    severity: 'ERROR',
                     stream: stream.tag,
                     msg: 'Equipo origen ' + stream.from + ' no existe'
                 });
@@ -433,6 +523,7 @@ const SmartFlowPFD = (function() {
             if (stream.to && !equiposTags.has(stream.to)) {
                 issues.push({
                     type: 'DESTINO_FALTANTE',
+                    severity: 'ERROR',
                     stream: stream.tag,
                     msg: 'Equipo destino ' + stream.to + ' no existe'
                 });
@@ -448,16 +539,28 @@ const SmartFlowPFD = (function() {
             if (!hasLines && connectedLines.length === 0) {
                 issues.push({
                     type: 'SIN_LINEA_3D',
+                    severity: 'WARNING',
                     stream: stream.tag,
                     msg: 'Corriente sin representación en 3D'
                 });
             }
             
-            if (!stream.fluid || (stream.fluid === 'WATER' && !stream.flow)) {
+            if (!stream.fluid || (stream.fluid === 'WATER' && !stream.flow && !stream.massFlow)) {
                 issues.push({
                     type: 'DATOS_INCOMPLETOS',
+                    severity: 'WARNING',
                     stream: stream.tag,
                     msg: 'Faltan datos de diseño (fluido/flujo)'
+                });
+            }
+            
+            // v1.2: Advertir si hay flujo volumétrico pero no másico para gases
+            if (stream.phase === 'GAS' && stream.flow > 0 && !stream.massFlow) {
+                issues.push({
+                    type: 'FALTA_FLUJO_MASICO',
+                    severity: 'WARNING',
+                    stream: stream.tag,
+                    msg: 'Corriente de GAS sin flujo másico. El balance usará m³/h (impreciso para gases)'
                 });
             }
         });
@@ -475,85 +578,66 @@ const SmartFlowPFD = (function() {
             if (!hasStream && !hasLine) {
                 issues.push({
                     type: 'EQUIPO_AISLADO',
+                    severity: 'WARNING',
                     equipment: eq.tag,
                     msg: 'Equipo ' + eq.tag + ' no tiene corrientes PFD ni tuberías 3D'
                 });
             }
         });
         
+        // v1.2: Generar reporte con severidad categorizada
+        const errors = issues.filter(i => i.severity === 'ERROR');
+        const warnings = issues.filter(i => i.severity === 'WARNING');
+        
         let report = '--- VALIDACIÓN PFD ---\n';
         if (issues.length === 0) {
             report += '✅ PFD íntegro.\n';
         } else {
-            const byType = {};
-            issues.forEach(i => {
-                if (!byType[i.type]) byType[i.type] = [];
-                byType[i.type].push(i);
-            });
-            
-            for (const [type, items] of Object.entries(byType)) {
-                report += '\n⚠️ ' + type + ' (' + items.length + '):\n';
-                items.forEach(item => report += '   • ' + item.msg + '\n');
+            if (errors.length > 0) {
+                report += '\n❌ ERRORES (' + errors.length + '):\n';
+                errors.forEach(item => report += '   • ' + item.msg + '\n');
+            }
+            if (warnings.length > 0) {
+                report += '\n⚠️ ADVERTENCIAS (' + warnings.length + '):\n';
+                warnings.forEach(item => report += '   • ' + item.msg + '\n');
             }
         }
         report += '══════════════════════';
         
-        _notify(report, issues.length > 0);
-        return { valid: issues.length === 0, issues, report };
+        // Solo marcar como error si hay errores reales, no advertencias
+        _notify(report, errors.length > 0);
+        
+        return { 
+            valid: errors.length === 0, 
+            issues, 
+            errors, 
+            warnings, 
+            report,
+            stats: { total: issues.length, errors: errors.length, warnings: warnings.length }
+        };
     }
     
-    function checkMassBalance(equipmentTag) {
-        const streams = _core.getStreams();
-        const inflows = streams.filter(s => s.to === equipmentTag);
-        const outflows = streams.filter(s => s.from === equipmentTag);
-        
-        if (inflows.length === 0 && outflows.length === 0) {
-            _notify('⚠️ El equipo ' + equipmentTag + ' no tiene corrientes asociadas', true);
-            return null;
-        }
-        
-        let totalIn = 0, totalOut = 0;
-        inflows.forEach(s => totalIn += s.flow || 0);
-        outflows.forEach(s => totalOut += s.flow || 0);
-        
-        const balance = totalIn - totalOut;
-        const percentDiff = totalIn > 0 ? Math.abs(balance) / totalIn * 100 : 0;
-        
-        let msg = '⚖️ BALANCE DE MASA: ' + equipmentTag + '\n';
-        msg += '══════════════════════════\n';
-        msg += '📥 Entradas (' + inflows.length + '): ' + totalIn.toFixed(2) + ' m³/h\n';
-        inflows.forEach(s => msg += '   ' + s.tag + ': ' + s.flow + ' ' + (s.flowUnit||'m³/h') + '\n');
-        msg += '📤 Salidas (' + outflows.length + '): ' + totalOut.toFixed(2) + ' m³/h\n';
-        outflows.forEach(s => msg += '   ' + s.tag + ': ' + s.flow + ' ' + (s.flowUnit||'m³/h') + '\n');
-        msg += '──────────────────────────\n';
-        
-        if (percentDiff < 1) {
-            msg += '✅ Balance OK (diferencia: ' + balance.toFixed(2) + ', ' + percentDiff.toFixed(1) + '%)';
-        } else if (percentDiff < 5) {
-            msg += '⚠️ Balance ACEPTABLE (diferencia: ' + balance.toFixed(2) + ', ' + percentDiff.toFixed(1) + '%)';
-        } else {
-            msg += '❌ Balance INCORRECTO (diferencia: ' + balance.toFixed(2) + ', ' + percentDiff.toFixed(1) + '%)';
-        }
-        
-        _notify(msg, percentDiff >= 5);
-        
-        return { equipmentTag, totalIn, totalOut, balance, percentDiff, inflows, outflows };
-    }
+    // ================================================================
+    //  EXPORTACIÓN DATOS PFD
+    // ================================================================
     
     function exportPFDData() {
         const streams = _core.getStreams();
         const headers = [
             'TAG', 'FROM', 'TO', 'FLUID', 'PHASE',
-            'FLOW', 'FLOW_UNIT', 'PRESSURE', 'PRESSURE_UNIT',
-            'TEMPERATURE', 'TEMP_UNIT', 'SERVICE',
-            'LINKED_LINES', 'DESIGN_CASE'
+            'FLOW', 'FLOW_UNIT', 'MASS_FLOW', 'MASS_FLOW_UNIT',
+            'PRESSURE', 'PRESSURE_UNIT', 'TEMPERATURE', 'TEMP_UNIT',
+            'SERVICE', 'LINKED_LINES', 'DESIGN_CASE'
         ];
         const rows = [headers];
         streams.forEach(s => {
             rows.push([
                 s.tag, s.from || '', s.to || '', s.fluid || '', s.phase || '',
-                s.flow || 0, s.flowUnit || 'm3/h', s.pressure || 0, s.pressureUnit || 'bar',
-                s.temperature || 25, s.temperatureUnit || '°C', s.service || '',
+                s.flow || 0, s.flowUnit || 'm3/h',
+                s.massFlow || 0, s.massFlowUnit || 'kg/h',
+                s.pressure || 0, s.pressureUnit || 'bar',
+                s.temperature || 25, s.temperatureUnit || '°C',
+                s.service || '',
                 (s.linkedLineTags || []).join(', '), s.designCase || 'NORMAL'
             ]);
         });
@@ -568,7 +652,8 @@ const SmartFlowPFD = (function() {
         _core = coreInstance;
         _catalog = catalogInstance || null;
         _notify = notifyFn || _notify;
-        console.log('SmartFlowPFD v1.1 inicializado | Fluidos: ' + FLUID_TYPES.length + 
+        console.log('SmartFlowPFD v1.2 inicializado | Fluidos: ' + FLUID_TYPES.length + 
+                    ' | Fases auto: ' + Object.keys(DEFAULT_PHASES).length +
                     ' | Catálogo: ' + (_catalog ? '✅' : '⚠️ no disponible'));
     }
     
@@ -590,6 +675,9 @@ const SmartFlowPFD = (function() {
         exportPFDData: exportPFDData,
         validateEquipmentType: validateEquipmentType,
         FLUID_TYPES: FLUID_TYPES,
-        PHASE_TYPES: PHASE_TYPES
+        PHASE_TYPES: PHASE_TYPES,
+        DEFAULT_PHASES: DEFAULT_PHASES
     };
 })();
+
+if (typeof window !== 'undefined') window.SmartFlowPFD = SmartFlowPFD;
