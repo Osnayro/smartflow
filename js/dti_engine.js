@@ -1,13 +1,13 @@
 
 // ============================================================
-// SMARTFLOW DTI ENGINE v1.1 - Motor de Diagrama de Tuberías e Instrumentación
+// SMARTFLOW DTI ENGINE v1.2 - Motor de Diagrama de Tuberías e Instrumentación
 // Archivo: js/modules/dti_engine.js
-// Dependencias: SmartFlowCore v6.0+, SmartFlowCatalog (opcional)
-// Novedades v1.1:
-//   - Validación de tipos de instrumentos contra catálogo
-//   - Los instrumentos creados desde DTI se comparten con el modelo 3D
-//   - Vinculación automática con líneas y equipos existentes
-//   - Estándar ISA-5.1 completo
+// Dependencias: SmartFlowCore v7.1+, SmartFlowCatalog (opcional)
+// Novedades v1.2:
+//   - CORRECCIÓN CRÍTICA: Separación ISA_FIRST_LETTER e ISA_SUCCESSIVE_LETTERS
+//   - LEVEL_SWITCH_RANA con variantes LSH/LSL
+//   - inferInstrumentType prioriza función de salida activa
+//   - Validación robusta de tags ISA-5.1
 // ============================================================
 
 const SmartFlowDTI = (function() {
@@ -17,9 +17,11 @@ const SmartFlowDTI = (function() {
     let _notify = (msg, isErr) => console.log(msg);
     
     // ================================================================
-    //  ESTÁNDAR ISA-5.1: LETRAS DE IDENTIFICACIÓN
+    //  ESTÁNDAR ISA-5.1: LETRAS DE IDENTIFICACIÓN (CORREGIDO v1.2)
     // ================================================================
-    const ISA_LETTERS = {
+    
+    // Primera letra: Variable medida o iniciadora
+    const ISA_FIRST_LETTER = {
         'P': { variable: 'PRESSURE',      description: 'Presión' },
         'T': { variable: 'TEMPERATURE',   description: 'Temperatura' },
         'F': { variable: 'FLOW',          description: 'Flujo' },
@@ -32,6 +34,20 @@ const SmartFlowDTI = (function() {
         'S': { variable: 'SPEED',         description: 'Velocidad' },
         'C': { variable: 'CONDUCTIVITY',  description: 'Conductividad' },
         'Z': { variable: 'POSITION',      description: 'Posición' },
+        'G': { variable: 'GAUGE',         description: 'Medida Local' },
+        'J': { variable: 'POWER',         description: 'Potencia' },
+        'K': { variable: 'TIME',          description: 'Tiempo' },
+        'M': { variable: 'MOISTURE',      description: 'Humedad' },
+        'N': { variable: 'USER_CHOICE',   description: 'Elección Usuario' },
+        'O': { variable: 'USER_CHOICE',   description: 'Elección Usuario' },
+        'R': { variable: 'RADIATION',     description: 'Radiación' },
+        'U': { variable: 'MULTIVARIABLE', description: 'Multivariable' },
+        'X': { variable: 'UNCLASSIFIED',  description: 'Sin Clasificar' },
+        'Y': { variable: 'EVENT',         description: 'Evento/Estado' }
+    };
+    
+    // Letras sucesivas: Función (lectura pasiva, salida, modificador)
+    const ISA_SUCCESSIVE_LETTERS = {
         'I': { function: 'INDICATOR',     description: 'Indicador' },
         'C': { function: 'CONTROLLER',    description: 'Controlador' },
         'T': { function: 'TRANSMITTER',   description: 'Transmisor' },
@@ -41,38 +57,79 @@ const SmartFlowDTI = (function() {
         'E': { function: 'ELEMENT',       description: 'Elemento Primario' },
         'V': { function: 'VALVE',         description: 'Válvula' },
         'Y': { function: 'RELAY',         description: 'Relé/Convertidor' },
-        'Q': { function: 'TOTALIZER',     description: 'Totalizador' }
+        'Q': { function: 'TOTALIZER',     description: 'Totalizador' },
+        'G': { function: 'GAUGE',         description: 'Visor Local' },
+        'H': { function: 'HIGH',          description: 'Alto' },
+        'L': { function: 'LOW',           description: 'Bajo' },
+        'K': { function: 'STATION',       description: 'Estación Control' },
+        'U': { function: 'MULTI',         description: 'Multifunción' },
+        'X': { function: 'AUXILIARY',     description: 'Auxiliar' },
+        'Z': { function: 'ACTUATOR',      description: 'Actuador/Elemento Final' }
+    };
+    
+    // v1.2: Prioridad de funciones para inferInstrumentType (mayor = más prioritario)
+    const FUNCTION_PRIORITY = {
+        'CONTROLLER': 10,
+        'VALVE': 9,
+        'SWITCH': 8,
+        'TRANSMITTER': 7,
+        'ALARM': 6,
+        'RECORDER': 5,
+        'INDICATOR': 4,
+        'TOTALIZER': 3,
+        'ELEMENT': 2,
+        'RELAY': 1
     };
     
     // ================================================================
-    //  TIPOS DE INSTRUMENTOS
+    //  TIPOS DE INSTRUMENTOS (AMPLIADO v1.2)
     // ================================================================
     const INSTRUMENT_TYPES = {
-        'PRESSURE_GAUGE':          { symbol: 'PG',  category: 'INDICATOR',    location: 'FIELD' },
+        // Presión
+        'PRESSURE_GAUGE':          { symbol: 'PI',  category: 'INDICATOR',    location: 'FIELD' },
         'PRESSURE_TRANSMITTER':    { symbol: 'PT',  category: 'TRANSMITTER',  location: 'FIELD' },
         'PRESSURE_SWITCH':         { symbol: 'PS',  category: 'SWITCH',       location: 'FIELD' },
         'PRESSURE_CONTROLLER':     { symbol: 'PIC', category: 'CONTROLLER',   location: 'PANEL' },
         'PRESSURE_SAFETY_VALVE':   { symbol: 'PSV', category: 'SAFETY',       location: 'FIELD' },
+        'PRESSURE_SWITCH_HIGH':    { symbol: 'PSH', category: 'SWITCH',       location: 'FIELD' },
+        'PRESSURE_SWITCH_LOW':     { symbol: 'PSL', category: 'SWITCH',       location: 'FIELD' },
+        
+        // Temperatura
         'TEMPERATURE_GAUGE':       { symbol: 'TG',  category: 'INDICATOR',    location: 'FIELD' },
         'TEMPERATURE_TRANSMITTER': { symbol: 'TT',  category: 'TRANSMITTER',  location: 'FIELD' },
         'TEMPERATURE_SWITCH':      { symbol: 'TS',  category: 'SWITCH',       location: 'FIELD' },
         'TEMPERATURE_CONTROLLER':  { symbol: 'TIC', category: 'CONTROLLER',   location: 'PANEL' },
+        'TEMPERATURE_SWITCH_HIGH': { symbol: 'TSH', category: 'SWITCH',       location: 'FIELD' },
+        'TEMPERATURE_SWITCH_LOW':  { symbol: 'TSL', category: 'SWITCH',       location: 'FIELD' },
+        
+        // Flujo
         'FLOW_METER':              { symbol: 'FG',  category: 'INDICATOR',    location: 'FIELD' },
         'FLOW_TRANSMITTER':        { symbol: 'FT',  category: 'TRANSMITTER',  location: 'FIELD' },
         'FLOW_SWITCH':             { symbol: 'FS',  category: 'SWITCH',       location: 'FIELD' },
         'FLOW_CONTROLLER':         { symbol: 'FIC', category: 'CONTROLLER',   location: 'PANEL' },
         'FLOW_TOTALIZER':          { symbol: 'FQ',  category: 'TOTALIZER',    location: 'PANEL' },
+        
+        // Nivel
         'LEVEL_GAUGE':             { symbol: 'LG',  category: 'INDICATOR',    location: 'FIELD' },
         'LEVEL_TRANSMITTER':       { symbol: 'LT',  category: 'TRANSMITTER',  location: 'FIELD' },
         'LEVEL_SWITCH':            { symbol: 'LS',  category: 'SWITCH',       location: 'FIELD' },
         'LEVEL_CONTROLLER':        { symbol: 'LIC', category: 'CONTROLLER',   location: 'PANEL' },
-        'LEVEL_SWITCH_RANA':       { symbol: 'LS',  category: 'SWITCH',       location: 'FIELD' },
+        // v1.2: Variantes de nivel tipo rana
+        'LEVEL_SWITCH_RANA':       { symbol: 'LS',  category: 'SWITCH',       location: 'FIELD', notes: 'Flotador tipo rana - uso genérico' },
+        'LEVEL_SWITCH_HIGH':       { symbol: 'LSH', category: 'SWITCH',       location: 'FIELD' },
+        'LEVEL_SWITCH_LOW':        { symbol: 'LSL', category: 'SWITCH',       location: 'FIELD' },
+        
+        // Analíticos
         'ANALYSIS_TRANSMITTER':    { symbol: 'AT',  category: 'TRANSMITTER',  location: 'FIELD' },
         'PH_METER':                { symbol: 'AT',  category: 'TRANSMITTER',  location: 'FIELD' },
         'CONDUCTIVITY_METER':      { symbol: 'CT',  category: 'TRANSMITTER',  location: 'FIELD' },
+        
+        // Válvulas
         'CONTROL_VALVE':           { symbol: 'CV',  category: 'VALVE',        location: 'FIELD' },
         'ON_OFF_VALVE':            { symbol: 'XV',  category: 'VALVE',        location: 'FIELD' },
         'SAFETY_VALVE':            { symbol: 'SV',  category: 'SAFETY',       location: 'FIELD' },
+        
+        // Otros
         'ROTAMETER':               { symbol: 'RO',  category: 'INDICATOR',    location: 'FIELD' },
         'SIGHT_GLASS':             { symbol: 'SG',  category: 'INDICATOR',    location: 'FIELD' },
         'FLAME_ARRESTER':          { symbol: 'FA',  category: 'SAFETY',       location: 'FIELD' },
@@ -90,16 +147,123 @@ const SmartFlowDTI = (function() {
     };
     
     // ================================================================
+    //  VALIDACIÓN DE TAGS ISA (CORREGIDA v1.2)
+    // ================================================================
+    
+    function validateISATag(tag) {
+        const match = tag.match(/^([A-Z]+)-(\d+)$/);
+        if (!match) {
+            return { valid: false, msg: 'Formato inválido. Use: LETRAS-NÚMERO (ej: PIC-101)' };
+        }
+        
+        const letters = match[1];
+        const number = match[2];
+        
+        if (letters.length < 1 || letters.length > 5) {
+            return { valid: false, msg: 'El código de letras debe tener 1-5 caracteres' };
+        }
+        
+        // v1.2: Primera letra validada contra ISA_FIRST_LETTER
+        const firstLetter = letters[0];
+        if (!ISA_FIRST_LETTER[firstLetter]) {
+            return { 
+                valid: false, 
+                msg: 'Primera letra inválida: ' + firstLetter + ' (no es una variable medida ISA-5.1)',
+                sugerencias: Object.keys(ISA_FIRST_LETTER).slice(0, 8)
+            };
+        }
+        
+        // v1.2: Letras sucesivas validadas contra ISA_SUCCESSIVE_LETTERS
+        const successiveLetters = letters.slice(1).split('');
+        const functions = [];
+        
+        for (let i = 0; i < successiveLetters.length; i++) {
+            const l = successiveLetters[i];
+            if (!ISA_SUCCESSIVE_LETTERS[l]) {
+                return {
+                    valid: false,
+                    msg: 'Letra sucesiva inválida: ' + l + ' en posición ' + (i + 2),
+                    sugerencias: Object.keys(ISA_SUCCESSIVE_LETTERS).slice(0, 8)
+                };
+            }
+            functions.push(ISA_SUCCESSIVE_LETTERS[l].function);
+        }
+        
+        return {
+            valid: true,
+            variable: ISA_FIRST_LETTER[firstLetter].variable,
+            variableDesc: ISA_FIRST_LETTER[firstLetter].description,
+            functions: functions,
+            number: parseInt(number)
+        };
+    }
+    
+    // ================================================================
+    //  INFERENCIA DE TIPO DE INSTRUMENTO (MEJORADA v1.2)
+    // ================================================================
+    
+    function inferInstrumentType(tag, defaultType) {
+        const validation = validateISATag(tag);
+        if (!validation.valid) return defaultType || 'PRESSURE_GAUGE';
+        
+        const functions = validation.functions;
+        const variable = validation.variable;
+        
+        if (functions.length === 0) {
+            // Solo primera letra: indicador simple
+            if (variable === 'FLOW') return 'FLOW_METER';
+            if (variable === 'LEVEL') return 'LEVEL_GAUGE';
+            return variable + '_GAUGE';
+        }
+        
+        // v1.2: Priorizar función de salida activa sobre funciones de lectura pasiva
+        let bestFunction = null;
+        let bestPriority = -1;
+        
+        for (let i = 0; i < functions.length; i++) {
+            const fn = functions[i];
+            const priority = FUNCTION_PRIORITY[fn] || 0;
+            if (priority > bestPriority) {
+                bestPriority = priority;
+                bestFunction = fn;
+            }
+        }
+        
+        // v1.2: Verificar si hay modificador H (High) o L (Low)
+        const hasHigh = functions.includes('HIGH');
+        const hasLow = functions.includes('LOW');
+        
+        if (bestFunction === 'SWITCH') {
+            if (hasHigh) return variable + '_SWITCH_HIGH';
+            if (hasLow) return variable + '_SWITCH_LOW';
+            return variable + '_SWITCH';
+        }
+        
+        if (bestFunction === 'CONTROLLER') return variable + '_CONTROLLER';
+        if (bestFunction === 'TRANSMITTER') return variable + '_TRANSMITTER';
+        if (bestFunction === 'VALVE') {
+            return variable === 'PRESSURE' ? 'PRESSURE_SAFETY_VALVE' : 'CONTROL_VALVE';
+        }
+        if (bestFunction === 'ALARM') return variable + '_SWITCH'; // Alarmas suelen ser switches
+        if (bestFunction === 'RECORDER') return variable + '_TRANSMITTER'; // Registradores suelen ser transmisores con registro
+        if (bestFunction === 'INDICATOR') {
+            if (variable === 'FLOW') return 'FLOW_METER';
+            if (variable === 'LEVEL') return 'LEVEL_GAUGE';
+            return variable + '_GAUGE';
+        }
+        
+        return variable + '_GAUGE';
+    }
+    
+    // ================================================================
     //  VALIDACIÓN CONTRA CATÁLOGO
     // ================================================================
     
     function validateInstrumentType(type) {
-        // Primero validar contra nuestro diccionario interno
         if (INSTRUMENT_TYPES[type]) {
             return { valid: true, source: 'internal', typeInfo: INSTRUMENT_TYPES[type] };
         }
         
-        // Luego validar contra el catálogo
         if (_catalog && typeof _catalog.getComponent === 'function') {
             const catComp = _catalog.getComponent(type);
             if (catComp) {
@@ -107,7 +271,6 @@ const SmartFlowDTI = (function() {
             }
         }
         
-        // Sugerencias
         const sugerencias = Object.keys(INSTRUMENT_TYPES)
             .filter(k => k.includes(type.toUpperCase()) || type.toUpperCase().includes(k))
             .slice(0, 5);
@@ -138,56 +301,6 @@ const SmartFlowDTI = (function() {
     }
     
     // ================================================================
-    //  VALIDACIÓN DE TAGS ISA
-    // ================================================================
-    
-    function validateISATag(tag) {
-        const match = tag.match(/^([A-Z]+)-(\d+)$/);
-        if (!match) {
-            return { valid: false, msg: 'Formato inválido. Use: LETRAS-NÚMERO (ej: PIC-101)' };
-        }
-        
-        const letters = match[1];
-        const number = match[2];
-        
-        if (letters.length < 1 || letters.length > 4) {
-            return { valid: false, msg: 'El código de letras debe tener 1-4 caracteres' };
-        }
-        
-        const firstLetter = letters[0];
-        if (!ISA_LETTERS[firstLetter] || !ISA_LETTERS[firstLetter].variable) {
-            return { valid: false, msg: 'Primera letra inválida: ' + firstLetter };
-        }
-        
-        return {
-            valid: true,
-            variable: ISA_LETTERS[firstLetter].variable,
-            variableDesc: ISA_LETTERS[firstLetter].description,
-            functions: letters.slice(1).split('').map(l => ISA_LETTERS[l]?.function || 'UNKNOWN'),
-            number: parseInt(number)
-        };
-    }
-    
-    function inferInstrumentType(tag, defaultType) {
-        const validation = validateISATag(tag);
-        if (!validation.valid) return defaultType || 'PRESSURE_GAUGE';
-        
-        const functions = validation.functions;
-        const variable = validation.variable;
-        
-        if (functions.includes('CONTROLLER')) return variable + '_CONTROLLER';
-        if (functions.includes('TRANSMITTER')) return variable + '_TRANSMITTER';
-        if (functions.includes('SWITCH')) return variable + '_SWITCH';
-        if (functions.includes('INDICATOR')) {
-            if (variable === 'FLOW') return 'FLOW_METER';
-            if (variable === 'LEVEL') return 'LEVEL_GAUGE';
-            return variable + '_GAUGE';
-        }
-        
-        return variable + '_GAUGE';
-    }
-    
-    // ================================================================
     //  CREACIÓN DE INSTRUMENTOS
     // ================================================================
     
@@ -207,12 +320,10 @@ const SmartFlowDTI = (function() {
             return null;
         }
         
-        // Inferir tipo si no se especificó (basado en tag ISA)
         if (!params.type) {
             params.type = inferInstrumentType(params.tag, 'PRESSURE_GAUGE');
         }
         
-        // Validar tipo contra diccionario interno y catálogo
         const typeValidation = validateInstrumentType(params.type);
         if (!typeValidation.valid) {
             _notify('❌ ' + typeValidation.msg, true);
@@ -222,7 +333,6 @@ const SmartFlowDTI = (function() {
             return null;
         }
         
-        // Validar que la línea existe si se especifica
         if (params.lineTag) {
             const line = _core.findObjectByTag(params.lineTag);
             if (!line || !_core.getLines().includes(line)) {
@@ -230,7 +340,6 @@ const SmartFlowDTI = (function() {
             }
         }
         
-        // Validar que el equipo existe si se especifica
         if (params.equipmentTag) {
             const eq = _core.findObjectByTag(params.equipmentTag);
             if (!eq || !_core.getEquipos().includes(eq)) {
@@ -238,7 +347,6 @@ const SmartFlowDTI = (function() {
             }
         }
         
-        // Validar formato ISA
         const isaValidation = validateISATag(params.tag);
         
         const instrumentData = {
@@ -287,7 +395,6 @@ const SmartFlowDTI = (function() {
             return false;
         }
         
-        // Validar componente contra catálogo
         const validation = validateComponentType(compType);
         if (!validation.valid) {
             _notify('❌ ' + validation.msg, true);
@@ -305,7 +412,6 @@ const SmartFlowDTI = (function() {
         
         if (!line.components) line.components = [];
         
-        // Verificar que no exista ya un componente en la misma posición
         const existe = line.components.some(function(c) {
             return c.type === compType && Math.abs((c.param || 0) - position) < 0.02;
         });
@@ -351,7 +457,6 @@ const SmartFlowDTI = (function() {
             return null;
         }
         
-        // Validar que los instrumentos existen en la base de datos compartida
         const warnings = [];
         
         if (params.sensor) {
@@ -369,7 +474,6 @@ const SmartFlowDTI = (function() {
             if (!valve) warnings.push('Válvula ' + params.valve + ' no encontrada');
         }
         
-        // Validar tipo de lazo
         if (params.type && !LOOP_TYPES[params.type]) {
             _notify('⚠️ Tipo de lazo desconocido: ' + params.type + '. Se usará FEEDBACK.', false);
             params.type = 'FEEDBACK';
@@ -391,7 +495,6 @@ const SmartFlowDTI = (function() {
         const result = _core.addLoop(loopData);
         
         if (result) {
-            // Actualizar instrumentos con el tag del lazo
             if (params.sensor) _core.updateInstrument(params.sensor, { loopTag: params.tag });
             if (params.controller) _core.updateInstrument(params.controller, { loopTag: params.tag });
             if (params.valve) _core.updateInstrument(params.valve, { loopTag: params.tag });
@@ -557,68 +660,69 @@ const SmartFlowDTI = (function() {
         instruments.forEach(inst => {
             const isa = validateISATag(inst.tag);
             if (!isa.valid) {
-                issues.push({ type: 'TAG_ISA_INVALIDO', instrument: inst.tag, msg: isa.msg });
+                issues.push({ type: 'TAG_ISA_INVALIDO', severity: 'ERROR', instrument: inst.tag, msg: isa.msg });
             }
             
             if (!inst.lineTag && !inst.equipmentTag) {
-                issues.push({ type: 'SIN_VINCULACION', instrument: inst.tag, msg: 'No vinculado a línea o equipo' });
+                issues.push({ type: 'SIN_VINCULACION', severity: 'WARNING', instrument: inst.tag, msg: 'No vinculado a línea o equipo' });
             }
             
             if (inst.lineTag) {
                 const line = _core.findObjectByTag(inst.lineTag);
                 if (!line || !lines.includes(line)) {
-                    issues.push({ type: 'LINEA_FALTANTE', instrument: inst.tag, msg: 'Línea ' + inst.lineTag + ' no existe' });
+                    issues.push({ type: 'LINEA_FALTANTE', severity: 'ERROR', instrument: inst.tag, msg: 'Línea ' + inst.lineTag + ' no existe' });
                 }
             }
             
             if (inst.equipmentTag) {
                 const eq = _core.findObjectByTag(inst.equipmentTag);
                 if (!eq || !equipos.includes(eq)) {
-                    issues.push({ type: 'EQUIPO_FALTANTE', instrument: inst.tag, msg: 'Equipo ' + inst.equipmentTag + ' no existe' });
+                    issues.push({ type: 'EQUIPO_FALTANTE', severity: 'ERROR', instrument: inst.tag, msg: 'Equipo ' + inst.equipmentTag + ' no existe' });
                 }
             }
             
             if (!inst.range) {
-                issues.push({ type: 'RANGO_FALTANTE', instrument: inst.tag, msg: 'Rango no especificado' });
+                issues.push({ type: 'RANGO_FALTANTE', severity: 'WARNING', instrument: inst.tag, msg: 'Rango no especificado' });
             }
             
-            // Validar tipo contra catálogo
             const typeValidation = validateInstrumentType(inst.type);
             if (!typeValidation.valid) {
-                issues.push({ type: 'TIPO_INVALIDO', instrument: inst.tag, msg: typeValidation.msg });
+                issues.push({ type: 'TIPO_INVALIDO', severity: 'ERROR', instrument: inst.tag, msg: typeValidation.msg });
             }
         });
         
         loops.forEach(loop => {
             if (loop.sensor && !_core.getInstrumentByTag(loop.sensor)) {
-                issues.push({ type: 'LAZO_SENSOR_FALTANTE', loop: loop.tag, msg: 'Sensor ' + loop.sensor + ' no existe' });
+                issues.push({ type: 'LAZO_SENSOR_FALTANTE', severity: 'ERROR', loop: loop.tag, msg: 'Sensor ' + loop.sensor + ' no existe' });
             }
             if (loop.controller && !_core.getInstrumentByTag(loop.controller)) {
-                issues.push({ type: 'LAZO_CONTROLLER_FALTANTE', loop: loop.tag, msg: 'Controlador ' + loop.controller + ' no existe' });
+                issues.push({ type: 'LAZO_CONTROLLER_FALTANTE', severity: 'ERROR', loop: loop.tag, msg: 'Controlador ' + loop.controller + ' no existe' });
             }
             if (loop.valve && !_core.getInstrumentByTag(loop.valve)) {
-                issues.push({ type: 'LAZO_VALVE_FALTANTE', loop: loop.tag, msg: 'Válvula ' + loop.valve + ' no existe' });
+                issues.push({ type: 'LAZO_VALVE_FALTANTE', severity: 'ERROR', loop: loop.tag, msg: 'Válvula ' + loop.valve + ' no existe' });
             }
         });
+        
+        const errors = issues.filter(i => i.severity === 'ERROR');
+        const warnings = issues.filter(i => i.severity === 'WARNING');
         
         let report = '--- VALIDACIÓN DTI ---\n';
         if (issues.length === 0) {
             report += '✅ DTI íntegro.\n';
         } else {
-            const byType = {};
-            issues.forEach(i => {
-                if (!byType[i.type]) byType[i.type] = [];
-                byType[i.type].push(i);
-            });
-            for (const [type, items] of Object.entries(byType)) {
-                report += '\n⚠️ ' + type + ' (' + items.length + '):\n';
-                items.forEach(item => report += '   • ' + item.msg + '\n');
+            if (errors.length > 0) {
+                report += '\n❌ ERRORES (' + errors.length + '):\n';
+                errors.forEach(item => report += '   • ' + item.msg + '\n');
+            }
+            if (warnings.length > 0) {
+                report += '\n⚠️ ADVERTENCIAS (' + warnings.length + '):\n';
+                warnings.forEach(item => report += '   • ' + item.msg + '\n');
             }
         }
         report += '══════════════════════';
         
-        _notify(report, issues.length > 0);
-        return { valid: issues.length === 0, issues, report };
+        _notify(report, errors.length > 0);
+        return { valid: errors.length === 0, issues, errors, warnings, report };
     }
     
     // ================================================================
@@ -660,9 +764,9 @@ const SmartFlowDTI = (function() {
         _core = coreInstance;
         _catalog = catalogInstance || null;
         _notify = notifyFn || _notify;
-        console.log('SmartFlowDTI v1.1 inicializado | Tipos: ' + Object.keys(INSTRUMENT_TYPES).length + 
+        console.log('SmartFlowDTI v1.2 inicializado | Tipos: ' + Object.keys(INSTRUMENT_TYPES).length + 
                     ' | Lazos: ' + Object.keys(LOOP_TYPES).length + 
-                    ' | ISA-5.1: ✅ | Catálogo: ' + (_catalog ? '✅' : '⚠️ no disponible'));
+                    ' | ISA-5.1: ✅ (First + Successive separados) | Catálogo: ' + (_catalog ? '✅' : '⚠️'));
     }
     
     // ================================================================
@@ -686,6 +790,9 @@ const SmartFlowDTI = (function() {
         exportDTIData: exportDTIData,
         INSTRUMENT_TYPES: INSTRUMENT_TYPES,
         LOOP_TYPES: LOOP_TYPES,
-        ISA_LETTERS: ISA_LETTERS
+        ISA_FIRST_LETTER: ISA_FIRST_LETTER,
+        ISA_SUCCESSIVE_LETTERS: ISA_SUCCESSIVE_LETTERS
     };
 })();
+
+if (typeof window !== 'undefined') window.SmartFlowDTI = SmartFlowDTI;
