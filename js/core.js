@@ -1,99 +1,50 @@
+
 // ============================================================
-// SMARTFLOW CORE v7.0 - Motor de Datos de Ingeniería Unificado
+// SMARTFLOW CORE v7.1 - Motor de Datos de Ingeniería Unificado
 // Archivo: js/core.js
 // Soporte: Isométrico 3D/2D + PFD + DTI + Lazos de Control
-// Novedades v7.0:
-//   - Entidades: streams, instruments, loops, inlineAssets
-//   - Metadatos ampliados de proceso (designPressure, hazardClass, etc.)
-//   - Clasificación ISA-5.1 automática para instrumentos
-//   - Índices ampliados para todas las entidades
-//   - undo/redo incluye todas las entidades
-//   - importState/exportProject incluye streams, instruments, loops, inlineAssets
-//   - Auditoría de integridad PFD + Balance de masa
+// Novedades v7.1:
+//   - Corrección: this._saveState() → _saveState() en funciones internas
+//   - Tolerancia de selección 3D según unitsSystem (mm vs m)
+//   - Propiedad allowsMassAccumulation en equipos
+//   - Balance de masa respeta allowsMassAccumulation
 // ============================================================
 
 const SmartFlowCore = (function() {
     
     let _db = {
-        // ================================================================
-        //  EQUIPOS (v5.6 + metadatos ampliados v7.0)
-        // ================================================================
         equipos: [],
-        
-        // ================================================================
-        //  LÍNEAS (v5.6)
-        // ================================================================
         lines: [],
-        
-        // ================================================================
-        //  ESPECIFICACIONES (v5.6)
-        // ================================================================
         specs: {
             "PPR_PN12_5": {
-                mat: "PPR",
-                norma: "IRAM 13471",
-                presion: "PN 12.5",
-                connectionType: "THERMOFUSION",
-                fittingNorm: "DIN 16962"
+                mat: "PPR", norma: "IRAM 13471", presion: "PN 12.5",
+                connectionType: "THERMOFUSION", fittingNorm: "DIN 16962"
             },
             "A1A": {
-                mat: "Acero al Carbono",
-                rating: 150,
-                sch: "STD",
-                connectionType: "BUTT_WELD",
-                fittingNorm: "ASME B16.9"
+                mat: "Acero al Carbono", rating: 150, sch: "STD",
+                connectionType: "BUTT_WELD", fittingNorm: "ASME B16.9"
             },
             "A3B": {
-                mat: "Acero Inoxidable",
-                rating: 300,
-                sch: "40S",
-                connectionType: "BUTT_WELD",
-                fittingNorm: "ASME B16.9"
+                mat: "Acero Inoxidable", rating: 300, sch: "40S",
+                connectionType: "BUTT_WELD", fittingNorm: "ASME B16.9"
             },
             "ACERO_SCH80": {
-                mat: "Acero al Carbono",
-                schedule: "SCH 80",
-                connectionType: "BUTT_WELD",
-                fittingNorm: "ASME B16.9"
+                mat: "Acero al Carbono", schedule: "SCH 80",
+                connectionType: "BUTT_WELD", fittingNorm: "ASME B16.9"
             },
             "HDPE_PN10": {
-                mat: "HDPE",
-                norma: "ISO 4427",
-                presion: "PN 10",
-                connectionType: "BUTT_WELD",
-                fittingNorm: "ISO 8085"
+                mat: "HDPE", norma: "ISO 4427", presion: "PN 10",
+                connectionType: "BUTT_WELD", fittingNorm: "ISO 8085"
             },
             "PVC_SCH80": {
-                mat: "PVC",
-                schedule: "SCH 80",
-                connectionType: "SOLVENT_CEMENT",
-                fittingNorm: "ASTM D2467"
+                mat: "PVC", schedule: "SCH 80",
+                connectionType: "SOLVENT_CEMENT", fittingNorm: "ASTM D2467"
             }
         },
-        
-        // ================================================================
-        //  STREAMS - CORRIENTES DE PROCESO (PFD) v7.0
-        // ================================================================
         streams: [],
-        
-        // ================================================================
-        //  INSTRUMENTS - INSTRUMENTOS (DTI) v7.0
-        // ================================================================
         instruments: [],
-        
-        // ================================================================
-        //  LOOPS - LAZOS DE CONTROL (DTI) v7.0
-        // ================================================================
         loops: [],
-        
-        // ================================================================
-        //  INLINE ASSETS - ACTIVOS EN LÍNEA (v7.0)
-        // ================================================================
         inlineAssets: [],
-        
-        // ================================================================
-        //  METADATOS DEL PROYECTO
-        // ================================================================
         project: {
             name: '',
             client: '',
@@ -105,9 +56,6 @@ const SmartFlowCore = (function() {
         }
     };
 
-    // ================================================================
-    //  ÍNDICES UNIFICADOS
-    // ================================================================
     let _equiposMap = new Map();
     let _linesMap = new Map();
     let _allObjectsMap = new Map();
@@ -117,7 +65,7 @@ const SmartFlowCore = (function() {
     let _inlineAssetsMap = new Map();
 
     // ================================================================
-    //  CLASIFICACIÓN ISA 5.1 PARA INSTRUMENTOS
+    //  CLASIFICACIÓN ISA 5.1
     // ================================================================
     const ISA_CLASSIFICATION = {
         'PRESSURE_GAUGE':        { measured: 'P', function: 'I', symbol: 'PI' },
@@ -173,28 +121,23 @@ const SmartFlowCore = (function() {
             _equiposMap.set(e.tag, e);
             _allObjectsMap.set(e.tag, e);
         });
-        
         if (_db.lines) _db.lines.forEach(function(l) {
             _linesMap.set(l.tag, l);
             _allObjectsMap.set(l.tag, l);
         });
-        
         if (_db.inlineAssets) _db.inlineAssets.forEach(function(a) {
             _inlineAssetsMap.set(a.tag, a);
             _allObjectsMap.set(a.tag, a);
         });
-        
         if (_db.streams) _db.streams.forEach(function(s) {
             _streamsMap.set(s.tag, s);
         });
-        
         if (_db.instruments) _db.instruments.forEach(function(inst) {
             _instrumentsMap.set(inst.tag, inst);
             if (!inst.isaSymbol) {
                 inst.isaSymbol = getIsaSymbol(inst.type, inst.location);
             }
         });
-        
         if (_db.loops) _db.loops.forEach(function(loop) {
             _loopsMap.set(loop.tag, loop);
         });
@@ -215,9 +158,7 @@ const SmartFlowCore = (function() {
     };
 
     function on(eventName, callback) {
-        if (_listeners[eventName]) {
-            _listeners[eventName].push(callback);
-        }
+        if (_listeners[eventName]) _listeners[eventName].push(callback);
     }
 
     function off(eventName, callback) {
@@ -316,8 +257,17 @@ const SmartFlowCore = (function() {
         _renderUI();
     }
 
+    /**
+     * Encuentra el segmento de línea más cercano a un punto de click.
+     * v7.1: La tolerancia por defecto depende del sistema de unidades del proyecto.
+     */
     function _findSegmentAtPoint(line, clickPoint, tolerance) {
-        tolerance = tolerance || 500;
+        // Determinar tolerancia según sistema de unidades
+        const unitsSystem = (_db.project && _db.project.unitsSystem) || 'METRIC';
+        if (tolerance === undefined || tolerance === null) {
+            tolerance = unitsSystem === 'METRIC' ? 500 : 0.5; // mm vs m
+        }
+        
         const pts = getLinePoints(line);
         if (!pts || pts.length < 2) return -1;
         let minDist = Infinity, bestIndex = -1;
@@ -392,7 +342,7 @@ const SmartFlowCore = (function() {
     }
 
     // ================================================================
-    //  AUDITORÍA DE BALANCE DE MASA (PFD)
+    //  AUDITORÍA DE BALANCE DE MASA (PFD) - MEJORADA v7.1
     // ================================================================
     
     function auditMassBalance() {
@@ -413,10 +363,18 @@ const SmartFlowCore = (function() {
         equiposPFD.forEach(function(flows, equipTag) {
             const eq = findObjectByTag(equipTag);
             if (!eq) return;
-            const isPump = eq.tipo === 'bomba' || eq.tipo === 'bomba_centrifuga' || eq.tipo === 'compresor';
-            const isTank = eq.tipo === 'tanque_v' || eq.tipo === 'tanque_h';
             
-            if (!isPump && !isTank && flows.inflows.length > 0 && flows.outflows.length > 0) {
+            // Determinar si el equipo permite acumulación de masa
+            const isPump = eq.tipo === 'bomba' || eq.tipo === 'bomba_centrifuga' || 
+                          eq.tipo === 'compresor' || eq.tipo === 'bomba_dosificacion' || eq.tipo === 'bomba_z';
+            
+            // v7.1: Respetar propiedad allowsMassAccumulation
+            const allowsAccumulation = eq.allowsMassAccumulation === true || 
+                                       eq.tipo === 'tanque_v' || eq.tipo === 'tanque_h' || 
+                                       eq.tipo === 'tanque_acero' || eq.tipo === 'tanque_aseptico';
+            
+            // Solo auditar equipos que requieren balance estricto
+            if (!isPump && !allowsAccumulation && flows.inflows.length > 0 && flows.outflows.length > 0) {
                 let totalIn = 0, totalOut = 0;
                 flows.inflows.forEach(function(s) { totalIn += (s.flow || 0); });
                 flows.outflows.forEach(function(s) { totalOut += (s.flow || 0); });
@@ -498,14 +456,11 @@ const SmartFlowCore = (function() {
         if (_streamsMap.has(streamData.tag)) return _notifyUI("Error: La corriente " + streamData.tag + " ya existe.", true);
         
         const stream = {
-            // Básicos
             tag: streamData.tag,
             from: streamData.from || '',
             to: streamData.to || '',
             fluid: streamData.fluid || 'WATER',
             phase: streamData.phase || 'LIQUID',
-            
-            // Condiciones de operación
             flow: streamData.flow || 0,
             flowUnit: streamData.flowUnit || 'm3/h',
             massFlow: streamData.massFlow || 0,
@@ -514,15 +469,11 @@ const SmartFlowCore = (function() {
             pressureUnit: streamData.pressureUnit || 'bar',
             temperature: streamData.temperature || 25,
             temperatureUnit: streamData.temperatureUnit || '°C',
-            
-            // Propiedades físicas
             density: streamData.density || 1000,
             densityUnit: streamData.densityUnit || 'kg/m3',
             viscosity: streamData.viscosity || 1,
             viscosityUnit: streamData.viscosityUnit || 'cP',
             molecularWeight: streamData.molecularWeight || 0,
-            
-            // Condiciones de diseño
             designPressure: streamData.designPressure || 0,
             designPressureUnit: streamData.designPressureUnit || 'bar',
             designTemperature: streamData.designTemperature || 0,
@@ -531,15 +482,11 @@ const SmartFlowCore = (function() {
             operatingPressureMin: streamData.operatingPressureMin || 0,
             operatingTempMax: streamData.operatingTempMax || 0,
             operatingTempMin: streamData.operatingTempMin || 0,
-            
-            // Clasificación
             service: streamData.service || '',
             fluidCategory: streamData.fluidCategory || '',
             hazardClass: streamData.hazardClass || '',
             insulationType: streamData.insulationType || '',
             insulationThickness: streamData.insulationThickness || 0,
-            
-            // Dimensionamiento
             lineSize: streamData.lineSize || 0,
             lineSizeUnit: streamData.lineSizeUnit || 'in',
             velocity: streamData.velocity || 0,
@@ -547,20 +494,16 @@ const SmartFlowCore = (function() {
             reynoldsNumber: streamData.reynoldsNumber || 0,
             pressureDrop: streamData.pressureDrop || 0,
             pipeSpec: streamData.pipeSpec || '',
-            
-            // Documentación
             designCase: streamData.designCase || 'NORMAL',
             sheetNumber: streamData.sheetNumber || '',
             revision: streamData.revision || 'A',
             notes: streamData.notes || '',
-            
-            // Vinculación 3D
             linkedLineTags: streamData.linkedLineTags || []
         };
         
         _db.streams.push(stream);
         _streamsMap.set(stream.tag, stream);
-        this._saveState();
+        _saveState();
         _notifyUI("Corriente " + stream.tag + ": " + stream.from + " → " + stream.to + " | " + stream.fluid, false);
         emit('modelChanged', { type: 'addStream', tag: stream.tag });
         return true;
@@ -570,7 +513,7 @@ const SmartFlowCore = (function() {
         const stream = _streamsMap.get(tag);
         if (!stream) return _notifyUI("Corriente " + tag + " no encontrada.", true);
         Object.assign(stream, datos);
-        this._saveState();
+        _saveState();
         emit('modelChanged', { type: 'updateStream', tag: tag });
         return true;
     }
@@ -578,7 +521,7 @@ const SmartFlowCore = (function() {
     function removeStream(tag) {
         const stream = _streamsMap.get(tag);
         if (!stream) return _notifyUI("Corriente " + tag + " no encontrada.", true);
-        this._saveState();
+        _saveState();
         _db.streams = _db.streams.filter(function(s) { return s.tag !== tag; });
         _streamsMap.delete(tag);
         _notifyUI("Corriente " + tag + " eliminada.", false);
@@ -596,7 +539,7 @@ const SmartFlowCore = (function() {
             stream.linkedLineTags.push(lineTag);
         }
         line.service = line.service || stream.fluid;
-        this._saveState();
+        _saveState();
         _notifyUI("Corriente " + streamTag + " vinculada a línea " + lineTag, false);
         return true;
     }
@@ -613,14 +556,11 @@ const SmartFlowCore = (function() {
         if (_instrumentsMap.has(instData.tag)) return _notifyUI("Error: El instrumento " + instData.tag + " ya existe.", true);
         
         const instrument = {
-            // Básicos
             tag: instData.tag,
             type: instData.type || 'PRESSURE_GAUGE',
             lineTag: instData.lineTag || '',
             equipmentTag: instData.equipmentTag || '',
             position: instData.position || 0.5,
-            
-            // Servicio
             service: instData.service || '',
             range: instData.range || '',
             rangeMin: instData.rangeMin || 0,
@@ -631,55 +571,37 @@ const SmartFlowCore = (function() {
             accuracy: instData.accuracy || 0,
             signal: instData.signal || '4-20mA',
             signalType: instData.signalType || 'ANALOG',
-            
-            // Clasificación ISA-5.1
             isaMeasured: instData.isaMeasured || '',
             isaFunction: instData.isaFunction || '',
-            isaSymbol: null, // Se calcula automáticamente
+            isaSymbol: null,
             isaLocation: instData.location || 'FIELD',
-            
-            // Ubicación
             location: instData.location || 'FIELD',
-            
-            // Conexión a proceso
             connectionType: instData.connectionType || '',
             connectionSize: instData.connectionSize || 0,
             processConnection: instData.processConnection || '',
             electricalConnection: instData.electricalConnection || '',
-            
-            // Materiales
             bodyMaterial: instData.bodyMaterial || '',
             wettedMaterial: instData.wettedMaterial || '',
             diaphragmMaterial: instData.diaphragmMaterial || '',
-            
-            // Certificaciones
             ipRating: instData.ipRating || '',
             hazardousArea: instData.hazardousArea || '',
             silRating: instData.silRating || '',
-            
-            // Fabricante
             manufacturer: instData.manufacturer || '',
             model: instData.model || '',
             datasheetRef: instData.datasheetRef || '',
-            
-            // Lazo
             loopTag: instData.loopTag || '',
             loopFunction: instData.loopFunction || '',
-            
-            // Documentación
             sheetNumber: instData.sheetNumber || '',
             revision: instData.revision || 'A',
             notes: instData.notes || '',
             criticality: instData.criticality || 'NORMAL'
         };
         
-        // Calcular símbolo ISA automáticamente
         instrument.isaSymbol = getIsaSymbol(instrument.type, instrument.location);
         
         _db.instruments.push(instrument);
         _instrumentsMap.set(instrument.tag, instrument);
         
-        // Si está vinculado a una línea, agregarlo como componente
         if (instrument.lineTag && _linesMap.has(instrument.lineTag)) {
             const line = _linesMap.get(instrument.lineTag);
             if (!line.components) line.components = [];
@@ -691,7 +613,7 @@ const SmartFlowCore = (function() {
             });
         }
         
-        this._saveState();
+        _saveState();
         _notifyUI("Instrumento " + instrument.tag + " (" + instrument.isaSymbol.symbol + ") creado.", false);
         emit('modelChanged', { type: 'addInstrument', tag: instrument.tag });
         return true;
@@ -701,11 +623,10 @@ const SmartFlowCore = (function() {
         const inst = _instrumentsMap.get(tag);
         if (!inst) return _notifyUI("Instrumento " + tag + " no encontrado.", true);
         Object.assign(inst, datos);
-        // Recalcular ISA si cambió tipo o ubicación
         if (datos.type || datos.location) {
             inst.isaSymbol = getIsaSymbol(inst.type, inst.location);
         }
-        this._saveState();
+        _saveState();
         emit('modelChanged', { type: 'updateInstrument', tag: tag });
         return true;
     }
@@ -713,10 +634,9 @@ const SmartFlowCore = (function() {
     function removeInstrument(tag) {
         const inst = _instrumentsMap.get(tag);
         if (!inst) return _notifyUI("Instrumento " + tag + " no encontrado.", true);
-        this._saveState();
+        _saveState();
         _db.instruments = _db.instruments.filter(function(i) { return i.tag !== tag; });
         _instrumentsMap.delete(tag);
-        // Limpiar referencia en la línea
         if (inst.lineTag && _linesMap.has(inst.lineTag)) {
             const line = _linesMap.get(inst.lineTag);
             if (line.components) {
@@ -732,7 +652,7 @@ const SmartFlowCore = (function() {
     function getInstrumentByTag(tag) { return _instrumentsMap.get(tag) || null; }
 
     // ================================================================
-    //  LOOPS (DTI - Lazos de Control)
+    //  LOOPS (DTI)
     // ================================================================
     
     function addLoop(loopData) {
@@ -754,7 +674,7 @@ const SmartFlowCore = (function() {
         
         _db.loops.push(loop);
         _loopsMap.set(loop.tag, loop);
-        this._saveState();
+        _saveState();
         _notifyUI("Lazo " + loop.tag + ": " + loop.sensor + " → " + loop.controller + " → " + loop.valve, false);
         emit('modelChanged', { type: 'addLoop', tag: loop.tag });
         return true;
@@ -764,14 +684,14 @@ const SmartFlowCore = (function() {
         const loop = _loopsMap.get(tag);
         if (!loop) return _notifyUI("Lazo " + tag + " no encontrado.", true);
         Object.assign(loop, datos);
-        this._saveState();
+        _saveState();
         emit('modelChanged', { type: 'updateLoop', tag: tag });
         return true;
     }
     
     function removeLoop(tag) {
         if (!_loopsMap.has(tag)) return _notifyUI("Lazo " + tag + " no encontrado.", true);
-        this._saveState();
+        _saveState();
         _db.loops = _db.loops.filter(function(l) { return l.tag !== tag; });
         _loopsMap.delete(tag);
         _notifyUI("Lazo " + tag + " eliminado.", false);
@@ -783,7 +703,7 @@ const SmartFlowCore = (function() {
     function getLoopByTag(tag) { return _loopsMap.get(tag) || null; }
 
     // ================================================================
-    //  INLINE ASSETS (Activos en línea - Válvulas, Filtros, etc.)
+    //  INLINE ASSETS
     // ================================================================
     
     function addInlineAsset(assetData) {
@@ -848,7 +768,7 @@ const SmartFlowCore = (function() {
             description: newAsset.type + ' ' + newAsset.tag
         });
         
-        this._saveState();
+        _saveState();
         _notifyUI("Activo inline " + newAsset.tag + " (" + newAsset.type + ") insertado en " + assetData.lineTag, false);
         emit('modelChanged', { type: 'addInlineAsset', tag: newAsset.tag });
         return true;
@@ -865,7 +785,7 @@ const SmartFlowCore = (function() {
             return _notifyUI("No se puede eliminar: " + linkedInstruments.length + " instrumento(s) vinculado(s).", true);
         }
         
-        this._saveState();
+        _saveState();
         
         if (asset.lineTag && _linesMap.has(asset.lineTag)) {
             const line = _linesMap.get(asset.lineTag);
@@ -960,7 +880,7 @@ const SmartFlowCore = (function() {
         _selectedElement = null;
         _history = { past: [], future: [], maxSize: 50 };
         rebuildIndexes();
-        this._saveState();
+        _saveState();
         _renderUI();
         _notifyUI("Nuevo proyecto creado.", false);
         emit('modelChanged', { type: 'newProject' });
@@ -977,7 +897,7 @@ const SmartFlowCore = (function() {
         if (data.project) _db.project = data.project;
         _selectedElement = null;
         rebuildIndexes();
-        this._saveState();
+        _saveState();
         syncPhysicalData();
         _renderUI();
         _notifyUI("Proyecto importado correctamente.", false);
@@ -998,7 +918,7 @@ const SmartFlowCore = (function() {
     }
 
     // ================================================================
-    //  CRUD DE EQUIPOS Y LÍNEAS (Existente v5.6)
+    //  CRUD DE EQUIPOS Y LÍNEAS
     // ================================================================
     
     function addEquipment(equipo) {
@@ -1009,10 +929,15 @@ const SmartFlowCore = (function() {
             if (!p.flow) p.flow = 'bi'; 
             if (!p.constraints) p.constraints = { spec: equipo.spec || 'STD', diametro: p.diametro || 3 }; 
         });
+        // v7.1: Asegurar propiedad allowsMassAccumulation
+        if (equipo.allowsMassAccumulation === undefined) {
+            const accumulatingTypes = ['tanque_v', 'tanque_h', 'tanque_acero', 'tanque_aseptico'];
+            equipo.allowsMassAccumulation = accumulatingTypes.includes(equipo.tipo);
+        }
         _db.equipos.push(equipo);
         _equiposMap.set(equipo.tag, equipo);
         _allObjectsMap.set(equipo.tag, equipo);
-        this._saveState();
+        _saveState();
         _notifyUI("Equipo " + equipo.tag + " añadido.", false);
         _renderUI();
         emit('modelChanged', { type: 'addEquipment', tag: equipo.tag });
@@ -1046,7 +971,7 @@ const SmartFlowCore = (function() {
         _db.lines.push(linea);
         _linesMap.set(linea.tag, linea);
         _allObjectsMap.set(linea.tag, linea);
-        this._saveState();
+        _saveState();
         _notifyUI("Línea " + linea.tag + " creada correctamente.", false);
         _renderUI();
         emit('modelChanged', { type: 'addLine', tag: linea.tag });
@@ -1058,7 +983,7 @@ const SmartFlowCore = (function() {
         if (!eq) return _notifyUI("Equipo " + tag + " no encontrado.", true);
         Object.assign(eq, datos);
         syncPhysicalData();
-        this._saveState();
+        _saveState();
         _renderUI();
         emit('modelChanged', { type: 'updateEquipment', tag: tag });
         return true;
@@ -1068,7 +993,7 @@ const SmartFlowCore = (function() {
         const line = _linesMap.get(tag);
         if (!line) return _notifyUI("Línea " + tag + " no encontrada.", true);
         Object.assign(line, datos);
-        this._saveState();
+        _saveState();
         _renderUI();
         emit('modelChanged', { type: 'updateLine', tag: tag });
         return true;
@@ -1089,7 +1014,7 @@ const SmartFlowCore = (function() {
             return false;
         }
         
-        this._saveState();
+        _saveState();
         _db.equipos = _db.equipos.filter(function(e) { return e.tag !== tag; });
         rebuildIndexes();
         syncPhysicalData();
@@ -1114,7 +1039,7 @@ const SmartFlowCore = (function() {
             return false;
         }
         
-        this._saveState();
+        _saveState();
         _db.lines = _db.lines.filter(function(l) { return l.tag !== tag; });
         rebuildIndexes();
         syncPhysicalData();
@@ -1163,12 +1088,8 @@ const SmartFlowCore = (function() {
             tag: teeTag,
             type: (config && config.type) || 'TEE_EQUAL',
             posX: point.x, posY: point.y, posZ: point.z,
-            diametro: line.diameter,
-            material: line.material,
-            spec: line.spec,
-            lineTag: lineTag,
-            position: 0.5,
-            status: 'inline',
+            diametro: line.diameter, material: line.material, spec: line.spec,
+            lineTag: lineTag, position: 0.5, status: 'inline',
             puertos: [
                 { id: 'P1', relX: -dirUnit.dx*100, relY: -dirUnit.dy*100, relZ: -dirUnit.dz*100, orientacion: { dx: -dirUnit.dx, dy: -dirUnit.dy, dz: -dirUnit.dz }, status: 'connected', diametro: line.diameter, flow: 'in', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
                 { id: 'P2', relX: dirUnit.dx*100, relY: dirUnit.dy*100, relZ: dirUnit.dz*100, orientacion: { dx: dirUnit.dx, dy: dirUnit.dy, dz: dirUnit.dz }, status: 'connected', diametro: line.diameter, flow: 'out', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
@@ -1186,7 +1107,7 @@ const SmartFlowCore = (function() {
         if (!line.components) line.components = [];
         line.components.push({ type: nuevoTee.type, tag: nuevoTee.tag, param: 0.5 });
         
-        this._saveState();
+        _saveState();
         syncPhysicalData();
         _renderUI();
         _notifyUI("Línea " + lineTag + " dividida. Tee " + teeTag + " insertado.", false);
@@ -1195,17 +1116,16 @@ const SmartFlowCore = (function() {
     }
 
     // ================================================================
-    //  API PÚBLICA COMPLETA
+    //  API PÚBLICA
     // ================================================================
     
     return {
-        // Inicialización
         init: function(notifyFn, renderFn, propertyPanelFn) {
             _notifyUI = notifyFn || _notifyUI;
             _renderUI = renderFn || _renderUI;
             _onSelectionChanged = propertyPanelFn || (function() {});
             rebuildIndexes();
-            this._saveState();
+            _saveState();
         },
         
         on, off, emit,
@@ -1213,13 +1133,11 @@ const SmartFlowCore = (function() {
         syncPhysicalData,
         _saveState,
         
-        // Equipos
         addEquipment,
         updateEquipment,
         removeEquipment,
         getEquipos: function() { return _db.equipos; },
         
-        // Líneas
         addLine,
         updateLine,
         removeLine,
@@ -1227,7 +1145,6 @@ const SmartFlowCore = (function() {
         getLinePoints,
         splitLine,
         
-        // Streams (PFD)
         addStream,
         updateStream,
         removeStream,
@@ -1235,27 +1152,23 @@ const SmartFlowCore = (function() {
         getStreams,
         getStreamByTag,
         
-        // Instruments (DTI)
         addInstrument,
         updateInstrument,
         removeInstrument,
         getInstruments,
         getInstrumentByTag,
         
-        // Loops (DTI)
         addLoop,
         updateLoop,
         removeLoop,
         getLoops,
         getLoopByTag,
         
-        // Inline Assets
         addInlineAsset,
         removeInlineAsset,
         getInlineAssets,
         getInlineAssetByTag,
         
-        // Utilidades
         findObjectByTag,
         getObjectPosition,
         getAbsolutePosition,
@@ -1263,13 +1176,11 @@ const SmartFlowCore = (function() {
         checkCompatibility,
         getIsaSymbol,
         
-        // Auditoría
         auditPFDIntegrity,
         auditMassBalance,
         runAllAudits,
         auditModel: function() { return runAllAudits().report; },
         
-        // Estado
         undo,
         redo,
         nuevoProyecto,
@@ -1280,7 +1191,11 @@ const SmartFlowCore = (function() {
         getDb: function() { return _db; },
         getSpecs: function() { return Object.keys(_db.specs); },
         
-        // Índices
+        setElevation: function(level) { _currentElevation = level; },
+        getElevation: function() { return _currentElevation; },
+        setVoice: function(enabled) { _voiceEnabled = enabled; },
+        isVoiceEnabled: function() { return _voiceEnabled; },
+        
         get equiposMap() { return _equiposMap; },
         get linesMap() { return _linesMap; },
         get allObjectsMap() { return _allObjectsMap; },
