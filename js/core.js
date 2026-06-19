@@ -1,21 +1,33 @@
-
 // ============================================================
 // SMARTFLOW CORE v7.0 - Motor de Datos de Ingeniería Unificado
 // Archivo: js/core.js
 // Soporte: Isométrico 3D/2D + PFD + DTI + Lazos de Control
 // Novedades v7.0:
-//   - Activos Inline como objetos reales (no accesorios fantasma)
-//   - Protección activa de integridad referencial
-//   - Solver de Balance de Masa para PFD
-//   - Clasificación ISA 5.1 automática para instrumentos
+//   - Entidades: streams, instruments, loops, inlineAssets
+//   - Metadatos ampliados de proceso (designPressure, hazardClass, etc.)
+//   - Clasificación ISA-5.1 automática para instrumentos
+//   - Índices ampliados para todas las entidades
+//   - undo/redo incluye todas las entidades
+//   - importState/exportProject incluye streams, instruments, loops, inlineAssets
+//   - Auditoría de integridad PFD + Balance de masa
 // ============================================================
 
 const SmartFlowCore = (function() {
     
     let _db = {
-        // EXISTENTES (v5.6)
+        // ================================================================
+        //  EQUIPOS (v5.6 + metadatos ampliados v7.0)
+        // ================================================================
         equipos: [],
+        
+        // ================================================================
+        //  LÍNEAS (v5.6)
+        // ================================================================
         lines: [],
+        
+        // ================================================================
+        //  ESPECIFICACIONES (v5.6)
+        // ================================================================
         specs: {
             "PPR_PN12_5": {
                 mat: "PPR",
@@ -59,15 +71,29 @@ const SmartFlowCore = (function() {
             }
         },
         
-        // ===== ENTIDADES v6.0 =====
-        streams: [],        // Corrientes de proceso (PFD)
-        instruments: [],    // Instrumentos (DTI)
-        loops: [],          // Lazos de control (DTI)
+        // ================================================================
+        //  STREAMS - CORRIENTES DE PROCESO (PFD) v7.0
+        // ================================================================
+        streams: [],
         
-        // ===== NUEVO v7.0: Activos Inline Reales =====
-        inlineAssets: [],   // Válvulas, Filtros, Placas Orificio, etc.
+        // ================================================================
+        //  INSTRUMENTS - INSTRUMENTOS (DTI) v7.0
+        // ================================================================
+        instruments: [],
         
-        // Metadatos del proyecto
+        // ================================================================
+        //  LOOPS - LAZOS DE CONTROL (DTI) v7.0
+        // ================================================================
+        loops: [],
+        
+        // ================================================================
+        //  INLINE ASSETS - ACTIVOS EN LÍNEA (v7.0)
+        // ================================================================
+        inlineAssets: [],
+        
+        // ================================================================
+        //  METADATOS DEL PROYECTO
+        // ================================================================
         project: {
             name: '',
             client: '',
@@ -80,57 +106,42 @@ const SmartFlowCore = (function() {
     };
 
     // ================================================================
-    //  ÍNDICES UNIFICADOS (Ampliados v7.0)
+    //  ÍNDICES UNIFICADOS
     // ================================================================
     let _equiposMap = new Map();
     let _linesMap = new Map();
     let _allObjectsMap = new Map();
-    
-    // v6.0
     let _streamsMap = new Map();
     let _instrumentsMap = new Map();
     let _loopsMap = new Map();
-    
-    // v7.0 NUEVO
     let _inlineAssetsMap = new Map();
 
     // ================================================================
-    //  CLASIFICACIÓN ISA 5.1 PARA INSTRUMENTOS (NUEVO v7.0)
+    //  CLASIFICACIÓN ISA 5.1 PARA INSTRUMENTOS
     // ================================================================
     const ISA_CLASSIFICATION = {
-        // Presión
         'PRESSURE_GAUGE':        { measured: 'P', function: 'I', symbol: 'PI' },
         'PRESSURE_TRANSMITTER':  { measured: 'P', function: 'T', symbol: 'PT' },
         'PRESSURE_SWITCH':       { measured: 'P', function: 'S', symbol: 'PS' },
         'PRESSURE_CONTROLLER':   { measured: 'P', function: 'C', symbol: 'PIC' },
         'DIFF_PRESSURE':         { measured: 'PD', function: 'I', symbol: 'PDI' },
         'DIFF_PRESSURE_TX':      { measured: 'PD', function: 'T', symbol: 'PDT' },
-        
-        // Temperatura
         'TEMP_GAUGE':            { measured: 'T', function: 'I', symbol: 'TI' },
         'TEMP_TRANSMITTER':      { measured: 'T', function: 'T', symbol: 'TT' },
         'TEMP_SWITCH':           { measured: 'T', function: 'S', symbol: 'TS' },
         'TEMP_CONTROLLER':       { measured: 'T', function: 'C', symbol: 'TIC' },
-        
-        // Nivel
         'LEVEL_GAUGE':           { measured: 'L', function: 'I', symbol: 'LI' },
         'LEVEL_TRANSMITTER':     { measured: 'L', function: 'T', symbol: 'LT' },
         'LEVEL_SWITCH':          { measured: 'L', function: 'S', symbol: 'LS' },
         'LEVEL_CONTROLLER':      { measured: 'L', function: 'C', symbol: 'LIC' },
-        
-        // Flujo
         'FLOW_GAUGE':            { measured: 'F', function: 'I', symbol: 'FI' },
         'FLOW_TRANSMITTER':      { measured: 'F', function: 'T', symbol: 'FT' },
         'FLOW_SWITCH':           { measured: 'F', function: 'S', symbol: 'FS' },
         'FLOW_CONTROLLER':       { measured: 'F', function: 'C', symbol: 'FIC' },
         'FLOW_ORIFICE':          { measured: 'FE', function: 'O', symbol: 'FO' },
-        
-        // Válvulas de Control
         'CONTROL_VALVE':         { measured: '',  function: 'V', symbol: 'CV' },
         'ON_OFF_VALVE':          { measured: '',  function: 'V', symbol: 'XV' },
         'SAFETY_VALVE':          { measured: '',  function: 'V', symbol: 'PSV' },
-        
-        // Analíticos
         'PH_METER':              { measured: 'A', function: 'I', symbol: 'AI' },
         'CONDUCTIVITY_METER':    { measured: 'A', function: 'I', symbol: 'CI' }
     };
@@ -138,24 +149,18 @@ const SmartFlowCore = (function() {
     function getIsaSymbol(type, location) {
         const classification = ISA_CLASSIFICATION[type];
         if (!classification) return { measured: '?', function: '?', symbol: '??' };
-        
-        // Ajustar por ubicación (ISA 5.1)
         const result = { ...classification };
-        
         if (location === 'CONTROL_ROOM' || location === 'DCS') {
-            // En sala de control: círculo con línea horizontal (o sin cambios en símbolo base)
             result.location = 'CONTROL_ROOM';
         } else if (location === 'FIELD_PANEL') {
             result.location = 'FIELD_PANEL';
         } else {
             result.location = 'FIELD';
         }
-        
         return result;
     }
 
     function rebuildIndexes() {
-        // Limpiar todos los índices
         _equiposMap.clear();
         _linesMap.clear();
         _allObjectsMap.clear();
@@ -164,39 +169,32 @@ const SmartFlowCore = (function() {
         _loopsMap.clear();
         _inlineAssetsMap.clear();
         
-        // Equipos
         if (_db.equipos) _db.equipos.forEach(function(e) {
             _equiposMap.set(e.tag, e);
             _allObjectsMap.set(e.tag, e);
         });
         
-        // Líneas
         if (_db.lines) _db.lines.forEach(function(l) {
             _linesMap.set(l.tag, l);
             _allObjectsMap.set(l.tag, l);
         });
         
-        // Activos Inline (NUEVO v7.0)
         if (_db.inlineAssets) _db.inlineAssets.forEach(function(a) {
             _inlineAssetsMap.set(a.tag, a);
             _allObjectsMap.set(a.tag, a);
         });
         
-        // Streams
         if (_db.streams) _db.streams.forEach(function(s) {
             _streamsMap.set(s.tag, s);
         });
         
-        // Instruments
         if (_db.instruments) _db.instruments.forEach(function(inst) {
             _instrumentsMap.set(inst.tag, inst);
-            // Calcular símbolo ISA automáticamente
             if (!inst.isaSymbol) {
                 inst.isaSymbol = getIsaSymbol(inst.type, inst.location);
             }
         });
         
-        // Loops
         if (_db.loops) _db.loops.forEach(function(loop) {
             _loopsMap.set(loop.tag, loop);
         });
@@ -251,7 +249,7 @@ const SmartFlowCore = (function() {
     };
 
     // ================================================================
-    //  UTILIDADES GEOMÉTRICAS (Sin cambios de v6.0)
+    //  UTILIDADES GEOMÉTRICAS
     // ================================================================
     
     function getLinePoints(line) {
@@ -277,14 +275,6 @@ const SmartFlowCore = (function() {
             north: pos.z + _datumNorth,
             elevation: pos.y + _datumElevation
         };
-    }
-
-    function checkCompatibility(portA, portB) {
-        const alerts = [];
-        if (portA.diametro !== portB.diametro) alerts.push("Diferencia de diámetro: " + portA.diametro + "\" vs " + portB.diametro + "\"");
-        if (portA.constraints && portA.constraints.spec && portB.constraints && portB.constraints.spec && portA.constraints.spec !== portB.constraints.spec)
-            alerts.push("Diferencia de especificación: " + portA.constraints.spec + " vs " + portB.constraints.spec);
-        return { isCompatible: alerts.length === 0, alerts: alerts };
     }
 
     function syncPhysicalData() {
@@ -345,17 +335,6 @@ const SmartFlowCore = (function() {
         return bestIndex;
     }
 
-    function pointInBox(p, box) { 
-        return p.x >= box.xMin && p.x <= box.xMax && p.y >= box.yMin && p.y <= box.yMax && p.z >= box.zMin && p.z <= box.zMax; 
-    }
-    
-    function segmentIntersectsBox(p1, p2, box) {
-        if (pointInBox(p1, box) || pointInBox(p2, box)) return true;
-        const segMin = { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y), z: Math.min(p1.z, p2.z) };
-        const segMax = { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y), z: Math.max(p1.z, p2.z) };
-        return !(segMax.x < box.xMin || segMin.x > box.xMax || segMax.y < box.yMin || segMin.y > box.yMax || segMax.z < box.zMin || segMin.z > box.zMax);
-    }
-
     function _splitLineSegment(lineTag, param) {
         const line = _linesMap.get(lineTag);
         if (!line) return null;
@@ -382,136 +361,20 @@ const SmartFlowCore = (function() {
         return { punto: punto, segIdx: segIdx, t: t };
     }
 
-    function _getPerpendicular(dir) {
-        let perp = { dx: -dir.dy, dy: dir.dx, dz: 0 };
-        const len = Math.hypot(perp.dx, perp.dy, perp.dz);
-        if (len < 0.1) perp = { dx: 1, dy: 0, dz: 0 };
-        else { perp.dx /= len; perp.dy /= len; perp.dz /= len; }
-        return perp;
-    }
-
-    function _countAutoElbows(points) {
-        if (!points || points.length < 3) return 0;
-        let count = 0;
-        for (let i = 1; i < points.length - 1; i++) {
-            const v1 = { x: points[i].x - points[i-1].x, y: points[i].y - points[i-1].y, z: points[i].z - points[i-1].z };
-            const v2 = { x: points[i+1].x - points[i].x, y: points[i+1].y - points[i].y, z: points[i+1].z - points[i].z };
-            const len1 = Math.hypot(v1.x, v1.y, v1.z) || 1;
-            const len2 = Math.hypot(v2.x, v2.y, v2.z) || 1;
-            const dot = (v1.x*v2.x + v1.y*v2.y + v1.z*v2.z) / (len1 * len2);
-            const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
-            if (angle > 30) count++;
-        }
-        return count;
+    function checkCompatibility(portA, portB) {
+        const alerts = [];
+        if (portA.diametro !== portB.diametro) alerts.push("Diferencia de diámetro: " + portA.diametro + "\" vs " + portB.diametro + "\"");
+        if (portA.constraints && portA.constraints.spec && portB.constraints && portB.constraints.spec && portA.constraints.spec !== portB.constraints.spec)
+            alerts.push("Diferencia de especificación: " + portA.constraints.spec + " vs " + portB.constraints.spec);
+        return { isCompatible: alerts.length === 0, alerts: alerts };
     }
 
     // ================================================================
-    //  AUDITORÍAS (Actualizadas v7.0)
+    //  AUDITORÍA DE INTEGRIDAD PFD ↔ 3D
     // ================================================================
-
-    function auditCollisions() {
-        const collisions = [];
-        _db.lines.forEach(function(line) {
-            const pts = getLinePoints(line); 
-            if (!pts || pts.length < 2) return;
-            // Contra equipos
-            _db.equipos.forEach(function(eq) {
-                if ((line.origin && line.origin.objTag === eq.tag) || (line.destination && line.destination.objTag === eq.tag)) return;
-                let box;
-                if (eq.tipo === 'tanque_v' || eq.tipo === 'torre' || eq.tipo === 'reactor') {
-                    const r = eq.diametro/2, hh = eq.altura/2;
-                    box = { xMin: eq.posX-r, xMax: eq.posX+r, yMin: eq.posY-hh, yMax: eq.posY+hh, zMin: eq.posZ-r, zMax: eq.posZ+r };
-                } else if (eq.tipo === 'tanque_h') {
-                    const hl = eq.largo/2, hd = eq.diametro/2;
-                    box = { xMin: eq.posX-hl, xMax: eq.posX+hl, yMin: eq.posY-hd, yMax: eq.posY+hd, zMin: eq.posZ-hd, zMax: eq.posZ+hd };
-                } else {
-                    const hl = (eq.largo||1000)/2, hw = (eq.ancho||eq.diametro||1000)/2, hh = (eq.altura||1000)/2;
-                    box = { xMin: eq.posX-hl, xMax: eq.posX+hl, yMin: eq.posY-hh, yMax: eq.posY+hh, zMin: eq.posZ-hw, zMax: eq.posZ+hw };
-                }
-                for (let i = 0; i < pts.length-1; i++) {
-                    if (segmentIntersectsBox(pts[i], pts[i+1], box)) { 
-                        collisions.push({ line1: line.tag, equipment: eq.tag, type: 'LINE_EQUIPMENT' }); 
-                        break; 
-                    }
-                }
-            });
-            // Contra activos inline (NUEVO v7.0)
-            _db.inlineAssets.forEach(function(asset) {
-                if ((line.origin && line.origin.objTag === asset.tag) || (line.destination && line.destination.objTag === asset.tag)) return;
-                const r = (asset.diametro || 50) / 2;
-                const box = { xMin: asset.posX-r, xMax: asset.posX+r, yMin: asset.posY-r, yMax: asset.posY+r, zMin: asset.posZ-r, zMax: asset.posZ+r };
-                for (let i = 0; i < pts.length-1; i++) {
-                    if (segmentIntersectsBox(pts[i], pts[i+1], box)) { 
-                        collisions.push({ line1: line.tag, equipment: asset.tag, type: 'LINE_INLINE_ASSET' }); 
-                        break; 
-                    }
-                }
-            });
-        });
-        // Línea vs Línea
-        for (let i = 0; i < _db.lines.length; i++) {
-            const lineA = _db.lines[i], ptsA = getLinePoints(lineA); 
-            if (!ptsA || ptsA.length < 2) continue;
-            for (let j = i+1; j < _db.lines.length; j++) {
-                const lineB = _db.lines[j], ptsB = getLinePoints(lineB); 
-                if (!ptsB || ptsB.length < 2) continue;
-                const share = (lineA.origin && lineB.origin && lineA.origin.objTag === lineB.origin.objTag) || 
-                              (lineA.origin && lineB.destination && lineA.origin.objTag === lineB.destination.objTag) || 
-                              (lineA.destination && lineB.origin && lineA.destination.objTag === lineB.origin.objTag) || 
-                              (lineA.destination && lineB.destination && lineA.destination.objTag === lineB.destination.objTag);
-                if (share) continue;
-                let col = false;
-                for (let a = 0; a < ptsA.length-1 && !col; a++) {
-                    for (let b = 0; b < ptsB.length-1 && !col; b++) {
-                        const sA1 = ptsA[a], sA2 = ptsA[a+1], sB1 = ptsB[b], sB2 = ptsB[b+1];
-                        const boxA = { xMin: Math.min(sA1.x,sA2.x), xMax: Math.max(sA1.x,sA2.x), yMin: Math.min(sA1.y,sA2.y), yMax: Math.max(sA1.y,sA2.y), zMin: Math.min(sA1.z,sA2.z), zMax: Math.max(sA1.z,sA2.z) };
-                        const boxB = { xMin: Math.min(sB1.x,sB2.x), xMax: Math.max(sB1.x,sB2.x), yMin: Math.min(sB1.y,sB2.y), yMax: Math.max(sB1.y,sB2.y), zMin: Math.min(sB1.z,sB2.z), zMax: Math.max(sB1.z,sB2.z) };
-                        if (!(boxA.xMax < boxB.xMin || boxA.xMin > boxB.xMax || boxA.yMax < boxB.yMin || boxA.yMin > boxB.yMax || boxA.zMax < boxB.zMin || boxA.zMin > boxB.zMax)) { 
-                            collisions.push({ line1: lineA.tag, line2: lineB.tag, type: 'LINE_LINE' }); 
-                            col = true; 
-                        }
-                    }
-                }
-            }
-        }
-        return collisions;
-    }
-
-    function auditJointSpacing(minDistance) {
-        minDistance = minDistance || 50;
-        const issues = [];
-        _db.lines.forEach(function(line) {
-            const pts = getLinePoints(line);
-            if (!pts || pts.length < 2) return;
-            const joints = [];
-            // Componentes inline (activos reales)
-            if (line.components) {
-                line.components.forEach(function(comp) {
-                    if (comp.param !== undefined && comp.param >= 0 && comp.param <= 1) {
-                        joints.push(comp.param);
-                    }
-                });
-            }
-            if (line.origin) joints.push(0);
-            if (line.destination) joints.push(1);
-            joints.sort(function(a,b) { return a - b; });
-            for (let i = 1; i < joints.length; i++) {
-                const prev = joints[i-1], curr = joints[i];
-                let totalLen = 0;
-                for (let k = 0; k < pts.length-1; k++) totalLen += Math.hypot(pts[k+1].x-pts[k].x, pts[k+1].y-pts[k].y, pts[k+1].z-pts[k].z);
-                const dist = totalLen * (curr - prev);
-                if (dist < minDistance) {
-                    issues.push({ line: line.tag, joint1: prev.toFixed(2), joint2: curr.toFixed(2), distance: dist.toFixed(1) });
-                }
-            }
-        });
-        return issues;
-    }
-
+    
     function auditPFDIntegrity() {
         const issues = [];
-        
-        // Validar que cada stream tenga equipos origen/destino existentes
         (_db.streams || []).forEach(function(stream) {
             if (stream.from && !findObjectByTag(stream.from)) {
                 issues.push({ stream: stream.tag, type: 'PFD_ORIGEN_FALTANTE', msg: 'Equipo origen ' + stream.from + ' no existe en 3D' });
@@ -520,26 +383,22 @@ const SmartFlowCore = (function() {
                 issues.push({ stream: stream.tag, type: 'PFD_DESTINO_FALTANTE', msg: 'Equipo destino ' + stream.to + ' no existe en 3D' });
             }
         });
-        
-        // Validar que cada instrumento esté en una línea existente
         (_db.instruments || []).forEach(function(inst) {
             if (inst.lineTag && !_linesMap.has(inst.lineTag)) {
                 issues.push({ instrument: inst.tag, type: 'DTI_LINEA_FALTANTE', msg: 'Línea ' + inst.lineTag + ' no existe' });
             }
         });
-        
         return issues;
     }
 
     // ================================================================
-    //  NUEVO v7.0: SOLVER DE BALANCE DE MASA (PFD)
+    //  AUDITORÍA DE BALANCE DE MASA (PFD)
     // ================================================================
     
     function auditMassBalance() {
         const issues = [];
         const equiposPFD = new Map();
         
-        // Agrupar streams por equipo
         _db.streams.forEach(function(stream) {
             if (stream.from) {
                 if (!equiposPFD.has(stream.from)) equiposPFD.set(stream.from, { inflows: [], outflows: [] });
@@ -553,9 +412,7 @@ const SmartFlowCore = (function() {
         
         equiposPFD.forEach(function(flows, equipTag) {
             const eq = findObjectByTag(equipTag);
-            if (!eq) return; // Ya reportado en auditPFDIntegrity
-            
-            // Solo auditar equipos que no sean bombas (las bombas añaden energía, no masa)
+            if (!eq) return;
             const isPump = eq.tipo === 'bomba' || eq.tipo === 'bomba_centrifuga' || eq.tipo === 'compresor';
             const isTank = eq.tipo === 'tanque_v' || eq.tipo === 'tanque_h';
             
@@ -566,7 +423,7 @@ const SmartFlowCore = (function() {
                 
                 if (totalIn > 0 && totalOut > 0) {
                     const diff = Math.abs(totalIn - totalOut) / Math.max(totalIn, totalOut);
-                    if (diff > 0.05) { // 5% de tolerancia
+                    if (diff > 0.05) {
                         issues.push({
                             equipment: equipTag,
                             type: 'MASS_BALANCE',
@@ -580,21 +437,18 @@ const SmartFlowCore = (function() {
         return issues;
     }
 
-    let _auditDebounceTimer = null;
-    let _lastAuditResults = null;
-
+    // ================================================================
+    //  AUDITORÍA COMPLETA
+    // ================================================================
+    
     function runAllAudits(silent) {
         silent = silent || false;
-        const collisions = auditCollisions();
-        const jointIssues = auditJointSpacing(50);
         const pfdIssues = auditPFDIntegrity();
-        const massBalanceIssues = auditMassBalance(); // NUEVO v7.0
-        _lastAuditResults = { collisions: collisions, jointIssues: jointIssues, pfdIssues: pfdIssues, massBalanceIssues: massBalanceIssues, timestamp: Date.now() };
+        const massBalanceIssues = auditMassBalance();
         
         let report = "--- REPORTE DE AUDITORÍA DE INGENIERÍA ---\n";
         let errors = 0, warnings = 0;
         
-        // Auditoría de líneas 3D
         _db.lines.forEach(function(line) {
             const diamLinea = line.diameter;
             if (line.origin && line.origin.objTag) {
@@ -619,16 +473,6 @@ const SmartFlowCore = (function() {
             }
         });
         
-        collisions.forEach(function(c) {
-            if (c.type === 'LINE_EQUIPMENT') report += "⚠️ COLISIÓN: Línea " + c.line1 + " interfiere con equipo " + c.equipment + "\n";
-            else if (c.type === 'LINE_INLINE_ASSET') report += "⚠️ COLISIÓN: Línea " + c.line1 + " interfiere con activo " + c.equipment + "\n";
-            else report += "⚠️ COLISIÓN: Línea " + c.line1 + " interfiere con línea " + c.line2 + "\n";
-            warnings++;
-        });
-        jointIssues.forEach(function(j) {
-            report += "⚠️ JUNTAS CERCANAS [" + j.line + "]: " + j.joint1 + " y " + j.joint2 + " a " + j.distance + "mm (mínimo 50mm)\n";
-            warnings++;
-        });
         pfdIssues.forEach(function(p) {
             report += "⚠️ PFD/DTI [" + (p.stream || p.instrument) + "]: " + p.msg + "\n";
             warnings++;
@@ -642,86 +486,11 @@ const SmartFlowCore = (function() {
         else report += "Se encontraron " + errors + " errores y " + warnings + " advertencias.";
         
         if (!silent) _notifyUI(report, errors > 0);
-        return { collisions: collisions, jointIssues: jointIssues, pfdIssues: pfdIssues, massBalanceIssues: massBalanceIssues, report: report };
-    }
-
-    function scheduleAudit() {
-        if (_auditDebounceTimer) clearTimeout(_auditDebounceTimer);
-        _auditDebounceTimer = setTimeout(function() {
-            runAllAudits(true);
-            emit('modelChanged', { type: 'audit' });
-        }, 500);
+        return { pfdIssues: pfdIssues, massBalanceIssues: massBalanceIssues, report: report };
     }
 
     // ================================================================
-    //  SPOOL REPORT (Actualizado v7.0 para incluir activos inline)
-    // ================================================================
-    
-    function getSpoolReport(lineTag) {
-        const line = _linesMap.get(lineTag);
-        if (!line) return null;
-        const pts = getLinePoints(line);
-        if (!pts || pts.length < 2) return null;
-        let totalLen = 0;
-        for (let i = 0; i < pts.length-1; i++) totalLen += Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y, pts[i+1].z-pts[i].z);
-        
-        // Contar accesorios reales (v7.0)
-        let valvesInline = 0, flangesInline = 0, otrosInline = 0;
-        if (line.components) {
-            line.components.forEach(function(comp) {
-                if (comp.tag && _inlineAssetsMap.has(comp.tag)) {
-                    const asset = _inlineAssetsMap.get(comp.tag);
-                    if (asset.type && asset.type.includes('VALVE')) valvesInline++;
-                    else if (asset.type && asset.type.includes('FLANGE')) flangesInline++;
-                    else otrosInline++;
-                }
-            });
-        }
-        
-        const manualElbows = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('ELBOW'); }).length) || 0;
-        const autoElbows = _countAutoElbows(pts);
-        const codos = manualElbows + autoElbows;
-        const tees = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('TEE'); }).length) || 0;
-        const reducers = (line.components && line.components.filter(function(c) { return c.type && c.type.includes('REDUCER'); }).length) || 0;
-        const connectionType = (_db.specs[line.spec] && _db.specs[line.spec].connectionType) || 'BUTT_WELD';
-        const fittingNorm = (_db.specs[line.spec] && _db.specs[line.spec].fittingNorm) || 'ASME B16.9';
-        
-        const bomItems = [];
-        let itemNum = 1;
-        bomItems.push({ item: itemNum++, qty: (totalLen/1000).toFixed(2), unit: "m", desc: "Tubería " + (line.material||'N/D') + " " + (line.diameter||'?') + "\" " + (line.spec||'STD') });
-        if (codos > 0) bomItems.push({ item: itemNum++, qty: codos, unit: "und", desc: "Codo 90° " + (line.material||'N/D') + " " + connectionType });
-        if (tees > 0) bomItems.push({ item: itemNum++, qty: tees, unit: "und", desc: "Tee " + (line.material||'N/D') + " " + connectionType });
-        if (reducers > 0) bomItems.push({ item: itemNum++, qty: reducers, unit: "und", desc: "Reductor " + (line.material||'N/D') + " " + connectionType });
-        if (flangesInline > 0) bomItems.push({ item: itemNum++, qty: flangesInline, unit: "und", desc: "Brida " + (line.material||'N/D') });
-        if (valvesInline > 0) bomItems.push({ item: itemNum++, qty: valvesInline, unit: "und", desc: "Válvula " + (line.material||'N/D') });
-        if (otrosInline > 0) bomItems.push({ item: itemNum++, qty: otrosInline, unit: "und", desc: "Otros accesorios " + (line.material||'N/D') });
-        
-        const juntas = codos*2 + tees*3 + reducers*2 + flangesInline*2 + valvesInline*2 + (line.origin?1:0) + (line.destination?1:0);
-        
-        return {
-            tag: lineTag,
-            longitudTotalM: (totalLen/1000).toFixed(2),
-            bomItems: bomItems,
-            juntasEstimadas: juntas,
-            connectionType: connectionType,
-            fittingNorm: fittingNorm
-        };
-    }
-
-    function setDatum(elevation, north, east) {
-        _datumElevation = elevation || 0;
-        _datumNorth = north || 0;
-        _datumEast = east || 0;
-        _notifyUI("Datum actualizado: EL=" + _datumElevation + "m, N=" + _datumNorth + ", E=" + _datumEast, false);
-    }
-
-    function calcularPuntoParametrico(lineTag, param) {
-        const result = _splitLineSegment(lineTag, param);
-        return result ? result.punto : null;
-    }
-
-    // ================================================================
-    //  STREAMS (PFD) - Sin cambios de v6.0
+    //  STREAMS (PFD) - CRUD completo
     // ================================================================
     
     function addStream(streamData) {
@@ -729,20 +498,63 @@ const SmartFlowCore = (function() {
         if (_streamsMap.has(streamData.tag)) return _notifyUI("Error: La corriente " + streamData.tag + " ya existe.", true);
         
         const stream = {
+            // Básicos
             tag: streamData.tag,
             from: streamData.from || '',
             to: streamData.to || '',
             fluid: streamData.fluid || 'WATER',
+            phase: streamData.phase || 'LIQUID',
+            
+            // Condiciones de operación
             flow: streamData.flow || 0,
             flowUnit: streamData.flowUnit || 'm3/h',
+            massFlow: streamData.massFlow || 0,
+            massFlowUnit: streamData.massFlowUnit || 'kg/h',
             pressure: streamData.pressure || 0,
             pressureUnit: streamData.pressureUnit || 'bar',
             temperature: streamData.temperature || 25,
             temperatureUnit: streamData.temperatureUnit || '°C',
-            phase: streamData.phase || 'LIQUID',
+            
+            // Propiedades físicas
             density: streamData.density || 1000,
+            densityUnit: streamData.densityUnit || 'kg/m3',
             viscosity: streamData.viscosity || 1,
+            viscosityUnit: streamData.viscosityUnit || 'cP',
+            molecularWeight: streamData.molecularWeight || 0,
+            
+            // Condiciones de diseño
+            designPressure: streamData.designPressure || 0,
+            designPressureUnit: streamData.designPressureUnit || 'bar',
+            designTemperature: streamData.designTemperature || 0,
+            designTemperatureUnit: streamData.designTemperatureUnit || '°C',
+            operatingPressureMax: streamData.operatingPressureMax || 0,
+            operatingPressureMin: streamData.operatingPressureMin || 0,
+            operatingTempMax: streamData.operatingTempMax || 0,
+            operatingTempMin: streamData.operatingTempMin || 0,
+            
+            // Clasificación
             service: streamData.service || '',
+            fluidCategory: streamData.fluidCategory || '',
+            hazardClass: streamData.hazardClass || '',
+            insulationType: streamData.insulationType || '',
+            insulationThickness: streamData.insulationThickness || 0,
+            
+            // Dimensionamiento
+            lineSize: streamData.lineSize || 0,
+            lineSizeUnit: streamData.lineSizeUnit || 'in',
+            velocity: streamData.velocity || 0,
+            velocityUnit: streamData.velocityUnit || 'm/s',
+            reynoldsNumber: streamData.reynoldsNumber || 0,
+            pressureDrop: streamData.pressureDrop || 0,
+            pipeSpec: streamData.pipeSpec || '',
+            
+            // Documentación
+            designCase: streamData.designCase || 'NORMAL',
+            sheetNumber: streamData.sheetNumber || '',
+            revision: streamData.revision || 'A',
+            notes: streamData.notes || '',
+            
+            // Vinculación 3D
             linkedLineTags: streamData.linkedLineTags || []
         };
         
@@ -751,7 +563,6 @@ const SmartFlowCore = (function() {
         this._saveState();
         _notifyUI("Corriente " + stream.tag + ": " + stream.from + " → " + stream.to + " | " + stream.fluid, false);
         emit('modelChanged', { type: 'addStream', tag: stream.tag });
-        scheduleAudit();
         return true;
     }
     
@@ -761,7 +572,6 @@ const SmartFlowCore = (function() {
         Object.assign(stream, datos);
         this._saveState();
         emit('modelChanged', { type: 'updateStream', tag: tag });
-        scheduleAudit();
         return true;
     }
     
@@ -773,7 +583,6 @@ const SmartFlowCore = (function() {
         _streamsMap.delete(tag);
         _notifyUI("Corriente " + tag + " eliminada.", false);
         emit('modelChanged', { type: 'removeStream', tag: tag });
-        scheduleAudit();
         return true;
     }
     
@@ -796,7 +605,7 @@ const SmartFlowCore = (function() {
     function getStreamByTag(tag) { return _streamsMap.get(tag) || null; }
 
     // ================================================================
-    //  INSTRUMENTS (DTI) - Refinados v7.0 con clasificación ISA
+    //  INSTRUMENTS (DTI) - CRUD completo
     // ================================================================
     
     function addInstrument(instData) {
@@ -804,24 +613,73 @@ const SmartFlowCore = (function() {
         if (_instrumentsMap.has(instData.tag)) return _notifyUI("Error: El instrumento " + instData.tag + " ya existe.", true);
         
         const instrument = {
+            // Básicos
             tag: instData.tag,
             type: instData.type || 'PRESSURE_GAUGE',
             lineTag: instData.lineTag || '',
             equipmentTag: instData.equipmentTag || '',
             position: instData.position || 0.5,
-            range: instData.range || '',
-            signal: instData.signal || '4-20mA',
+            
+            // Servicio
             service: instData.service || '',
+            range: instData.range || '',
+            rangeMin: instData.rangeMin || 0,
+            rangeMax: instData.rangeMax || 0,
+            rangeUnit: instData.rangeUnit || '',
+            setpoint: instData.setpoint || 0,
+            deadband: instData.deadband || 0,
+            accuracy: instData.accuracy || 0,
+            signal: instData.signal || '4-20mA',
+            signalType: instData.signalType || 'ANALOG',
+            
+            // Clasificación ISA-5.1
+            isaMeasured: instData.isaMeasured || '',
+            isaFunction: instData.isaFunction || '',
+            isaSymbol: null, // Se calcula automáticamente
+            isaLocation: instData.location || 'FIELD',
+            
+            // Ubicación
             location: instData.location || 'FIELD',
+            
+            // Conexión a proceso
+            connectionType: instData.connectionType || '',
+            connectionSize: instData.connectionSize || 0,
+            processConnection: instData.processConnection || '',
+            electricalConnection: instData.electricalConnection || '',
+            
+            // Materiales
+            bodyMaterial: instData.bodyMaterial || '',
+            wettedMaterial: instData.wettedMaterial || '',
+            diaphragmMaterial: instData.diaphragmMaterial || '',
+            
+            // Certificaciones
+            ipRating: instData.ipRating || '',
+            hazardousArea: instData.hazardousArea || '',
+            silRating: instData.silRating || '',
+            
+            // Fabricante
+            manufacturer: instData.manufacturer || '',
+            model: instData.model || '',
+            datasheetRef: instData.datasheetRef || '',
+            
+            // Lazo
             loopTag: instData.loopTag || '',
-            // NUEVO v7.0: Símbolo ISA calculado automáticamente
-            isaSymbol: getIsaSymbol(instData.type || 'PRESSURE_GAUGE', instData.location || 'FIELD')
+            loopFunction: instData.loopFunction || '',
+            
+            // Documentación
+            sheetNumber: instData.sheetNumber || '',
+            revision: instData.revision || 'A',
+            notes: instData.notes || '',
+            criticality: instData.criticality || 'NORMAL'
         };
+        
+        // Calcular símbolo ISA automáticamente
+        instrument.isaSymbol = getIsaSymbol(instrument.type, instrument.location);
         
         _db.instruments.push(instrument);
         _instrumentsMap.set(instrument.tag, instrument);
         
-        // Si está vinculado a una línea, agregarlo como componente de referencia
+        // Si está vinculado a una línea, agregarlo como componente
         if (instrument.lineTag && _linesMap.has(instrument.lineTag)) {
             const line = _linesMap.get(instrument.lineTag);
             if (!line.components) line.components = [];
@@ -836,7 +694,6 @@ const SmartFlowCore = (function() {
         this._saveState();
         _notifyUI("Instrumento " + instrument.tag + " (" + instrument.isaSymbol.symbol + ") creado.", false);
         emit('modelChanged', { type: 'addInstrument', tag: instrument.tag });
-        scheduleAudit();
         return true;
     }
     
@@ -850,7 +707,6 @@ const SmartFlowCore = (function() {
         }
         this._saveState();
         emit('modelChanged', { type: 'updateInstrument', tag: tag });
-        scheduleAudit();
         return true;
     }
     
@@ -869,7 +725,6 @@ const SmartFlowCore = (function() {
         }
         _notifyUI("Instrumento " + tag + " eliminado.", false);
         emit('modelChanged', { type: 'removeInstrument', tag: tag });
-        scheduleAudit();
         return true;
     }
     
@@ -877,7 +732,7 @@ const SmartFlowCore = (function() {
     function getInstrumentByTag(tag) { return _instrumentsMap.get(tag) || null; }
 
     // ================================================================
-    //  LOOPS (DTI) - Sin cambios de v6.0
+    //  LOOPS (DTI - Lazos de Control)
     // ================================================================
     
     function addLoop(loopData) {
@@ -892,7 +747,9 @@ const SmartFlowCore = (function() {
             type: loopData.type || 'FEEDBACK',
             description: loopData.description || '',
             setpoint: loopData.setpoint || '',
-            range: loopData.range || ''
+            range: loopData.range || '',
+            output: loopData.output || '',
+            notes: loopData.notes || ''
         };
         
         _db.loops.push(loop);
@@ -903,11 +760,30 @@ const SmartFlowCore = (function() {
         return true;
     }
     
+    function updateLoop(tag, datos) {
+        const loop = _loopsMap.get(tag);
+        if (!loop) return _notifyUI("Lazo " + tag + " no encontrado.", true);
+        Object.assign(loop, datos);
+        this._saveState();
+        emit('modelChanged', { type: 'updateLoop', tag: tag });
+        return true;
+    }
+    
+    function removeLoop(tag) {
+        if (!_loopsMap.has(tag)) return _notifyUI("Lazo " + tag + " no encontrado.", true);
+        this._saveState();
+        _db.loops = _db.loops.filter(function(l) { return l.tag !== tag; });
+        _loopsMap.delete(tag);
+        _notifyUI("Lazo " + tag + " eliminado.", false);
+        emit('modelChanged', { type: 'removeLoop', tag: tag });
+        return true;
+    }
+    
     function getLoops() { return _db.loops; }
     function getLoopByTag(tag) { return _loopsMap.get(tag) || null; }
 
     // ================================================================
-    //  NUEVO v7.0: ACTIVOS INLINE COMO OBJETOS REALES
+    //  INLINE ASSETS (Activos en línea - Válvulas, Filtros, etc.)
     // ================================================================
     
     function addInlineAsset(assetData) {
@@ -921,7 +797,6 @@ const SmartFlowCore = (function() {
         if (!result) return _notifyUI("Error: No se pudo calcular posición en la línea.", true);
         
         const punto = result.punto;
-        const spec = assetData.spec || line.spec || 'A1A';
         
         const newAsset = {
             tag: assetData.tag,
@@ -932,15 +807,31 @@ const SmartFlowCore = (function() {
             posZ: punto.z,
             diametro: assetData.diametro || line.diameter || 4,
             material: assetData.material || line.material || 'CS',
-            spec: spec,
-            rating: assetData.rating || (_db.specs[spec] && _db.specs[spec].rating) || 150,
+            spec: assetData.spec || line.spec || 'A1A',
+            rating: assetData.rating || 150,
             lineTag: assetData.lineTag,
             position: position,
             status: 'inline',
             service: assetData.service || line.service || '',
             puertos: [
-                { id: 'P1', relX: 0, relY: 0, relZ: 0, orientacion: { dx: 1, dy: 0, dz: 0 }, status: 'connected', connectedTo: { tag: assetData.lineTag, portId: assetData.tag + '_IN' }, diametro: assetData.diametro || line.diameter || 4, flow: 'in', constraints: { spec: spec, diametro: assetData.diametro || line.diameter || 4 } },
-                { id: 'P2', relX: 0, relY: 0, relZ: 0, orientacion: { dx: -1, dy: 0, dz: 0 }, status: 'connected', connectedTo: { tag: assetData.lineTag, portId: assetData.tag + '_OUT' }, diametro: assetData.diametro || line.diameter || 4, flow: 'out', constraints: { spec: spec, diametro: assetData.diametro || line.diameter || 4 } }
+                { 
+                    id: 'P1', relX: 0, relY: 0, relZ: 0, 
+                    orientacion: { dx: 1, dy: 0, dz: 0 }, 
+                    status: 'connected', 
+                    connectedTo: { tag: assetData.lineTag, portId: assetData.tag + '_IN' }, 
+                    diametro: assetData.diametro || line.diameter || 4, 
+                    flow: 'in', 
+                    constraints: { spec: assetData.spec || 'A1A', diametro: assetData.diametro || line.diameter || 4 } 
+                },
+                { 
+                    id: 'P2', relX: 0, relY: 0, relZ: 0, 
+                    orientacion: { dx: -1, dy: 0, dz: 0 }, 
+                    status: 'connected', 
+                    connectedTo: { tag: assetData.lineTag, portId: assetData.tag + '_OUT' }, 
+                    diametro: assetData.diametro || line.diameter || 4, 
+                    flow: 'out', 
+                    constraints: { spec: assetData.spec || 'A1A', diametro: assetData.diametro || line.diameter || 4 } 
+                }
             ],
             properties: assetData.properties || {}
         };
@@ -949,7 +840,6 @@ const SmartFlowCore = (function() {
         _inlineAssetsMap.set(newAsset.tag, newAsset);
         _allObjectsMap.set(newAsset.tag, newAsset);
         
-        // Registrar en la línea como componente
         if (!line.components) line.components = [];
         line.components.push({
             type: newAsset.type,
@@ -961,7 +851,6 @@ const SmartFlowCore = (function() {
         this._saveState();
         _notifyUI("Activo inline " + newAsset.tag + " (" + newAsset.type + ") insertado en " + assetData.lineTag, false);
         emit('modelChanged', { type: 'addInlineAsset', tag: newAsset.tag });
-        scheduleAudit();
         return true;
     }
     
@@ -969,15 +858,15 @@ const SmartFlowCore = (function() {
         const asset = _inlineAssetsMap.get(tag);
         if (!asset) return _notifyUI("Activo " + tag + " no encontrado.", true);
         
-        // Verificar dependencias (instrumentos vinculados)
-        const linkedInstruments = _db.instruments.filter(function(i) { return i.lineTag === asset.lineTag && Math.abs(i.position - asset.position) < 0.01; });
+        const linkedInstruments = _db.instruments.filter(function(i) { 
+            return i.lineTag === asset.lineTag && Math.abs(i.position - asset.position) < 0.01; 
+        });
         if (linkedInstruments.length > 0) {
-            return _notifyUI("No se puede eliminar: " + linkedInstruments.length + " instrumento(s) vinculado(s) a esta posición.", true);
+            return _notifyUI("No se puede eliminar: " + linkedInstruments.length + " instrumento(s) vinculado(s).", true);
         }
         
         this._saveState();
         
-        // Limpiar referencia en la línea
         if (asset.lineTag && _linesMap.has(asset.lineTag)) {
             const line = _linesMap.get(asset.lineTag);
             if (line.components) {
@@ -991,7 +880,6 @@ const SmartFlowCore = (function() {
         
         _notifyUI("Activo inline " + tag + " eliminado.", false);
         emit('modelChanged', { type: 'removeInlineAsset', tag: tag });
-        scheduleAudit();
         return true;
     }
     
@@ -999,9 +887,319 @@ const SmartFlowCore = (function() {
     function getInlineAssetByTag(tag) { return _inlineAssetsMap.get(tag) || null; }
 
     // ================================================================
-    //  API PÚBLICA (COMPLETA - v7.0)
+    //  GESTIÓN DE ESTADO (undo/redo/import/export)
     // ================================================================
+    
+    function _saveState() {
+        const state = _deepClone({ 
+            equipos: _db.equipos, 
+            lines: _db.lines,
+            streams: _db.streams,
+            instruments: _db.instruments,
+            loops: _db.loops,
+            inlineAssets: _db.inlineAssets
+        });
+        _history.past.push(state);
+        if (_history.past.length > _history.maxSize) _history.past.shift();
+        _history.future = [];
+    }
+
+    function undo() {
+        if (_history.past.length <= 1) return _notifyUI("Nada que deshacer.", true);
+        const current = _deepClone({ 
+            equipos: _db.equipos, lines: _db.lines,
+            streams: _db.streams, instruments: _db.instruments, 
+            loops: _db.loops, inlineAssets: _db.inlineAssets
+        });
+        _history.future.push(current);
+        _history.past.pop();
+        const prev = _history.past[_history.past.length-1];
+        _db.equipos = _deepClone(prev.equipos);
+        _db.lines = _deepClone(prev.lines);
+        _db.streams = _deepClone(prev.streams || []);
+        _db.instruments = _deepClone(prev.instruments || []);
+        _db.loops = _deepClone(prev.loops || []);
+        _db.inlineAssets = _deepClone(prev.inlineAssets || []);
+        _selectedElement = null;
+        rebuildIndexes();
+        syncPhysicalData();
+        _renderUI();
+        _notifyUI("Acción deshecha.", false);
+        emit('modelChanged', { type: 'undo' });
+    }
+    
+    function redo() {
+        if (_history.future.length === 0) return _notifyUI("Nada que rehacer.", true);
+        const next = _history.future.pop();
+        _history.past.push(_deepClone(next));
+        _db.equipos = _deepClone(next.equipos);
+        _db.lines = _deepClone(next.lines);
+        _db.streams = _deepClone(next.streams || []);
+        _db.instruments = _deepClone(next.instruments || []);
+        _db.loops = _deepClone(next.loops || []);
+        _db.inlineAssets = _deepClone(next.inlineAssets || []);
+        _selectedElement = null;
+        rebuildIndexes();
+        syncPhysicalData();
+        _renderUI();
+        _notifyUI("Acción rehecha.", false);
+        emit('modelChanged', { type: 'redo' });
+    }
+
+    function nuevoProyecto() {
+        const oldSpecs = _db.specs;
+        _db = { 
+            equipos: [], lines: [], specs: oldSpecs,
+            streams: [], instruments: [], loops: [], inlineAssets: [],
+            project: {
+                name: '', client: '', plantLocation: '',
+                designCode: 'ASME B31.3', unitsSystem: 'METRIC',
+                defaultMaterial: 'CS', defaultSpec: 'A1A'
+            }
+        };
+        _selectedElement = null;
+        _history = { past: [], future: [], maxSize: 50 };
+        rebuildIndexes();
+        this._saveState();
+        _renderUI();
+        _notifyUI("Nuevo proyecto creado.", false);
+        emit('modelChanged', { type: 'newProject' });
+    }
+    
+    function importState(state) {
+        const data = typeof state === 'string' ? JSON.parse(state) : state;
+        _db.equipos = _deepClone(data.equipos || []);
+        _db.lines = _deepClone(data.lines || []);
+        _db.streams = _deepClone(data.streams || []);
+        _db.instruments = _deepClone(data.instruments || []);
+        _db.loops = _deepClone(data.loops || []);
+        _db.inlineAssets = _deepClone(data.inlineAssets || []);
+        if (data.project) _db.project = data.project;
+        _selectedElement = null;
+        rebuildIndexes();
+        this._saveState();
+        syncPhysicalData();
+        _renderUI();
+        _notifyUI("Proyecto importado correctamente.", false);
+        emit('modelChanged', { type: 'import' });
+        return true;
+    }
+    
+    function exportProject() {
+        return JSON.stringify({ 
+            equipos: _db.equipos, 
+            lines: _db.lines,
+            streams: _db.streams,
+            instruments: _db.instruments,
+            loops: _db.loops,
+            inlineAssets: _db.inlineAssets,
+            project: _db.project
+        });
+    }
+
+    // ================================================================
+    //  CRUD DE EQUIPOS Y LÍNEAS (Existente v5.6)
+    // ================================================================
+    
+    function addEquipment(equipo) {
+        if (!equipo.tag) return _notifyUI("Error: Tag requerido.", true);
+        if (_allObjectsMap.has(equipo.tag)) return _notifyUI("Error: El equipo " + equipo.tag + " ya existe.", true);
+        if (equipo.puertos) equipo.puertos.forEach(function(p) { 
+            if (!p.status) p.status = 'open'; 
+            if (!p.flow) p.flow = 'bi'; 
+            if (!p.constraints) p.constraints = { spec: equipo.spec || 'STD', diametro: p.diametro || 3 }; 
+        });
+        _db.equipos.push(equipo);
+        _equiposMap.set(equipo.tag, equipo);
+        _allObjectsMap.set(equipo.tag, equipo);
+        this._saveState();
+        _notifyUI("Equipo " + equipo.tag + " añadido.", false);
+        _renderUI();
+        emit('modelChanged', { type: 'addEquipment', tag: equipo.tag });
+        return true;
+    }
+    
+    function addLine(linea) {
+        if (!linea.tag) return _notifyUI("Error: Tag de línea requerido.", true);
+        if (_allObjectsMap.has(linea.tag)) return _notifyUI("Error: La línea " + linea.tag + " ya existe.", true);
+        if (linea.spec && _db.specs[linea.spec]) { 
+            const s = _db.specs[linea.spec]; 
+            linea.material = linea.material || s.mat; 
+            linea.rating = s.rating; 
+            linea.schedule = s.sch; 
+        }
+        if (!linea.puertos) linea.puertos = [];
+        const pts = getLinePoints(linea);
+        if (pts && pts.length >= 2) {
+            if (!linea.puertos.find(function(p) { return p.id === '0'; })) {
+                const dirStart = { dx: pts[1].x - pts[0].x, dy: pts[1].y - pts[0].y, dz: pts[1].z - pts[0].z };
+                const len = Math.hypot(dirStart.dx, dirStart.dy, dirStart.dz) || 1;
+                linea.puertos.push({ id: '0', relX: 0, relY: 0, relZ: 0, orientacion: { dx: dirStart.dx/len, dy: dirStart.dy/len, dz: dirStart.dz/len }, diametro: linea.diameter || 4, status: 'connected', flow: 'in' });
+            }
+            if (!linea.puertos.find(function(p) { return p.id === '1'; })) {
+                const n = pts.length;
+                const dirEnd = { dx: pts[n-1].x - pts[n-2].x, dy: pts[n-1].y - pts[n-2].y, dz: pts[n-1].z - pts[n-2].z };
+                const len = Math.hypot(dirEnd.dx, dirEnd.dy, dirEnd.dz) || 1;
+                linea.puertos.push({ id: '1', relX: 0, relY: 0, relZ: 0, orientacion: { dx: dirEnd.dx/len, dy: dirEnd.dy/len, dz: dirEnd.dz/len }, diametro: linea.diameter || 4, status: 'connected', flow: 'out' });
+            }
+        }
+        _db.lines.push(linea);
+        _linesMap.set(linea.tag, linea);
+        _allObjectsMap.set(linea.tag, linea);
+        this._saveState();
+        _notifyUI("Línea " + linea.tag + " creada correctamente.", false);
+        _renderUI();
+        emit('modelChanged', { type: 'addLine', tag: linea.tag });
+        return true;
+    }
+
+    function updateEquipment(tag, datos) {
+        const eq = _equiposMap.get(tag);
+        if (!eq) return _notifyUI("Equipo " + tag + " no encontrado.", true);
+        Object.assign(eq, datos);
+        syncPhysicalData();
+        this._saveState();
+        _renderUI();
+        emit('modelChanged', { type: 'updateEquipment', tag: tag });
+        return true;
+    }
+    
+    function updateLine(tag, datos) {
+        const line = _linesMap.get(tag);
+        if (!line) return _notifyUI("Línea " + tag + " no encontrada.", true);
+        Object.assign(line, datos);
+        this._saveState();
+        _renderUI();
+        emit('modelChanged', { type: 'updateLine', tag: tag });
+        return true;
+    }
+
+    function removeEquipment(tag) {
+        const eq = _equiposMap.get(tag);
+        if (!eq) { _notifyUI("Equipo " + tag + " no encontrado.", true); return false; }
+        
+        const streamsAfectados = _db.streams.filter(function(s) { return s.from === tag || s.to === tag; });
+        const instsAfectados = _db.instruments.filter(function(i) { return i.equipmentTag === tag; });
+        
+        if (streamsAfectados.length > 0 || instsAfectados.length > 0) {
+            let msg = "⚠️ No se puede eliminar " + tag + ". Dependencias activas: ";
+            if (streamsAfectados.length) msg += streamsAfectados.length + " corrientes PFD. ";
+            if (instsAfectados.length) msg += instsAfectados.length + " instrumentos DTI. ";
+            _notifyUI(msg, true);
+            return false;
+        }
+        
+        this._saveState();
+        _db.equipos = _db.equipos.filter(function(e) { return e.tag !== tag; });
+        rebuildIndexes();
+        syncPhysicalData();
+        _renderUI();
+        _notifyUI("Equipo " + tag + " eliminado.", false);
+        emit('modelChanged', { type: 'removeEquipment', tag: tag });
+        return true;
+    }
+    
+    function removeLine(tag) {
+        const line = _linesMap.get(tag);
+        if (!line) { _notifyUI("Línea " + tag + " no encontrada.", true); return false; }
+        
+        const instsAfectados = _db.instruments.filter(function(i) { return i.lineTag === tag; });
+        const assetsAfectados = _db.inlineAssets.filter(function(a) { return a.lineTag === tag; });
+        
+        if (instsAfectados.length > 0 || assetsAfectados.length > 0) {
+            let msg = "⚠️ No se puede eliminar " + tag + ". Primero elimine: ";
+            if (instsAfectados.length) msg += instsAfectados.length + " instrumento(s). ";
+            if (assetsAfectados.length) msg += assetsAfectados.length + " activo(s) inline. ";
+            _notifyUI(msg, true);
+            return false;
+        }
+        
+        this._saveState();
+        _db.lines = _db.lines.filter(function(l) { return l.tag !== tag; });
+        rebuildIndexes();
+        syncPhysicalData();
+        _renderUI();
+        _notifyUI("Línea " + tag + " eliminada.", false);
+        emit('modelChanged', { type: 'removeLine', tag: tag });
+        return true;
+    }
+
+    function setDatum(elevation, north, east) {
+        _datumElevation = elevation || 0;
+        _datumNorth = north || 0;
+        _datumEast = east || 0;
+    }
+
+    function setSelected(element) {
+        _selectedElement = element;
+        _renderUI();
+        if (_selectedElement && _selectedElement.obj) {
+            _onSelectionChanged(_selectedElement.obj);
+        } else {
+            _onSelectionChanged(null);
+        }
+    }
+
+    function getSelected() { return _selectedElement; }
+
+    function splitLine(lineTag, point, config) {
+        const line = _linesMap.get(lineTag);
+        if (!line) { _notifyUI("Línea no encontrada.", true); return null; }
+        const segmentIndex = _findSegmentAtPoint(line, point);
+        if (segmentIndex === -1) { _notifyUI("El punto no está sobre la línea.", true); return null; }
+        
+        const pts = getLinePoints(line);
+        const a = pts[segmentIndex], b = pts[segmentIndex + 1];
+        const dir = { dx: b.x - a.x, dy: b.y - a.y, dz: b.z - a.z };
+        const len = Math.hypot(dir.dx, dir.dy, dir.dz) || 1;
+        const dirUnit = { dx: dir.dx/len, dy: dir.dy/len, dz: dir.dz/len };
+        let perp = { dx: -dirUnit.dy, dy: dirUnit.dx, dz: 0 };
+        const perpLen = Math.hypot(perp.dx, perp.dy, perp.dz);
+        if (perpLen < 0.1) perp = { dx: 1, dy: 0, dz: 0 };
+        else { perp.dx /= perpLen; perp.dy /= perpLen; perp.dz /= perpLen; }
+        
+        const teeTag = "TEE-" + Date.now().toString().slice(-6);
+        const nuevoTee = {
+            tag: teeTag,
+            type: (config && config.type) || 'TEE_EQUAL',
+            posX: point.x, posY: point.y, posZ: point.z,
+            diametro: line.diameter,
+            material: line.material,
+            spec: line.spec,
+            lineTag: lineTag,
+            position: 0.5,
+            status: 'inline',
+            puertos: [
+                { id: 'P1', relX: -dirUnit.dx*100, relY: -dirUnit.dy*100, relZ: -dirUnit.dz*100, orientacion: { dx: -dirUnit.dx, dy: -dirUnit.dy, dz: -dirUnit.dz }, status: 'connected', diametro: line.diameter, flow: 'in', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
+                { id: 'P2', relX: dirUnit.dx*100, relY: dirUnit.dy*100, relZ: dirUnit.dz*100, orientacion: { dx: dirUnit.dx, dy: dirUnit.dy, dz: dirUnit.dz }, status: 'connected', diametro: line.diameter, flow: 'out', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
+                { id: 'P3', relX: perp.dx*100, relY: perp.dy*100, relZ: perp.dz*100, orientacion: { dx: perp.dx, dy: perp.dy, dz: perp.dz }, status: 'open', diametro: line.diameter, flow: 'bi', constraints: { spec: line.spec||'STD', diametro: line.diameter } }
+            ]
+        };
+        
+        pts.splice(segmentIndex+1, 0, point);
+        line._cachedPoints = pts;
+        
+        _db.inlineAssets.push(nuevoTee);
+        _inlineAssetsMap.set(teeTag, nuevoTee);
+        _allObjectsMap.set(teeTag, nuevoTee);
+        
+        if (!line.components) line.components = [];
+        line.components.push({ type: nuevoTee.type, tag: nuevoTee.tag, param: 0.5 });
+        
+        this._saveState();
+        syncPhysicalData();
+        _renderUI();
+        _notifyUI("Línea " + lineTag + " dividida. Tee " + teeTag + " insertado.", false);
+        emit('modelChanged', { type: 'splitLine', lineTag: lineTag });
+        return { componente: nuevoTee, linea: line };
+    }
+
+    // ================================================================
+    //  API PÚBLICA COMPLETA
+    // ================================================================
+    
     return {
+        // Inicialización
         init: function(notifyFn, renderFn, propertyPanelFn) {
             _notifyUI = notifyFn || _notifyUI;
             _renderUI = renderFn || _renderUI;
@@ -1009,576 +1207,88 @@ const SmartFlowCore = (function() {
             rebuildIndexes();
             this._saveState();
         },
-
-        on: on,
-        off: off,
-        emit: emit,
-
-        // ============================================================
-        //  GESTIÓN DE ESTADO
-        // ============================================================
         
-        _saveState: function() {
-            const state = _deepClone({ 
-                equipos: _db.equipos, 
-                lines: _db.lines,
-                streams: _db.streams,
-                instruments: _db.instruments,
-                loops: _db.loops,
-                inlineAssets: _db.inlineAssets  // NUEVO v7.0
-            });
-            _history.past.push(state);
-            if (_history.past.length > _history.maxSize) _history.past.shift();
-            _history.future = [];
-        },
+        on, off, emit,
+        rebuildIndexes,
+        syncPhysicalData,
+        _saveState,
         
-        rebuildIndexes: rebuildIndexes,
-
-        // ============================================================
-        //  EQUIPOS
-        // ============================================================
-
-        addEquipment: function(equipo) {
-            if (!equipo.tag) return _notifyUI("Error: Tag requerido.", true);
-            if (_allObjectsMap.has(equipo.tag)) return _notifyUI("Error: El equipo " + equipo.tag + " ya existe.", true);
-            if (equipo.puertos) equipo.puertos.forEach(function(p) { 
-                if (!p.status) p.status = 'open'; 
-                if (!p.flow) p.flow = 'bi'; 
-                if (!p.constraints) p.constraints = { spec: equipo.spec || 'STD', diametro: p.diametro || 3 }; 
-            });
-            _db.equipos.push(equipo);
-            _equiposMap.set(equipo.tag, equipo);
-            _allObjectsMap.set(equipo.tag, equipo);
-            this._saveState();
-            _notifyUI("Equipo " + equipo.tag + " añadido.", false);
-            _renderUI();
-            emit('modelChanged', { type: 'addEquipment', tag: equipo.tag });
-            scheduleAudit();
-            return true;
-        },
+        // Equipos
+        addEquipment,
+        updateEquipment,
+        removeEquipment,
+        getEquipos: function() { return _db.equipos; },
         
-        updateEquipment: function(tag, datos) {
-            const eq = _equiposMap.get(tag);
-            if (!eq) return _notifyUI("Equipo " + tag + " no encontrado.", true);
-            Object.assign(eq, datos);
-            syncPhysicalData();
-            this._saveState();
-            _renderUI();
-            emit('modelChanged', { type: 'updateEquipment', tag: tag });
-            scheduleAudit();
-            return true;
-        },
-
-        // ============================================================
-        //  PROTECCIÓN ACTIVA DE INTEGRIDAD (NUEVO v7.0)
-        // ============================================================
+        // Líneas
+        addLine,
+        updateLine,
+        removeLine,
+        getLines: function() { return _db.lines; },
+        getLinePoints,
+        splitLine,
         
-        removeEquipment: function(tag) {
-            const eq = _equiposMap.get(tag);
-            if (!eq) { _notifyUI("Equipo " + tag + " no encontrado.", true); return false; }
-            
-            // *** BLOQUEO ACTIVO v7.0: Verificar dependencias PFD/DTI ***
-            const streamsAfectados = _db.streams.filter(function(s) { return s.from === tag || s.to === tag; });
-            const instsAfectados = _db.instruments.filter(function(i) { return i.equipmentTag === tag; });
-            const linesAfectadas = _db.lines.filter(function(line) {
-                return (line.origin && line.origin.objTag === tag) ||
-                       (line.destination && line.destination.objTag === tag);
-            });
-            
-            if (streamsAfectados.length > 0 || instsAfectados.length > 0) {
-                let msg = "⚠️ No se puede eliminar " + tag + ". Dependencias activas: ";
-                if (streamsAfectados.length) msg += streamsAfectados.length + " corrientes PFD. ";
-                if (instsAfectados.length) msg += instsAfectados.length + " instrumentos DTI. ";
-                _notifyUI(msg, true);
-                return false;
-            }
-            
-            this._saveState();
-            
-            // Liberar puertos de líneas conectadas
-            linesAfectadas.forEach(function(linea) {
-                const otroExtremo = (linea.origin && linea.origin.objTag === tag) ? 
-                    linea.destination : linea.origin;
-                if (otroExtremo && otroExtremo.objTag) {
-                    const otroObj = findObjectByTag(otroExtremo.objTag);
-                    if (otroObj && otroObj.puertos) {
-                        const puerto = otroObj.puertos.find(function(p) { return p.id === otroExtremo.portId; });
-                        if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; }
-                    }
-                }
-            });
-            
-            // Eliminar líneas y equipo
-            _db.lines = _db.lines.filter(function(line) { return !linesAfectadas.includes(line); });
-            _db.equipos = _db.equipos.filter(function(e) { return e.tag !== tag; });
-            rebuildIndexes();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Equipo " + tag + " eliminado" + (linesAfectadas.length > 0 ? " + " + linesAfectadas.length + " línea(s)" : "") + ".", false);
-            emit('modelChanged', { type: 'removeEquipment', tag: tag });
-            scheduleAudit();
-            return true;
-        },
+        // Streams (PFD)
+        addStream,
+        updateStream,
+        removeStream,
+        linkStreamToLine,
+        getStreams,
+        getStreamByTag,
         
-        // ============================================================
-        //  LÍNEAS
-        // ============================================================
+        // Instruments (DTI)
+        addInstrument,
+        updateInstrument,
+        removeInstrument,
+        getInstruments,
+        getInstrumentByTag,
         
-        addLine: function(linea) {
-            if (!linea.tag) return _notifyUI("Error: Tag de línea requerido.", true);
-            if (_allObjectsMap.has(linea.tag)) return _notifyUI("Error: La línea " + linea.tag + " ya existe.", true);
-            if (linea.spec && _db.specs[linea.spec]) { 
-                const s = _db.specs[linea.spec]; 
-                linea.material = linea.material || s.mat; 
-                linea.rating = s.rating; 
-                linea.schedule = s.sch; 
-            }
-            
-            if (!linea.puertos) linea.puertos = [];
-            const pts = getLinePoints(linea);
-            if (pts && pts.length >= 2) {
-                if (!linea.puertos.find(function(p) { return p.id === '0'; })) {
-                    const dirStart = { dx: pts[1].x - pts[0].x, dy: pts[1].y - pts[0].y, dz: pts[1].z - pts[0].z };
-                    const len = Math.hypot(dirStart.dx, dirStart.dy, dirStart.dz) || 1;
-                    linea.puertos.push({ id: '0', relX: 0, relY: 0, relZ: 0, orientacion: { dx: dirStart.dx/len, dy: dirStart.dy/len, dz: dirStart.dz/len }, diametro: linea.diameter || 4, status: 'connected', flow: 'in' });
-                }
-                if (!linea.puertos.find(function(p) { return p.id === '1'; })) {
-                    const n = pts.length;
-                    const dirEnd = { dx: pts[n-1].x - pts[n-2].x, dy: pts[n-1].y - pts[n-2].y, dz: pts[n-1].z - pts[n-2].z };
-                    const len = Math.hypot(dirEnd.dx, dirEnd.dy, dirEnd.dz) || 1;
-                    linea.puertos.push({ id: '1', relX: 0, relY: 0, relZ: 0, orientacion: { dx: dirEnd.dx/len, dy: dirEnd.dy/len, dz: dirEnd.dz/len }, diametro: linea.diameter || 4, status: 'connected', flow: 'out' });
-                }
-            }
-            
-            _db.lines.push(linea);
-            _linesMap.set(linea.tag, linea);
-            _allObjectsMap.set(linea.tag, linea);
-            this._saveState();
-            _notifyUI("Línea " + linea.tag + " creada correctamente.", false);
-            _renderUI();
-            emit('modelChanged', { type: 'addLine', tag: linea.tag });
-            scheduleAudit();
-            return true;
-        },
+        // Loops (DTI)
+        addLoop,
+        updateLoop,
+        removeLoop,
+        getLoops,
+        getLoopByTag,
         
-        updateLine: function(tag, datos) {
-            const line = _linesMap.get(tag);
-            if (!line) return _notifyUI("Línea " + tag + " no encontrada.", true);
-            Object.assign(line, datos);
-            this._saveState();
-            _renderUI();
-            emit('modelChanged', { type: 'updateLine', tag: tag });
-            scheduleAudit();
-            return true;
-        },
+        // Inline Assets
+        addInlineAsset,
+        removeInlineAsset,
+        getInlineAssets,
+        getInlineAssetByTag,
         
-        removeLine: function(tag) {
-            const line = _linesMap.get(tag);
-            if (!line) { _notifyUI("Línea " + tag + " no encontrada.", true); return false; }
-            
-            // *** BLOQUEO ACTIVO v7.0 ***
-            const instsAfectados = _db.instruments.filter(function(i) { return i.lineTag === tag; });
-            const assetsAfectados = _db.inlineAssets.filter(function(a) { return a.lineTag === tag; });
-            
-            if (instsAfectados.length > 0 || assetsAfectados.length > 0) {
-                let msg = "⚠️ No se puede eliminar " + tag + ". Primero elimine: ";
-                if (instsAfectados.length) msg += instsAfectados.length + " instrumento(s). ";
-                if (assetsAfectados.length) msg += assetsAfectados.length + " activo(s) inline. ";
-                _notifyUI(msg, true);
-                return false;
-            }
-            
-            this._saveState();
-            
-            // Liberar puertos conectados
-            if (line.origin && line.origin.objTag) {
-                const objOrigen = findObjectByTag(line.origin.objTag);
-                if (objOrigen && objOrigen.puertos) {
-                    const puerto = objOrigen.puertos.find(function(p) { return p.id === line.origin.portId; });
-                    if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; }
-                }
-            }
-            if (line.destination && line.destination.objTag) {
-                const objDestino = findObjectByTag(line.destination.objTag);
-                if (objDestino && objDestino.puertos) {
-                    const puerto = objDestino.puertos.find(function(p) { return p.id === line.destination.portId; });
-                    if (puerto) { puerto.status = 'open'; puerto.flow = 'bi'; delete puerto.connectedTo; }
-                }
-            }
-            
-            // Desvincular streams
-            _db.streams.forEach(function(s) {
-                if (s.linkedLineTags) {
-                    s.linkedLineTags = s.linkedLineTags.filter(function(lt) { return lt !== tag; });
-                }
-            });
-            
-            _db.lines = _db.lines.filter(function(l) { return l.tag !== tag; });
-            rebuildIndexes();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Línea " + tag + " eliminada. Puertos liberados.", false);
-            emit('modelChanged', { type: 'removeLine', tag: tag });
-            scheduleAudit();
-            return true;
-        },
-
-        syncPhysicalData: syncPhysicalData,
-
-        updatePuerto: function(ownerTag, puertoId, cambios) {
-            const owner = findObjectByTag(ownerTag);
-            if (!owner) return _notifyUI("Objeto " + ownerTag + " no encontrado.", true);
-            const puerto = owner.puertos ? owner.puertos.find(function(p) { return p.id === puertoId; }) : null;
-            if (!puerto) return _notifyUI("Puerto " + puertoId + " no encontrado.", true);
-            if (cambios.status !== undefined) puerto.status = cambios.status;
-            if (cambios.connectedTo !== undefined) puerto.connectedTo = cambios.connectedTo;
-            if (cambios.flow !== undefined) puerto.flow = cambios.flow;
-            if (cambios.constraints !== undefined) puerto.constraints = Object.assign({}, puerto.constraints || {}, cambios.constraints);
-            if (cambios.diametro !== undefined) puerto.diametro = cambios.diametro;
-            if (cambios.pos) { puerto.relX = cambios.pos.x; puerto.relY = cambios.pos.y; puerto.relZ = cambios.pos.z; }
-            if (cambios.dir) { 
-                const dx = cambios.dir.dx, dy = cambios.dir.dy, dz = cambios.dir.dz;
-                const len = Math.sqrt(dx*dx+dy*dy+dz*dz); 
-                if (len > 0) puerto.orientacion = { dx: dx/len, dy: dy/len, dz: dz/len }; 
-            }
-            syncPhysicalData();
-            this._saveState();
-            _renderUI();
-            emit('modelChanged', { type: 'updatePuerto', tag: ownerTag, portId: puertoId });
-            return true;
-        },
-
-        nuevoProyecto: function() {
-            const oldSpecs = _db.specs;
-            _db = { 
-                equipos: [], lines: [], specs: oldSpecs,
-                streams: [], instruments: [], loops: [], inlineAssets: [],
-                project: {
-                    name: '', client: '', plantLocation: '',
-                    designCode: 'ASME B31.3', unitsSystem: 'METRIC',
-                    defaultMaterial: 'CS', defaultSpec: 'A1A'
-                }
-            };
-            _selectedElement = null;
-            _history = { past: [], future: [], maxSize: 50 };
-            _lastAuditResults = null;
-            rebuildIndexes();
-            this._saveState();
-            _renderUI();
-            _notifyUI("Nuevo proyecto creado.", false);
-            emit('modelChanged', { type: 'newProject' });
-        },
+        // Utilidades
+        findObjectByTag,
+        getObjectPosition,
+        getAbsolutePosition,
+        setDatum,
+        checkCompatibility,
+        getIsaSymbol,
         
-        importState: function(state) {
-            const data = typeof state === 'string' ? JSON.parse(state) : state;
-            let equipos = data.equipos || (data.data && data.data.equipos) || [];
-            let lines = data.lines || (data.data && data.data.lines) || [];
-            let streams = data.streams || (data.data && data.data.streams) || [];
-            let instruments = data.instruments || (data.data && data.data.instruments) || [];
-            let loops = data.loops || (data.data && data.data.loops) || [];
-            let inlineAssets = data.inlineAssets || (data.data && data.data.inlineAssets) || [];
-            if (!Array.isArray(equipos)) equipos = [];
-            if (!Array.isArray(lines)) lines = [];
-            if (!Array.isArray(streams)) streams = [];
-            if (!Array.isArray(instruments)) instruments = [];
-            if (!Array.isArray(loops)) loops = [];
-            if (!Array.isArray(inlineAssets)) inlineAssets = [];
-            _db.equipos = _deepClone(equipos);
-            _db.lines = _deepClone(lines);
-            _db.streams = _deepClone(streams);
-            _db.instruments = _deepClone(instruments);
-            _db.loops = _deepClone(loops);
-            _db.inlineAssets = _deepClone(inlineAssets);
-            _selectedElement = null;
-            _lastAuditResults = null;
-            rebuildIndexes();
-            this._saveState();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Proyecto importado correctamente.", false);
-            emit('modelChanged', { type: 'import' });
-            scheduleAudit();
-            return true;
-        },
-        
-        exportProject: function() {
-            return JSON.stringify({ 
-                equipos: _db.equipos, 
-                lines: _db.lines,
-                streams: _db.streams,
-                instruments: _db.instruments,
-                loops: _db.loops,
-                inlineAssets: _db.inlineAssets,
-                project: _db.project
-            });
-        },
-
-        undo: function() {
-            if (_history.past.length <= 1) return _notifyUI("Nada que deshacer.", true);
-            const current = _deepClone({ 
-                equipos: _db.equipos, lines: _db.lines,
-                streams: _db.streams, instruments: _db.instruments, 
-                loops: _db.loops, inlineAssets: _db.inlineAssets
-            });
-            _history.future.push(current);
-            _history.past.pop();
-            const prev = _history.past[_history.past.length-1];
-            _db.equipos = _deepClone(prev.equipos);
-            _db.lines = _deepClone(prev.lines);
-            _db.streams = _deepClone(prev.streams || []);
-            _db.instruments = _deepClone(prev.instruments || []);
-            _db.loops = _deepClone(prev.loops || []);
-            _db.inlineAssets = _deepClone(prev.inlineAssets || []);
-            _selectedElement = null;
-            rebuildIndexes();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Acción deshecha.", false);
-            emit('modelChanged', { type: 'undo' });
-            scheduleAudit();
-        },
-        
-        redo: function() {
-            if (_history.future.length === 0) return _notifyUI("Nada que rehacer.", true);
-            const next = _history.future.pop();
-            _history.past.push(_deepClone(next));
-            _db.equipos = _deepClone(next.equipos);
-            _db.lines = _deepClone(next.lines);
-            _db.streams = _deepClone(next.streams || []);
-            _db.instruments = _deepClone(next.instruments || []);
-            _db.loops = _deepClone(next.loops || []);
-            _db.inlineAssets = _deepClone(next.inlineAssets || []);
-            _selectedElement = null;
-            rebuildIndexes();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Acción rehecha.", false);
-            emit('modelChanged', { type: 'redo' });
-            scheduleAudit();
-        },
-
+        // Auditoría
+        auditPFDIntegrity,
+        auditMassBalance,
+        runAllAudits,
         auditModel: function() { return runAllAudits().report; },
         
-        recalculateAll: function() {
-            syncPhysicalData();
-            const result = runAllAudits(true);
-            if (result.collisions.length > 0 || result.massBalanceIssues.length > 0) 
-                _notifyUI("Recálculo completado. " + result.collisions.length + " interferencias, " + result.massBalanceIssues.length + " desbalances.", true);
-            else _notifyUI("Recálculo completado. Sin interferencias ni desbalances.", false);
-            _renderUI();
-            emit('modelChanged', { type: 'recalculateAll' });
-        },
-        
-        getLastAuditResults: function() { return _lastAuditResults; },
-
-        connectSmart: function(source, target) {
-            const objS = findObjectByTag(source.tag), objT = findObjectByTag(target.tag);
-            if (!objS || !objT) return _notifyUI("Objeto no encontrado.", true);
-            const pS = objS.puertos ? objS.puertos.find(function(p) { return p.id === source.portId; }) : null;
-            const pT = objT.puertos ? objT.puertos.find(function(p) { return p.id === target.portId; }) : null;
-            if (!pS || !pT) return _notifyUI("Puerto no encontrado.", true);
-            const validation = checkCompatibility(pS, pT);
-            if (!validation.isCompatible) _notifyUI("⚠️ Advertencia: " + validation.alerts.join(", "), false);
-            pS.status = "connected"; pS.connectedTo = { tag: target.tag, portId: target.portId };
-            pT.status = "connected"; pT.connectedTo = { tag: source.tag, portId: source.portId };
-            syncPhysicalData();
-            this._saveState();
-            _notifyUI("Conexión lógica: " + source.tag + ":" + source.portId + " ↔ " + target.tag + ":" + target.portId, false);
-            emit('modelChanged', { type: 'connect' });
-            scheduleAudit();
-            return true;
-        },
-
-        splitLine: function(lineTag, point, config) {
-            const line = _linesMap.get(lineTag);
-            if (!line) { _notifyUI("Línea no encontrada.", true); return null; }
-            const segmentIndex = _findSegmentAtPoint(line, point);
-            if (segmentIndex === -1) { _notifyUI("El punto no está sobre la línea o está demasiado lejos.", true); return null; }
-            const pts = getLinePoints(line);
-            const a = pts[segmentIndex], b = pts[segmentIndex + 1];
-            const dir = { dx: b.x - a.x, dy: b.y - a.y, dz: b.z - a.z };
-            const len = Math.hypot(dir.dx, dir.dy, dir.dz) || 1;
-            const dirUnit = { dx: dir.dx/len, dy: dir.dy/len, dz: dir.dz/len };
-            let perp = _getPerpendicular(dirUnit);
-            const teeTag = "TEE-" + Date.now().toString().slice(-6);
-            
-            // NUEVO v7.0: El TEE se crea como inline asset real
-            const nuevoTee = {
-                tag: teeTag,
-                type: (config && config.type) || 'TEE_EQUAL',
-                posX: point.x, posY: point.y, posZ: point.z,
-                diametro: line.diameter,
-                material: line.material,
-                spec: line.spec,
-                lineTag: lineTag,
-                position: 0.5, // aproximado
-                status: 'inline',
-                puertos: [
-                    { id: 'P1', relX: -dirUnit.dx*100, relY: -dirUnit.dy*100, relZ: -dirUnit.dz*100, orientacion: { dx: -dirUnit.dx, dy: -dirUnit.dy, dz: -dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S1' }, diametro: line.diameter, flow: 'in', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
-                    { id: 'P2', relX: dirUnit.dx*100, relY: dirUnit.dy*100, relZ: dirUnit.dz*100, orientacion: { dx: dirUnit.dx, dy: dirUnit.dy, dz: dirUnit.dz }, status: 'connected', connectedTo: { tag: lineTag, portId: 'S2' }, diametro: line.diameter, flow: 'out', constraints: { spec: line.spec||'STD', diametro: line.diameter } },
-                    { id: 'P3', relX: perp.dx*100, relY: perp.dy*100, relZ: perp.dz*100, orientacion: { dx: perp.dx, dy: perp.dy, dz: perp.dz }, status: 'open', diametro: line.diameter, flow: 'bi', constraints: { spec: line.spec||'STD', diametro: line.diameter } }
-                ]
-            };
-            
-            pts.splice(segmentIndex+1, 0, point);
-            line._cachedPoints = pts;
-            if (!line.puertos) line.puertos = [];
-            if (!line.puertos.find(function(p) { return p.id === 'S1'; })) line.puertos.push({ id: 'S1', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: teeTag, portId: 'P1' }, diametro: line.diameter });
-            if (!line.puertos.find(function(p) { return p.id === 'S2'; })) line.puertos.push({ id: 'S2', relX: 0, relY: 0, relZ: 0, status: 'connected', connectedTo: { tag: teeTag, portId: 'P2' }, diametro: line.diameter });
-            
-            _db.inlineAssets.push(nuevoTee);
-            _inlineAssetsMap.set(teeTag, nuevoTee);
-            _allObjectsMap.set(teeTag, nuevoTee);
-            
-            if (!line.components) line.components = [];
-            line.components.push({ type: nuevoTee.type, tag: nuevoTee.tag, param: 0.5 });
-            
-            this._saveState();
-            syncPhysicalData();
-            _renderUI();
-            _notifyUI("Línea " + lineTag + " dividida. Tee " + teeTag + " insertado como activo real.", false);
-            emit('modelChanged', { type: 'splitLine', lineTag: lineTag });
-            scheduleAudit();
-            return { componente: nuevoTee, linea: line };
-        },
-
-        setSelected: function(element) {
-            if (element && element.obj && !findObjectByTag(element.obj.tag)) {
-                _selectedElement = null; _onSelectionChanged(null); _renderUI(); return;
-            }
-            _selectedElement = element; _renderUI();
-            if (_selectedElement && _selectedElement.obj) {
-                const info = this.getPropertyInfo(_selectedElement.obj.tag);
-                _onSelectionChanged(info);
-            } else { _onSelectionChanged(null); }
-        },
-        
-        getPropertyInfo: function(tag) {
-            const obj = findObjectByTag(tag);
-            if (!obj) return null;
-            const isLine = _linesMap.has(tag);
-            const isEquipment = _equiposMap.has(tag);
-            const isInlineAsset = _inlineAssetsMap.has(tag);
-            const isInstrument = _instrumentsMap.has(tag);
-            
-            let info = {
-                tag: obj.tag,
-                tipo: obj.tipo || (isLine ? 'Tubería' : (isEquipment ? 'Equipo' : (isInlineAsset ? 'Activo Inline' : (isInstrument ? 'Instrumento' : 'Desconocido')))),
-                spec: obj.spec || 'N/A',
-                material: obj.material || 'N/A',
-                diametro: obj.diameter || obj.diametro || 'N/A',
-                puertos: obj.puertos ? obj.puertos.map(function(p) { return { id: p.id, status: p.status || 'open', connectedTo: (p.connectedTo && p.connectedTo.tag) || 'Libre', diametro: p.diametro, orientacion: p.orientacion }; }) : [],
-                spool: isLine ? getSpoolReport(tag) : null
-            };
-            
-            if (obj.posX !== undefined) {
-                info.dimensiones = { posX: obj.posX, posY: obj.posY, posZ: obj.posZ, diametro: obj.diametro, altura: obj.altura, largo: obj.largo };
-            }
-            
-            if (isInstrument) {
-                info.isaSymbol = obj.isaSymbol || getIsaSymbol(obj.type, obj.location);
-                info.location = obj.location;
-                info.range = obj.range;
-                info.signal = obj.signal;
-                info.loopTag = obj.loopTag;
-            }
-            
-            if (isInlineAsset) {
-                info.lineTag = obj.lineTag;
-                info.position = obj.position;
-                info.subtype = obj.subtype;
-            }
-            
-            return info;
-        },
-        
-        updateFromPanel: function(tag, field, newValue) {
-            const obj = findObjectByTag(tag);
-            if (!obj) { _notifyUI("Objeto no encontrado.", true); return false; }
-            if (field === 'tag') {
-                if (_allObjectsMap.has(newValue)) { _notifyUI("Error: El Tag ya existe.", true); return false; }
-                // Actualizar referencias en líneas
-                _db.lines.forEach(function(line) {
-                    if (line.origin && line.origin.objTag === tag) line.origin.objTag = newValue;
-                    if (line.destination && line.destination.objTag === tag) line.destination.objTag = newValue;
-                });
-                // Actualizar referencias en streams
-                _db.streams.forEach(function(s) {
-                    if (s.from === tag) s.from = newValue;
-                    if (s.to === tag) s.to = newValue;
-                });
-                // Actualizar en el mapa correspondiente
-                if (_equiposMap.has(tag)) { _equiposMap.delete(tag); _allObjectsMap.delete(tag); obj.tag = newValue; _equiposMap.set(newValue, obj); _allObjectsMap.set(newValue, obj); }
-                else if (_linesMap.has(tag)) { _linesMap.delete(tag); _allObjectsMap.delete(tag); obj.tag = newValue; _linesMap.set(newValue, obj); _allObjectsMap.set(newValue, obj); }
-                else if (_inlineAssetsMap.has(tag)) { _inlineAssetsMap.delete(tag); _allObjectsMap.delete(tag); obj.tag = newValue; _inlineAssetsMap.set(newValue, obj); _allObjectsMap.set(newValue, obj); }
-                else if (_instrumentsMap.has(tag)) { _instrumentsMap.delete(tag); obj.tag = newValue; _instrumentsMap.set(newValue, obj); }
-            } else {
-                obj[field] = newValue;
-                // Recalcular ISA si cambió tipo o ubicación en instrumento
-                if (_instrumentsMap.has(tag) && (field === 'type' || field === 'location')) {
-                    obj.isaSymbol = getIsaSymbol(obj.type, obj.location);
-                }
-            }
-            if (['posX', 'posY', 'posZ', 'diametro', 'altura', 'largo', 'diameter'].indexOf(field) !== -1) { syncPhysicalData(); }
-            this._saveState(); _renderUI();
-            _notifyUI("Propiedad '" + field + "' actualizada.", false);
-            emit('modelChanged', { type: 'updateProperty', tag: tag, field: field });
-            scheduleAudit();
-            return true;
-        },
-
-        // ============================================================
-        //  GETTERS
-        // ============================================================
-        auditCollisions: auditCollisions,
-        auditJointSpacing: auditJointSpacing,
-        auditPFDIntegrity: auditPFDIntegrity,
-        auditMassBalance: auditMassBalance,
-        getSpoolReport: getSpoolReport,
-        setDatum: setDatum,
-        getAbsolutePosition: getAbsolutePosition,
-        getLinePoints: getLinePoints,
-        findObjectByTag: findObjectByTag,
-        calcularPuntoParametrico: calcularPuntoParametrico,
-        getIsaSymbol: getIsaSymbol,
+        // Estado
+        undo,
+        redo,
+        nuevoProyecto,
+        importState,
+        exportProject,
+        setSelected,
+        getSelected,
         getDb: function() { return _db; },
-        getEquipos: function() { return _db.equipos; },
-        getLines: function() { return _db.lines; },
         getSpecs: function() { return Object.keys(_db.specs); },
-        getSelected: function() { return _selectedElement; },
-        setElevation: function(level) { _currentElevation = level; },
-        getElevation: function() { return _currentElevation; },
-        setVoice: function(enabled) { _voiceEnabled = enabled; },
-        isVoiceEnabled: function() { return _voiceEnabled; },
         
+        // Índices
         get equiposMap() { return _equiposMap; },
         get linesMap() { return _linesMap; },
         get allObjectsMap() { return _allObjectsMap; },
         get streamsMap() { return _streamsMap; },
         get instrumentsMap() { return _instrumentsMap; },
         get loopsMap() { return _loopsMap; },
-        get inlineAssetsMap() { return _inlineAssetsMap; },
-        
-        getStreams: getStreams,
-        getStreamByTag: getStreamByTag,
-        getInstruments: getInstruments,
-        getInstrumentByTag: getInstrumentByTag,
-        getLoops: getLoops,
-        getLoopByTag: getLoopByTag,
-        getInlineAssets: getInlineAssets,
-        getInlineAssetByTag: getInlineAssetByTag,
-        
-        addStream: addStream,
-        updateStream: updateStream,
-        removeStream: removeStream,
-        linkStreamToLine: linkStreamToLine,
-        addInstrument: addInstrument,
-        updateInstrument: updateInstrument,
-        removeInstrument: removeInstrument,
-        addLoop: addLoop,
-        
-        // NUEVOS v7.0
-        addInlineAsset: addInlineAsset,
-        removeInlineAsset: removeInlineAsset
+        get inlineAssetsMap() { return _inlineAssetsMap; }
     };
 })();
+
+if (typeof window !== 'undefined') window.SmartFlowCore = SmartFlowCore;
