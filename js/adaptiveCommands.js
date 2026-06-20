@@ -47,19 +47,36 @@ const AdaptiveCommandSystem = (function() {
         // PFD - DIAGRAMA DE FLUJO DE PROCESO
         // ═══════════════════════════════════════════
         'PFD.CREATE_EQUIPMENT': {
-            name: 'Crear Equipo PFD', icon: '📋', category: 'pfd',
-            steps: [
-                { id: 'tipo', title: 'Seleccione tipo de equipo', type: 'select',
-                    options: () => (typeof SmartFlowCatalog !== 'undefined' ? SmartFlowCatalog.listEquipmentTypes() : ['tanque_v','bomba','intercambiador','torre','reactor','compresor','separador']).map(t => ({ value: t, label: t.replace(/_/g, ' ').toUpperCase() })),
-                    next: 'tag'
-                },
-                { id: 'tag', title: 'Ingrese Tag del equipo', type: 'text', placeholder: 'Ej: TK-01, B-101',
-                    validate: (v) => v ? (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.findObjectByTag(v) ? 'Tag ya existe' : null) : 'Tag requerido',
-                    isFinal: true, executeImmediately: true,
-                    buildCommand: (params, st) => 'create equipo ' + st.tipo + ' ' + st.tag
-                }
-            ]
+    name: 'Crear Equipo PFD', icon: '📋', category: 'pfd',
+    steps: [
+        {
+            id: 'tipo',
+            title: 'Seleccione tipo de equipo',
+            type: 'select',
+            options: () => (typeof SmartFlowCatalog !== 'undefined'
+                ? SmartFlowCatalog.listEquipmentTypes()
+                : ['tanque_v', 'bomba', 'intercambiador', 'torre', 'reactor', 'compresor', 'separador']
+            ).map(t => ({ value: t, label: t.replace(/_/g, ' ').toUpperCase() })),
+            next: 'tag'
         },
+        {
+            id: 'tag',
+            title: 'Ingrese Tag del equipo',
+            type: 'text',
+            placeholder: 'Ej: TK-01, B-101',
+            isFinal: true,                // ← Muestra el botón "Ejecutar"
+            executeImmediately: false,    // ← Espera a que el usuario presione "Ejecutar"
+            buildCommand: (params, st) => {
+                // Valores seguros: si por alguna razón falta, usamos 'EQUIPO_SIN_TAG'
+                const tipo = st.tipo || 'tanque_v';
+                const tag = (st.tag && st.tag.trim()) || 'EQUIPO_SIN_TAG';
+                return 'create equipo ' + tipo + ' ' + tag;
+            }
+        }
+    ]
+},
+
+        
 
         'PFD.CREATE_STREAM': {
             name: 'Crear Corriente PFD', icon: '🌊', category: 'pfd',
