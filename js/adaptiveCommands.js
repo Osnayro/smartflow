@@ -46,35 +46,34 @@ const AdaptiveCommandSystem = (function() {
         // ═══════════════════════════════════════════
         // PFD - DIAGRAMA DE FLUJO DE PROCESO
         // ═══════════════════════════════════════════
-        'PFD.CREATE_EQUIPMENT': {
+'PFD.CREATE_EQUIPMENT': {
     name: 'Crear Equipo PFD', icon: '📋', category: 'pfd',
     steps: [
-        {
-            id: 'tipo',
-            title: 'Seleccione tipo de equipo',
-            type: 'select',
-            options: () => (typeof SmartFlowCatalog !== 'undefined'
-                ? SmartFlowCatalog.listEquipmentTypes()
-                : ['tanque_v', 'bomba', 'intercambiador', 'torre', 'reactor', 'compresor', 'separador']
-            ).map(t => ({ value: t, label: t.replace(/_/g, ' ').toUpperCase() })),
-            next: 'tag'
+        { type: 'select', title: '① Seleccione tipo de equipo', fieldId: 'tipo',
+            options: function() {
+                return (typeof SmartFlowCatalog !== 'undefined' 
+                    ? SmartFlowCatalog.listEquipmentTypes() 
+                    : ['tanque_v','bomba','intercambiador','torre','reactor','compresor','separador']
+                ).map(function(t) { 
+                    return { value: t, label: t.replace(/_/g, ' ').toUpperCase() }; 
+                });
+            }
         },
-        {
-            id: 'tag',
-            title: 'Ingrese Tag del equipo',
-            type: 'text',
-            placeholder: 'Ej: TK-01, B-101',
-            isFinal: true,                // ← Muestra el botón "Ejecutar"
-            executeImmediately: false,    // ← Espera a que el usuario presione "Ejecutar"
-            buildCommand: (params, st) => {
-                // Valores seguros: si por alguna razón falta, usamos 'EQUIPO_SIN_TAG'
-                const tipo = st.tipo || 'tanque_v';
-                const tag = (st.tag && st.tag.trim()) || 'EQUIPO_SIN_TAG';
+        { type: 'text', title: '② Ingrese Tag del equipo', fieldId: 'tag', 
+            placeholder: 'Ej: TK-01, B-101'
+        },
+        { type: 'info', 
+            message: '✅ El equipo se creará como equipo lógico en el PFD.\nPodrá posicionarlo en 3D desde el módulo ISO.', 
+            isFinal: true,
+            buildCommand: function(v, st) {
+                var tipo = st.tipo || 'tanque_v';
+                var tag = (st.tag && st.tag.trim()) || 'EQ-001';
                 return 'create equipo ' + tipo + ' ' + tag;
             }
         }
     ]
 },
+        
 
         
 
