@@ -1,8 +1,9 @@
-
 // ============================================================
-// SMARTFLOW MODULE PANELS v1.0
+// SMARTFLOW MODULE PANELS v1.1
 // Archivo: js/module-panels.js
 // Paneles de herramientas contextuales por módulo (PFD/DTI/ISO)
+// Corrección v1.1: Asegura que el overlay adaptativo esté abierto
+//                 antes de iniciar flujos guiados.
 // ============================================================
 
 const SmartFlowModulePanels = (function() {
@@ -133,7 +134,14 @@ const SmartFlowModulePanels = (function() {
                 } else {
                     // Iniciar flujo guiado del AdaptiveCommandSystem
                     if (typeof AdaptiveCommandUI !== 'undefined' && typeof AdaptiveCommandUI.startFlow === 'function') {
-                        AdaptiveCommandUI.startFlow(btn.cmd);
+                        // v1.1: Asegurar que el panel adaptativo esté abierto antes de iniciar el flujo
+                        if (typeof AdaptiveCommandUI.openPanel === 'function') {
+                            AdaptiveCommandUI.openPanel('assisted');
+                        }
+                        // Pequeño retraso para que el DOM del overlay se cree antes de renderizar
+                        setTimeout(function() {
+                            AdaptiveCommandUI.startFlow(btn.cmd);
+                        }, 100);
                     } else if (typeof AdaptiveCommandSystem !== 'undefined') {
                         const stepData = AdaptiveCommandSystem.startCommandFlow(btn.cmd);
                         if (stepData && stepData.direct) {
@@ -184,7 +192,7 @@ const SmartFlowModulePanels = (function() {
         if (_container) {
             renderButtons(window.currentModule || 'pfd');
         }
-        console.log('SmartFlow Module Panels v1.0 inicializado');
+        console.log('SmartFlow Module Panels v1.1 inicializado');
     }
     
     // ================================================================
