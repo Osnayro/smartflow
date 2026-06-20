@@ -46,10 +46,11 @@ const AdaptiveCommandSystem = (function() {
         // ═══════════════════════════════════════════
         // PFD - DIAGRAMA DE FLUJO DE PROCESO
         // ═══════════════════════════════════════════
+
 'PFD.CREATE_EQUIPMENT': {
     name: 'Crear Equipo PFD', icon: '📋', category: 'pfd',
     steps: [
-        { type: 'select', title: '① Seleccione tipo de equipo', fieldId: 'tipo',
+        { type: 'select', title: '① Seleccione tipo de equipo', id: 'tipo',
             options: function() {
                 return (typeof SmartFlowCatalog !== 'undefined' 
                     ? SmartFlowCatalog.listEquipmentTypes() 
@@ -59,7 +60,7 @@ const AdaptiveCommandSystem = (function() {
                 });
             }
         },
-        { type: 'text', title: '② Ingrese Tag del equipo', fieldId: 'tag', 
+        { type: 'text', title: '② Ingrese Tag del equipo', id: 'tag', 
             placeholder: 'Ej: TK-01, B-101'
         },
         { type: 'info', 
@@ -74,9 +75,7 @@ const AdaptiveCommandSystem = (function() {
     ]
 },
         
-
         
-
         'PFD.CREATE_STREAM': {
             name: 'Crear Corriente PFD', icon: '🌊', category: 'pfd',
             steps: [
