@@ -21,7 +21,7 @@
 //   - checkMaterialCompatibility: advertencias de incompatibilidad
 // ============================================================
 
-const SmartFlowCommands = (function() {
+const SmartFlowCommands3D = (function() {
     
     let _core = null;
     let _catalog = null;
@@ -2463,12 +2463,24 @@ const SmartFlowCommands = (function() {
         _notifyUI = notifyFn || _notifyUI; _renderUI = renderFn || _renderUI; _voiceFn = voiceFn || null;
     }
 
+
     // ================================================================
     //  API PÚBLICA
     // ================================================================
     return {
-        init: init, executeCommand: executeCommand, executeBatch: executeBatch,
-        getPortDirectionLocal: getPortDirectionLocal, getTopSurface: getTopSurface,
+        tryExecute: function(cmd, core, catalog, renderer, notify, renderUI) {
+            if (core) _core = core;
+            if (catalog) _catalog = catalog;
+            if (renderer) _renderer = renderer;
+            if (notify) _notifyUI = notify;
+            if (renderUI) _renderUI = renderUI;
+            return executeCommand(cmd);
+        },
+        init: init,
+        executeCommand: executeCommand,
+        executeBatch: executeBatch,
+        getPortDirectionLocal: getPortDirectionLocal,
+        getTopSurface: getTopSurface,
         runFittingInjection: runFittingInjection,
         getMacros: function() { return _macros; },
         getHistory: function() { return window._commandHistory || []; },
@@ -2479,3 +2491,6 @@ const SmartFlowCommands = (function() {
         notify: notifyWithVoice
     };
 })();
+
+if (typeof window !== 'undefined') window.SmartFlowCommands3D = SmartFlowCommands3D;
+
