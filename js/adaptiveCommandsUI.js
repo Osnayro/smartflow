@@ -1,5 +1,6 @@
+
 // ============================================================
-// SMARTFLOW ADAPTIVE COMMAND UI v2.0
+// SMARTFLOW ADAPTIVE COMMAND UI v2.0 (Corregido)
 // Archivo: js/adaptiveCommandsUI.js
 // ============================================================
 
@@ -34,7 +35,7 @@ const AdaptiveCommandUI = (function() {
         const overlay = document.getElementById('adaptive-overlay');
         if (overlay) { overlay.style.opacity = '0'; setTimeout(() => overlay.remove(), 200); }
         currentFlow = null;
-        AdaptiveCommandSystem.resetFlow();
+        if (typeof AdaptiveCommandSystem !== 'undefined') AdaptiveCommandSystem.resetFlow();
     }
 
     function openPanel(mode) {
@@ -87,8 +88,7 @@ const AdaptiveCommandUI = (function() {
                 ]}
             }};
         }
-        // Módulo ISO: se obtienen todos los comandos del AdaptiveCommandSystem organizados por categoría
-        var isoCommands = AdaptiveCommandSystem.getCommandsByCategory();
+        var isoCommands = (typeof AdaptiveCommandSystem !== 'undefined' && AdaptiveCommandSystem.getCommandsByCategory) ? AdaptiveCommandSystem.getCommandsByCategory() : {};
         return { title: 'ISO - Isométrico 3D', icon: '🧊', categories: {
             'iso_update': { name: '📍 Posicionar Equipos (desde PFD)', cmds: [
                 { command: 'UPDATE.EQUIPMENT', icon: '📍', name: 'Posicionar Equipo Existente', category: 'iso_update' }
@@ -101,7 +101,7 @@ const AdaptiveCommandUI = (function() {
         var moduleData = getModuleCommands();
         updateTitle(moduleData.icon + ' ' + moduleData.title);
         currentFlow = null;
-        AdaptiveCommandSystem.resetFlow();
+        if (typeof AdaptiveCommandSystem !== 'undefined') AdaptiveCommandSystem.resetFlow();
         var categories = moduleData.categories;
         var allCmds = [];
         Object.values(categories).forEach(function(cat) { if (cat.cmds) allCmds = allCmds.concat(cat.cmds); });
@@ -135,7 +135,6 @@ const AdaptiveCommandUI = (function() {
     }
 
     function startFlow(commandPath) {
-        // Mapeo de comandos rápidos que no requieren flujo completo
         var directMap = {
             'list_streams': 'list streams', 'list_equipos': 'list equipos',
             'list_instruments': 'list instruments', 'list_loops': 'list loops',
@@ -145,16 +144,14 @@ const AdaptiveCommandUI = (function() {
         };
         if (directMap[commandPath]) { executeTextCommand(directMap[commandPath]); return; }
 
-        // Si es un flujo conocido del AdaptiveCommandSystem
-        if (AdaptiveCommandSystem.COMMAND_FLOWS[commandPath]) {
+        if (typeof AdaptiveCommandSystem !== 'undefined' && AdaptiveCommandSystem.COMMAND_FLOWS[commandPath]) {
             var stepData = AdaptiveCommandSystem.startCommandFlow(commandPath);
             if (!stepData) { showToast('Comando no disponible', 'err'); return; }
             if (stepData.direct) { executeTextCommand(stepData.command); return; }
             currentFlow = stepData; renderFlowStep(); return;
         }
 
-        // Comandos directos
-        if (AdaptiveCommandSystem.DIRECT_COMMANDS[commandPath]) {
+        if (typeof AdaptiveCommandSystem !== 'undefined' && AdaptiveCommandSystem.DIRECT_COMMANDS[commandPath]) {
             executeTextCommand(AdaptiveCommandSystem.DIRECT_COMMANDS[commandPath].command);
             return;
         }
@@ -183,17 +180,31 @@ const AdaptiveCommandUI = (function() {
         }
         if (currentFlow.isFinal && currentFlow.command) { bodyHtml += '<div class="flow-preview"><div class="fp-label">📝 Comando a ejecutar:</div><code>' + currentFlow.command + '</code></div>'; }
         document.getElementById('adaptive-body').innerHTML = bodyHtml;
+        
         var isFinalStep = currentFlow.isFinal;
         if (typeof isFinalStep === 'function') { isFinalStep = isFinalStep(AdaptiveCommandSystem.getSelections ? AdaptiveCommandSystem.getSelections() : {}); }
+        
         var footerHtml = '<button class="af-btn af-btn-ghost" onclick="AdaptiveCommandUI.flowBack()" ' + ((currentFlow.stepIndex || 0) === 0 ? 'disabled' : '') + '>← Anterior</button><button class="af-btn af-btn-danger" onclick="AdaptiveCommandUI.cancelFlow()">Cancelar</button>';
         if (isFinalStep) { footerHtml += '<button class="af-btn af-btn-success" onclick="AdaptiveCommandUI.executeFlowCommand()">✅ Ejecutar</button>'; }
         else { footerHtml += '<button class="af-btn af-btn-primary" onclick="AdaptiveCommandUI.flowNext()">Siguiente →</button>'; }
         document.getElementById('adaptive-footer').innerHTML = footerHtml;
-        setTimeout(function() { var searchInput = document.getElementById('flow-search'); if (searchInput) searchInput.focus(); }, 100);
+        
+        setTimeout(function() { 
+            var txtInput = document.getElementById('flow-text-input'); 
+            if (txtInput) {
+                txtInput.focus();
+                // Sincronización reactiva del valor del input de texto
+                txtInput.addEventListener('input', function(e) {
+                    if(typeof AdaptiveCommandSystem !== 'undefined' && AdaptiveCommandSystem.getCurrentState) {
+                        var state = AdaptiveCommandSystem.getCurrentState();
+                        if(state && state.selections && currentFlow && currentFlow.stepId) {
+                            state.selections[currentFlow.stepId] = e.target.value;
+                        }
+                    }
+                });
+            }
+        }, 100);
     }
-
-    // ... (resto de funciones de renderizado de pasos idénticas al original)
-    // Incluyo solo las necesarias para mantener la funcionalidad
 
     function renderFlowSelect(stepData) {
         var options = typeof stepData.options === 'function' ? stepData.options() : (stepData.options || []);
@@ -245,7 +256,7 @@ const AdaptiveCommandUI = (function() {
     }
 
     function renderFlowText(stepData) {
-        return '<div class="flow-form-group"><input type="text" id="flow-text-input" placeholder="' + (stepData.placeholder || '') + '" value="' + (stepData.default || '') + '" class="flow-search"></div>';
+        return '<div class="flow-form-group"><input type="text" id="flow-text-input" placeholder="' + (stepData.placeholder || 'Ej: TK-101') + '" value="' + (stepData.default || '') + '" class="flow-search"></div>';
     }
 
     function renderFlowNumber(stepData) {
@@ -264,7 +275,6 @@ const AdaptiveCommandUI = (function() {
         return '<div style="text-align:center;padding:20px;color:var(--accent-cyan,#00f2ff);white-space:pre-line;font-size:.9em">' + (stepData.message || '') + '</div>';
     }
 
-    // Funciones de interacción con el flujo (idénticas al original)
     function selectFlowOption(value, element) {
         document.querySelectorAll('#flowSelectList .flow-select-item').forEach(function(item) { item.classList.remove('selected'); });
         if (element) element.classList.add('selected');
@@ -304,7 +314,15 @@ const AdaptiveCommandUI = (function() {
             document.querySelectorAll('#coordListContainer .flow-coords').forEach(function(row) { value.push({ x: parseFloat((row.querySelector('[data-axis="x"]')||{}).value || 0), y: parseFloat((row.querySelector('[data-axis="y"]')||{}).value || 0), z: parseFloat((row.querySelector('[data-axis="z"]')||{}).value || 0) }); });
         } else if (currentFlow.type === 'text') {
             var textInput = document.getElementById('flow-text-input');
-            value = textInput ? textInput.value : '';
+            value = textInput ? textInput.value.trim() : '';
+            
+            // *** CORRECCIÓN: inyectar el valor directamente en el estado del Core ***
+            if (typeof AdaptiveCommandSystem !== 'undefined' && AdaptiveCommandSystem.getCurrentState) {
+                var state = AdaptiveCommandSystem.getCurrentState();
+                if (state && state.selections && currentFlow.stepId) {
+                    state.selections[currentFlow.stepId] = value;
+                }
+            }
         } else if (currentFlow.type === 'number') {
             var numInput = document.getElementById('flow-number-input');
             value = numInput ? (parseFloat(numInput.value) || 0) : 0;
@@ -339,16 +357,16 @@ const AdaptiveCommandUI = (function() {
         else { renderAssistedGrid(); }
     }
 
-    function cancelFlow() { AdaptiveCommandSystem.resetFlow(); currentFlow = null; renderAssistedGrid(); }
+    function cancelFlow() { if (typeof AdaptiveCommandSystem !== 'undefined') AdaptiveCommandSystem.resetFlow(); currentFlow = null; renderAssistedGrid(); }
 
     function executeFlowCommand() {
         var cmd = null;
         if (currentFlow && currentFlow.command) { cmd = currentFlow.command; }
         else {
-            var stepData = AdaptiveCommandSystem.getCurrentStepData();
+            var stepData = typeof AdaptiveCommandSystem !== 'undefined' ? AdaptiveCommandSystem.getCurrentStepData() : null;
             if (stepData && stepData.command) cmd = stepData.command;
         }
-        if (!cmd && currentFlow && currentFlow.commandPath) {
+        if (!cmd && currentFlow && currentFlow.commandPath && typeof AdaptiveCommandSystem !== 'undefined') {
             var flow = AdaptiveCommandSystem.COMMAND_FLOWS[currentFlow.commandPath];
             if (flow) {
                 var finalStep = flow.steps.find(function(s) { return s.isFinal && s.buildCommand; });
