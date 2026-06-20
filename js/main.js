@@ -1,8 +1,7 @@
-
 (function() {
     "use strict";
     
-    const canvas = document.getElementById('isoCanvas');
+    // Elementos Globales de la Interfaz Compartida
     const notificationEl = document.getElementById('notification');
     const statusMsgEl = document.getElementById('statusMsg');
     const commandPanel = document.getElementById('commandPanel');
@@ -10,28 +9,38 @@
     const customElev = document.getElementById('customElev');
     const sidePanel = document.getElementById('side-panel');
     const panelContent = document.getElementById('panel-content');
-    const splashScreen = document.getElementById('splash-screen');
-    const welcomePanel = document.getElementById('welcome-panel');
-    const projectModal = document.getElementById('project-name-modal');
-    const projectInput = document.getElementById('project-name-input');
     
+    // Variables de Estado de la Aplicación
     let toolMode = 'select';
     let voiceEnabled = true;
-    let _is2DInitialized = false;
-    let _is3DInitialized = false;
-    let _ioInitialized = false;
-    let _modulesInitialized = false;
-    let _deliverablesInitialized = false;
-    let draggingEquipment = false;
-    let draggedEquipTag = null;
-    let dragLastPos = { x: 0, y: 0 };
+    let _coreInitialized = false;
     
     const _commandHistory = [];
     const MAX_HISTORY = 50;
     let _historyIndex = -1;
     let _tempCommand = '';
     let _isNavigatingHistory = false;
+
+    // Configuración y Sintaxis Contextual por Módulo
+    const MODULE_CONFIGS = {
+        pfd: {
+            placeholder: "Ej: create stream S-101 from TK-01 to BOM-01",
+            accentColor: "#10b981",
+            contextLabel: "Diagrama de Flujo de Procesos (PFD)"
+        },
+        dti: {
+            placeholder: "Ej: add loop FIT-101 to LINE-01 | set isa FT",
+            accentColor: "#8b5cf6",
+            contextLabel: "Diagrama de Tuberías e Instrumentación (DTI/P&ID)"
+        },
+        iso: {
+            placeholder: "Ej: pipe route from TK-01 to E-101 el+1500",
+            accentColor: "#00f2ff",
+            contextLabel: "Isométrico de Tuberías (ISO)"
+        }
+    };
     
+    // ===== SISTEMA DE HISTORIAL DE COMANDOS =====
     function addToHistory(cmd) {
         const trimmed = cmd.trim();
         if (!trimmed) return;
@@ -57,6 +66,7 @@
         setTimeout(function() { _isNavigatingHistory = false; }, 50);
     }
     
+    // ===== NOTIFICACIONES Y ACCESIBILIDAD DE VOZ =====
     function notify(msg, isErr) {
         if (isErr === undefined) isErr = false;
         if (notificationEl) { notificationEl.textContent = msg; notificationEl.style.backgroundColor = isErr ? '#da3633' : '#238636'; notificationEl.style.display = 'block'; }
@@ -67,6 +77,7 @@
     
     function voiceFn(msg) { if (voiceEnabled && window.speechSynthesis) { window.speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(msg); u.lang = 'es-ES'; window.speechSynthesis.speak(u); } }
     
+    // ===== RENDERIZADO Y ENFOQUE DINÁMICO =====
     function scheduleRender() {
         var m = window.currentModule || 'pfd';
         if (m === 'pfd' && typeof SmartFlowPFDRenderer !== 'undefined') SmartFlowPFDRenderer.render();
@@ -88,6 +99,7 @@
     function togglePanel(show) { if (sidePanel) { if (show) sidePanel.classList.remove('hidden'); else sidePanel.classList.add('hidden'); } }
     function toggleAllPanels() { var panels = [sidePanel, document.getElementById('toolsPanel')]; var visible = sidePanel && sidePanel.style.display !== 'none'; panels.forEach(function(p) { if (p) p.style.display = visible ? 'none' : ''; }); }
     
+    // ===== INYECCIÓN ADAPTATIVA DE PROPIEDADES EN EL PANEL LATERAL =====
     function updatePropertyPanel(info) {
         if (!panelContent) return;
         if (!info) { togglePanel(false); return; }
@@ -96,196 +108,103 @@
         let html = '<div class="prop-group"><span class="prop-label">TAG</span><span class="prop-value">' + (info.tag || 'N/A') + '</span></div>';
         html += '<div class="prop-group"><span class="prop-label">TIPO</span><span class="prop-value">' + (info.tipo || info.type || 'Desconocido') + '</span></div>';
         
+        // Atributo condicional ISA para instrumentación (DTI)
         if (info.isaSymbol) {
-            html += '<div class="prop-group"><span class="prop-label">ISA</span><span class="prop-value">' + info.isaSymbol.symbol + ' (' + info.isaSymbol.measured + info.isaSymbol.function + ')</span></div>';
+            html += '<div class="prop-group only-dti"><span class="prop-label">ISA</span><span class="prop-value">' + info.isaSymbol.symbol + ' (' + info.isaSymbol.measured + info.isaSymbol.function + ')</span></div>';
         }
         
         html += '<div class="prop-group"><span class="prop-label">MATERIAL</span><span class="prop-value">' + (info.material || 'N/A') + '</span></div>';
         html += '<div class="prop-group"><span class="prop-label">DIÁMETRO</span><span class="prop-value">' + (info.diametro || info.diameter || 'N/A') + '</span></div>';
         
-        if (info.range) { html += '<div class="prop-group"><span class="prop-label">RANGO</span><span class="prop-value">' + info.range + '</span></div>'; }
-        if (info.loopTag) { html += '<div class="prop-group"><span class="prop-label">LAZO</span><span class="prop-value">' + info.loopTag + '</span></div>'; }
-        if (info.location) { html += '<div class="prop-group"><span class="prop-label">UBICACIÓN</span><span class="prop-value">' + info.location + '</span></div>'; }
+        // Atributos espaciales geométricos (ISO)
+        if (info.location) { html += '<div class="prop-group only-iso"><span class="prop-label">UBICACIÓN</span><span class="prop-value">' + info.location + '</span></div>'; }
+        if (info.elevation) { html += '<div class="prop-group only-iso"><span class="prop-label">ELEVACIÓN</span><span class="prop-value">' + info.elevation + ' mm</span></div>'; }
         
         html += '<hr style="border:0;border-top:1px solid rgba(255,255,255,0.1);margin:15px 0"><div class="prop-group"><span class="prop-label">PUERTOS</span>' + (info.puertos && info.puertos.length ? info.puertos.map(function(p) { return '<div class="port-item"><span>' + p.id + '</span><span class="' + (p.status === 'open' ? 'port-open' : 'port-connected') + '">' + (p.status === 'open' ? 'DISPONIBLE' : 'CONECTADO') + '</span></div>'; }).join('') : '<p>Sin puertos</p>') + '</div>';
         panelContent.innerHTML = html;
     }
     
-    function initModules() {
-        console.log('🚀 Inicializando SmartFlow Pro v5.0...');
+    // ===== INICIALIZACIÓN INMUTABLE DEL CORE (SÓLO UNA VEZ) =====
+    function initCoreEngine() {
+        if (_coreInitialized) return;
         
-        // 1. Core (siempre primero)
+        console.log('🚀 Inicializando SmartFlow Core Inteligente...');
         SmartFlowCore.init(notify, scheduleRender, updatePropertyPanel);
-        console.log('✅ Core v7.1');
-        
-        // 2. I/O (Import/Export)
-        if (typeof SmartFlowIO !== 'undefined' && !_ioInitialized) { 
-            SmartFlowIO.init(SmartFlowCore, notify, typeof SmartFlowRenderer !== 'undefined' ? SmartFlowRenderer : null); 
-            _ioInitialized = true; 
-            console.log('✅ I/O v2.0'); 
-        }
-        
-        // 3. DB Export (Excel)
-        if (typeof SmartFlowDBExport !== 'undefined') { 
-            SmartFlowDBExport.init(SmartFlowCore, typeof SmartFlowIO !== 'undefined' ? SmartFlowIO : null, notify); 
-            console.log('✅ DB Export v2.1'); 
-        }
-        
-        // 4. PFD Engine + Renderer
-        if (typeof SmartFlowPFD !== 'undefined') { 
-            SmartFlowPFD.init(SmartFlowCore, typeof SmartFlowCatalog !== 'undefined' ? SmartFlowCatalog : null, notify); 
-            console.log('✅ PFD Engine v1.2'); 
-        }
-        var pfdCanvas = document.getElementById('pfd-canvas');
-        if (typeof SmartFlowPFDRenderer !== 'undefined' && pfdCanvas) { 
-            SmartFlowPFDRenderer.init(pfdCanvas, SmartFlowCore, notify); 
-            console.log('✅ PFD Renderer v1.2'); 
-        }
-        
-        // 5. DTI Engine + Renderer
-        if (typeof SmartFlowDTI !== 'undefined') { 
-            SmartFlowDTI.init(SmartFlowCore, typeof SmartFlowCatalog !== 'undefined' ? SmartFlowCatalog : null, notify); 
-            console.log('✅ DTI Engine v1.2'); 
-        }
-        var dtiCanvas = document.getElementById('dti-canvas');
-        if (typeof SmartFlowDTIRenderer !== 'undefined' && dtiCanvas) { 
-            SmartFlowDTIRenderer.init(dtiCanvas, SmartFlowCore, notify); 
-            console.log('✅ DTI Renderer v1.1'); 
-        }
-        
-        // 6. Integrity (Validación Cruzada)
-        if (typeof SmartFlowIntegrity !== 'undefined') { 
-            SmartFlowIntegrity.init(
-                SmartFlowCore, 
-                typeof SmartFlowPFD !== 'undefined' ? SmartFlowPFD : null, 
-                typeof SmartFlowDTI !== 'undefined' ? SmartFlowDTI : null, 
-                notify
-            ); 
-            console.log('✅ Integrity v1.1'); 
-        }
-        
-        // 7. Renderer 2D (Isométrico)
-        if (typeof SmartFlowRenderer !== 'undefined' && canvas) { 
-            SmartFlowRenderer.init(canvas, SmartFlowCore, notify); 
-            _is2DInitialized = true; 
-            console.log('✅ ISO Renderer v3.7'); 
-        }
-        
-        // 8. Router (Enrutamiento de tuberías)
-        if (typeof SmartFlowRouter !== 'undefined') { 
-            SmartFlowRouter.init(SmartFlowCore, typeof SmartFlowCatalog !== 'undefined' ? SmartFlowCatalog : null, notify, scheduleRender); 
-            console.log('✅ Router'); 
-        }
-        
-        // 9. Deliverables (PDFs normativos)
-        if (typeof SmartFlowDeliverables !== 'undefined') {
-            SmartFlowDeliverables.init(SmartFlowCore, typeof SmartFlowRenderer !== 'undefined' ? SmartFlowRenderer : null);
-            SmartFlowDeliverables.setProjectConfig({
-                projectName: window.currentProjectName || 'PROYECTO',
-                projectNumber: 'SF-001',
-                client: 'AcQuaBlue International Corp.',
-                plantLocation: 'PLANTA',
-                revision: 'A',
-                date: new Date().toLocaleDateString('es-ES'),
-                designer: 'Ing. Osnay Romero',
-                reviewer: '',
-                scale: 'NTS',
-                unit: 'mm'
-            });
-            _deliverablesInitialized = true;
-            console.log('✅ Deliverables v1.1');
-        }
-        
-        // 10. Module Panels (UI contextual por módulo)
-        if (typeof SmartFlowModulePanels !== 'undefined') {
-            SmartFlowModulePanels.init();
-            console.log('✅ Module Panels v1.0');
-        }
-        
-        // 11. Despachador de Comandos (SIEMPRE al final)
-        SmartFlowCommands.init(SmartFlowCore, typeof SmartFlowCatalog !== 'undefined' ? SmartFlowCatalog : null, 
-                               typeof SmartFlowRenderer !== 'undefined' ? SmartFlowRenderer : null, 
-                               notify, scheduleRender, voiceFn);
         SmartFlowCore.setVoice(voiceEnabled);
-        _modulesInitialized = true;
         
-        console.log('✅ SmartFlow Pro v5.0 listo | PFD + DTI + ISO + Deliverables');
-        notify('SmartFlow Pro v5.0 listo | PFD + DTI + ISO + PDF', false);
+        // Carga de módulos transversales que no afectan la UI directa
+        if (typeof SmartFlowIntegrity !== 'undefined') SmartFlowIntegrity.init(SmartFlowCore, null, null, notify);
+        if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.init(SmartFlowCore, notify, null);
+        
+        _coreInitialized = true;
+        console.log('✅ Core Base Unificado Listo.');
     }
     
-    // ===== SWITCH DE MÓDULOS CON WRAPPERS INDEPENDIENTES =====
+    // ===== CONTROLADOR DE CONTEXTO CAMALEÓNICO (EL CORAZÓN DE LA SUITE) =====
     window.switchModule = function(module) {
+        if (!MODULE_CONFIGS[module]) module = 'pfd';
         window.currentModule = module;
         
-        // 1. Ocultar todos los wrappers
-        document.querySelectorAll('.module-view').forEach(function(el) {
-            el.style.display = 'none';
-        });
+        // 1. Inicializar base de datos común si es el primer arranque
+        initCoreEngine();
+
+        // 2. Mutar contenedor de la App para CSS adaptativo y variables de acento
+        const adaptivePanel = document.getElementById('adaptive-panel') || document.body;
+        adaptivePanel.setAttribute('data-module', module);
+        adaptivePanel.style.setProperty('--accent-module', MODULE_CONFIGS[module].accentColor);
+        
+        // 3. Adaptar la sintaxis y placeholder del campo de comandos
+        if (commandText) commandText.setAttribute('placeholder', MODULE_CONFIGS[module].placeholder);
+        const labelContext = document.getElementById('commandContextLabel');
+        if (labelContext) labelContext.textContent = `Modo: ${MODULE_CONFIGS[module].contextLabel}`;
+
+        // 4. Conmutar visibilidad física de los wrappers HTML en el DOM
+        document.querySelectorAll('.module-view').forEach(el => el.style.display = 'none');
         
         var wrapperPFD = document.getElementById('wrapper-pfd');
         var wrapperDTI = document.getElementById('wrapper-dti');
         var wrapperISO2D = document.getElementById('wrapper-iso2d');
         var wrapper3D = document.getElementById('wrapper-3d');
         
-        // 2. Mostrar el wrapper seleccionado
+        // 5. Encender y redimensionar los Motores Gráficos específicos
         if (module === 'pfd') {
             if (wrapperPFD) wrapperPFD.style.display = 'block';
             window.currentViewMode = '2d';
-            if (typeof SmartFlowPFDRenderer !== 'undefined') { 
-                SmartFlowPFDRenderer.resizeCanvas(); 
-                setTimeout(function() { SmartFlowPFDRenderer.render(); }, 50); 
-            }
+            if (typeof SmartFlowPFDRenderer !== 'undefined') { SmartFlowPFDRenderer.resizeCanvas(); setTimeout(() => SmartFlowPFDRenderer.render(), 50); }
         } else if (module === 'dti') {
             if (wrapperDTI) wrapperDTI.style.display = 'block';
             window.currentViewMode = '2d';
-            if (typeof SmartFlowDTIRenderer !== 'undefined') { 
-                SmartFlowDTIRenderer.resizeCanvas(); 
-                setTimeout(function() { SmartFlowDTIRenderer.render(); }, 50); 
-            }
+            if (typeof SmartFlowDTIRenderer !== 'undefined') { SmartFlowDTIRenderer.resizeCanvas(); setTimeout(() => SmartFlowDTIRenderer.render(), 50); }
         } else if (module === 'iso') {
             if (window.currentViewMode === '3d') {
                 if (wrapper3D) wrapper3D.style.display = 'block';
-                if (typeof SmartFlowRender !== 'undefined' && typeof SmartFlowRender.renderFrame === 'function') {
-                    SmartFlowRender.renderFrame();
-                }
-                if (typeof ThreeJsEngine !== 'undefined' && typeof ThreeJsEngine.fitCameraToEquipments === 'function') {
-                    setTimeout(function() { ThreeJsEngine.fitCameraToEquipments(); }, 200);
-                }
+                if (typeof SmartFlowRender?.renderFrame === 'function') SmartFlowRender.renderFrame();
             } else {
                 if (wrapperISO2D) wrapperISO2D.style.display = 'block';
                 window.currentViewMode = '2d';
-                if (typeof SmartFlowRenderer !== 'undefined') { 
-                    SmartFlowRenderer.resizeCanvas(); 
-                    setTimeout(function() { SmartFlowRenderer.autoCenter(); }, 100); 
-                }
+                if (typeof SmartFlowRenderer !== 'undefined') { SmartFlowRenderer.resizeCanvas(); setTimeout(() => SmartFlowRenderer.autoCenter(), 100); }
             }
         }
         
-        // 3. Actualizar botones de la toolbar
-        var bp = document.getElementById('btn-mode-pfd');
-        var bd = document.getElementById('btn-mode-dti');
-        var bi = document.getElementById('btn-mode-iso');
-        if (bp) bp.classList.toggle('active', module === 'pfd');
-        if (bd) bd.classList.toggle('active', module === 'dti');
-        if (bi) bi.classList.toggle('active', module === 'iso');
+        // 6. Sincronizar Toolbar de Selección Superior
+        ['pfd', 'dti', 'iso'].forEach(m => {
+            const btn = document.getElementById(`btn-mode-${m}`);
+            if (btn) btn.classList.toggle('active', module === m);
+        });
         
-        // 4. Actualizar pestañas
-        document.querySelectorAll('.module-tab').forEach(function(t) { t.classList.remove('active'); });
-        var tab = document.querySelector('.module-tab.' + module + '-tab');
-        if (tab) tab.classList.add('active');
-        
-        // 5. Actualizar panel de herramientas contextual
+        // 7. Refrescar el Panel Asistido Contextual (Tu cuadrícula de botones móviles)
         if (typeof SmartFlowModulePanels !== 'undefined' && typeof SmartFlowModulePanels.switchModule === 'function') {
             SmartFlowModulePanels.switchModule(module);
         }
         
-        // 6. Mostrar/ocultar panel de herramientas ISO
+        // Mostrar barra lateral de herramientas geométricas sólo en Isométrico
         var toolsPanel = document.getElementById('toolsPanel');
         if (toolsPanel) toolsPanel.style.display = module === 'iso' ? '' : 'none';
         
-        console.log('Módulo cambiado a: ' + module + ' | Vista: ' + (window.currentViewMode || '2d'));
+        console.log(`🌐 Suite conmutada limpiamente al entorno: [${module.toUpperCase()}]`);
     };
     
+    // ===== PERSISTENCIA Y GESTIÓN DE PROYECTOS =====
     function guardarProyecto() {
         var state = SmartFlowCore.exportProject();
         localStorage.setItem('smartflow_pro_v5_project', state);
@@ -299,149 +218,113 @@
                 var state = JSON.parse(data);
                 SmartFlowCore.importState(state.data || state);
                 autoCenter();
-                notify("✅ Proyecto cargado correctamente.", false);
-            } catch (e) { notify("Error al cargar el proyecto.", true); }
-        } else { notify("No hay proyecto guardado en el navegador.", true); }
+                notify("✅ Proyecto cargado desde almacenamiento local.", false);
+            } catch (e) { notify("Error al restaurar base de datos.", true); }
+        } else { notify("No se encontró proyecto previo en este navegador.", true); }
     }
     
-    function exportarProyectoArchivo() { if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.downloadJSON(); }
-    function importarProyectoArchivo() { if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.uploadAndImportJSON(); }
-    function nuevoProyecto() { if (confirm("¿Crear nuevo proyecto? Se perderán los cambios no guardados.")) { SmartFlowCore.nuevoProyecto(); autoCenter(); } }
     function iniciarNuevoProyecto() { 
-        var n = projectInput ? projectInput.value.trim() : ''; 
-        if (n) window.currentProjectName = n; 
-        if (projectModal) projectModal.style.display = 'none'; 
-        if (welcomePanel) welcomePanel.classList.add('welcome-hidden'); 
+        var n = document.getElementById('project-name-input')?.value.trim() || 'Proyecto_SmartFlow'; 
+        window.currentProjectName = n; 
+        document.getElementById('project-name-modal').style.display = 'none'; 
+        document.getElementById('welcome-panel').classList.add('welcome-hidden'); 
         SmartFlowCore.nuevoProyecto(); 
         if (statusMsgEl) statusMsgEl.textContent = 'Proyecto: ' + window.currentProjectName; 
-        if (typeof SmartFlowDeliverables !== 'undefined') {
-            SmartFlowDeliverables.setProjectConfig({ projectName: window.currentProjectName });
-        }
         autoCenter(); 
-    }
-    function saltarNombreProyecto() { 
-        if (projectModal) projectModal.style.display = 'none'; 
-        if (welcomePanel) welcomePanel.classList.add('welcome-hidden'); 
-        if (statusMsgEl) statusMsgEl.textContent = 'Proyecto: ' + window.currentProjectName; 
     }
     
     function setTool(mode) { toolMode = mode; var ids = { select: 'toolSelect', moveEq: 'toolMoveEq', editPipe: 'toolEditPipe', addPoint: 'toolAddPoint' }; Object.keys(ids).forEach(function(k) { var b = document.getElementById(ids[k]); if (b) b.classList.toggle('active', mode === k); }); }
     window.setElevation = function(level) { SmartFlowCore.setElevation(level); if (window.currentModule === 'iso' && window.currentViewMode === '2d' && window.SmartFlowRenderer) window.SmartFlowRenderer.setElevation(level); if (customElev) customElev.value = level; };
     function toggleVoice() { voiceEnabled = !voiceEnabled; SmartFlowCore.setVoice(voiceEnabled); var b = document.getElementById('btnVoice'); if (b) b.textContent = voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF'; }
     
+    // ===== ENRUTADOR Y DESPACHADOR CENTRAL DE COMANDOS CRUZADOS =====
+    function ejecutarComando() {
+        if (!commandText) return;
+        var txt = commandText.value.trim();
+        if (!txt) return;
+        
+        // Validación del Contexto del Módulo antes del procesamiento en Core
+        const m = window.currentModule;
+        if (txt.startsWith('pipe route') && m !== 'iso') { notify("⚠️ El comando 'pipe route' es geométrico. Use el módulo ISO.", true); return; }
+        if (txt.startsWith('set isa') && m === 'pfd') { notify("⚠️ Simbología ISA no disponible en diagramas preliminares PFD. Pase a DTI.", true); return; }
+
+        var lineas = txt.split('\n').filter(l => l.trim());
+        
+        // Delegar comandos inicializados dinámicamente en el Core
+        if (typeof SmartFlowCommands !== 'undefined') {
+            var ok = lineas.length === 1 ? SmartFlowCommands.executeCommand(lineas[0]) !== false : SmartFlowCommands.executeBatch(lineas.join('\n')) > 0;
+            if (ok) addToHistory(txt);
+        }
+        
+        commandText.value = ''; _historyIndex = _commandHistory.length; _tempCommand = '';
+        if (commandPanel) commandPanel.style.display = 'none';
+        scheduleRender();
+    }
+    
+    // ===== ATAJOS DE TECLADO INTERNACIONALES =====
     function setupKeyboardShortcuts() {
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey && e.shiftKey) {
                 switch(e.key.toUpperCase()) {
-                    case 'C': e.preventDefault(); abrirPanelComandos(); break;
+                    case 'C': e.preventDefault(); commandPanel.style.display = 'block'; commandText.focus(); break;
                     case 'V': e.preventDefault(); autoCenter(); break;
+                    case 'S': e.preventDefault(); guardarProyecto(); break;
                     case 'U': e.preventDefault(); SmartFlowCore.undo(); scheduleRender(); break;
                     case 'Y': e.preventDefault(); SmartFlowCore.redo(); scheduleRender(); break;
-                    case 'S': e.preventDefault(); guardarProyecto(); break;
-                    case 'E': e.preventDefault(); if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.downloadPCF(); break;
-                    case 'M': e.preventDefault(); if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.downloadMTO(); break;
-                    case 'D': e.preventDefault(); if (typeof SmartFlowDBExport !== 'undefined') SmartFlowDBExport.exportDatabase(); break;
-                    case 'A': e.preventDefault(); if (typeof SmartFlowIntegrity !== 'undefined') SmartFlowIntegrity.validateAll(); break;
-                    case 'P': e.preventDefault(); if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generatePFD(); break;
-                    case 'I': e.preventDefault(); if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generateDTI(); break;
-                    case '1': e.preventDefault(); if (typeof window.switchModule === 'function') window.switchModule('pfd'); break;
-                    case '2': e.preventDefault(); if (typeof window.switchModule === 'function') window.switchModule('dti'); break;
-                    case '3': e.preventDefault(); if (typeof window.switchModule === 'function') window.switchModule('iso'); break;
+                    case '1': e.preventDefault(); window.switchModule('pfd'); break;
+                    case '2': e.preventDefault(); window.switchModule('dti'); break;
+                    case '3': e.preventDefault(); window.switchModule('iso'); break;
                 }
             }
         });
     }
     
-    function abrirPanelComandos() { if (commandPanel) { commandPanel.style.display = 'block'; if (commandText) commandText.focus(); } }
-    function ejecutarComando() {
-        if (!commandText) return;
-        var txt = commandText.value.trim();
-        if (!txt) return;
-        var lineas = txt.split('\n').filter(function(l) { return l.trim(); });
-        var ok = lineas.length === 1 ? SmartFlowCommands.executeCommand(lineas[0]) !== false : SmartFlowCommands.executeBatch(lineas.join('\n')) > 0;
-        if (ok) addToHistory(txt);
-        commandText.value = ''; _historyIndex = _commandHistory.length; _tempCommand = '';
-        var first = lineas[0].toLowerCase();
-        if (!['info','list','help','ayuda','validate','validar','summary','resumen','balance'].some(function(k) { return first.startsWith(k); })) { if (commandPanel) commandPanel.style.display = 'none'; }
-        scheduleRender();
-    }
-    
+    // ===== ENLACE LIMPIO DE EVENTOS (EVENT BINDING) =====
     function bindEvents() {
         var v = function(id, accion) { var el = document.getElementById(id); if (el) el.onclick = accion; };
-        v('welcome-new-project', function() { if (projectModal) projectModal.style.display = 'flex'; });
-        v('welcome-open-project', function() { cargarProyecto(); if (welcomePanel) welcomePanel.classList.add('welcome-hidden'); });
+        v('welcome-new-project', function() { document.getElementById('project-name-modal').style.display = 'flex'; });
+        v('welcome-open-project', function() { cargarProyecto(); document.getElementById('welcome-panel').classList.add('welcome-hidden'); });
         v('modal-accept', iniciarNuevoProyecto);
-        v('modal-skip', saltarNombreProyecto);
         v('btnOpen', cargarProyecto);
         v('btnSave', guardarProyecto);
-        v('btnExportProject', exportarProyectoArchivo);
-        v('btnImportProject', importarProyectoArchivo);
-        v('btnExportDB', function() { if (typeof SmartFlowDBExport !== 'undefined') SmartFlowDBExport.exportDatabase(); });
-        v('btnExportPCF', function() { if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.downloadPCF(); });
-        v('btnImportPCF', function() { if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.uploadAndImportPCF(); });
-        v('btnMTO', function() { if (typeof SmartFlowIO !== 'undefined') SmartFlowIO.downloadMTO(); });
-        v('btnExportPFD', function() { if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generatePFD(); });
-        v('btnExportDTI', function() { if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generateDTI(); });
-        v('btn-mode-pfd', function() { if (typeof window.switchModule === 'function') window.switchModule('pfd'); });
-        v('btn-mode-dti', function() { if (typeof window.switchModule === 'function') window.switchModule('dti'); });
-        v('btn-mode-iso', function() { if (typeof window.switchModule === 'function') window.switchModule('iso'); });
-        v('btnValidate', function() { if (typeof SmartFlowIntegrity !== 'undefined') SmartFlowIntegrity.validateAll(); });
-        v('btnSummary', function() { if (typeof SmartFlowIntegrity !== 'undefined') SmartFlowIntegrity.quickSummary(); });
+        v('btn-mode-pfd', () => window.switchModule('pfd'));
+        v('btn-mode-dti', () => window.switchModule('dti'));
+        v('btn-mode-iso', () => window.switchModule('iso'));
         v('btnReset', autoCenter);
         v('btnFullscreen', toggleFullscreen);
-        v('btnFullscreenCenter', autoCenter);
-        v('btnFullscreenExit', exitFullscreen);
-        v('btnTogglePanels', toggleAllPanels);
-        v('btnCommand', abrirPanelComandos);
-        v('closeCommand', function() { if (commandPanel) commandPanel.style.display = 'none'; });
-        v('clearCommand', function() { if (commandText) { commandText.value = ''; _historyIndex = _commandHistory.length; _tempCommand = ''; } });
+        v('btnCommand', () => { commandPanel.style.display = 'block'; commandText?.focus(); });
+        v('closeCommand', () => commandPanel.style.display = 'none');
         v('runCommands', ejecutarComando);
-        v('toolSelect', function() { setTool('select'); });
-        v('toolMoveEq', function() { setTool('moveEq'); });
-        v('toolEditPipe', function() { setTool('editPipe'); });
-        v('toolAddPoint', function() { setTool('addPoint'); });
-        v('btnUndo', function() { SmartFlowCore.undo(); scheduleRender(); });
-        v('btnRedo', function() { SmartFlowCore.redo(); scheduleRender(); });
+        v('btnUndo', () => { SmartFlowCore.undo(); scheduleRender(); });
+        v('btnRedo', () => { SmartFlowCore.redo(); scheduleRender(); });
         v('btnVoice', toggleVoice);
-        v('btnRecalc', function() { SmartFlowCore.syncPhysicalData(); scheduleRender(); });
-        v('btnSpeakSummary', function() { if (typeof SmartFlowIntegrity !== 'undefined') SmartFlowIntegrity.quickSummary(); });
-        v('btnSetElev', function() { var val = parseInt(customElev ? customElev.value : 0); if (!isNaN(val)) window.setElevation(val); });
-        function setupDropdown(id) { var b = document.getElementById(id); if (!b) return; b.addEventListener('click', function(e) { e.stopPropagation(); var p = this.closest('.dropdown'); if (p) p.classList.toggle('open'); }); }
-        setupDropdown('btnFileMenu');
-        setupDropdown('btnMoreMenu');
-        document.addEventListener('click', function(e) { if (!e.target.closest('.dropdown')) document.querySelectorAll('.dropdown.open').forEach(function(d) { d.classList.remove('open'); }); });
+        
         if (commandText) {
             commandText.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ejecutarComando(); } else if (e.key === 'ArrowUp') { e.preventDefault(); navigateHistory('up'); } else if (e.key === 'ArrowDown') { e.preventDefault(); navigateHistory('down'); } });
         }
-        var rt;
-        window.addEventListener('resize', function() { clearTimeout(rt); rt = setTimeout(function() { var m = window.currentModule || 'pfd'; if (m === 'pfd' && typeof SmartFlowPFDRenderer !== 'undefined') { SmartFlowPFDRenderer.resizeCanvas(); SmartFlowPFDRenderer.render(); } else if (m === 'dti' && typeof SmartFlowDTIRenderer !== 'undefined') { SmartFlowDTIRenderer.resizeCanvas(); SmartFlowDTIRenderer.render(); } else if (m === 'iso' && typeof SmartFlowRenderer !== 'undefined') { SmartFlowRenderer.resizeCanvas(); } }, 150); });
+        
+        let rt;
+        window.addEventListener('resize', function() { clearTimeout(rt); rt = setTimeout(scheduleRender, 150); });
     }
     
+    // ===== INICIALIZACIÓN DE LA SUITE =====
     function init() {
-        window.currentProjectName = window.currentProjectName || 'Proyecto_SmartFlow';
-        window.voiceEnabled = true;
-        window.currentModule = 'pfd';
+        window.currentProjectName = 'Proyecto_SmartFlow';
         window.currentViewMode = '2d';
-        var ss = document.getElementById('splash-status');
-        var msgs = ["Cargando Core v7.1...", "PFD Engine v1.2...", "DTI Engine v1.2...", "Integrity v1.1...", "Renderers...", "Deliverables...", "¡SmartFlow Pro v5.0!"];
-        var mi = 0;
-        var iv = setInterval(function() { if (mi < msgs.length && ss) { ss.textContent = msgs[mi]; mi++; } }, 600);
-        function bootstrap() {
-            if (typeof SmartFlowCore === 'undefined' || typeof SmartFlowCommands === 'undefined') { setTimeout(bootstrap, 100); return; }
-            initModules();
-            bindEvents();
-            setupKeyboardShortcuts();
-            setTool('select');
-            window.setElevation(0);
-            if (splashScreen) splashScreen.classList.add('splash-hidden');
-            clearInterval(iv);
-            setTimeout(function() { if (welcomePanel) welcomePanel.classList.remove('welcome-hidden'); }, 300);
-            if (typeof window.switchModule === 'function') window.switchModule('pfd');
-            setTimeout(function() { if (typeof SmartFlowIntegrity !== 'undefined') SmartFlowIntegrity.quickSummary(); }, 2500);
-        }
-        setTimeout(bootstrap, 4000);
-        if (window.innerWidth < 768) togglePanel(false);
+        
+        // Quitar Splash-screen de carga inicial y lanzar selección
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.classList.add('splash-hidden');
+        
+        bindEvents();
+        setupKeyboardShortcuts();
+        setTool('select');
+        
+        // Abrir panel inicial de Bienvenida
+        const welcome = document.getElementById('welcome-panel');
+        if (welcome) welcome.classList.remove('welcome-hidden');
     }
     
-    init();
+    // Lanzar flujo
+    setTimeout(init, 1000);
 })();
