@@ -1,298 +1,506 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EngineFlow | Engineering Suite</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>EngineFlow Pro v5.0 | Suite de Ingeniería</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <style>
-        /* =========================================================================
-           🎨 ESTILOS MODERNOS Y ARQUITECTURA VISUAL DE ENGINEFLOW
-           ========================================================================= */
         :root {
-            --bg-main: #0d1117;
-            --bg-card: #161b22;
-            --bg-input: #21262d;
-            --border-color: #30363d;
-            --text-primary: #f0f6fc;
-            --text-secondary: #8b949e;
-            --accent-module: #10b981; /* Cambia dinámicamente por JS (pfd: #10b981, dti: #8b5cf6, iso: #00f2ff) */
+            --bg: #0a0e17;
+            --panel: #0f172a;
+            --border: #1e293b;
+            --gold: #d4a853;
+            --cyan: #00f2ff;
+            --green: #10b981;
+            --purple: #8b5cf6;
+            --red: #ef4444;
+            --text: #c9d1d9;
+            --muted: #64748b;
+            --toolbar-h: 42px;
+            --bottombar-h: 46px;
         }
-
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-main);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            color: var(--text-primary);
-            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
             height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
-        /* Launcher de Entrada (Selector de Módulos) */
-        .launcher-overlay {
+        /* ===== LAUNCHER ===== */
+        #suite-launcher {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at center, #10172a 0%, #020617 100%);
+            z-index: 10000;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            background: radial-gradient(circle at center, #1f2937 0%, var(--bg-main) 100%);
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            z-index: 9999;
-            transition: opacity 0.3s ease;
+            transition: opacity 0.4s ease, visibility 0.4s;
+            padding: 20px;
         }
-
-        .launcher-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 40px;
-            border-radius: 16px;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-            max-width: 500px;
-            width: 90%;
+        #suite-launcher.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        
+        .launcher-container { text-align: center; max-width: 580px; width: 100%; }
+        .launcher-brand { margin-bottom: 24px; }
+        
+        .launcher-logo {
+            width: 64px; height: 64px; margin: 0 auto 16px;
+            border: 2px solid var(--gold);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(212,168,83,0.05);
+            animation: hexPulse 3s infinite ease-in-out;
         }
-
-        .launcher-card h1 {
-            font-size: 2rem;
-            margin: 0 0 10px 0;
-            letter-spacing: -0.5px;
-            background: linear-gradient(90deg, #10b981, #00f2ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .launcher-logo span { font-size: 26px; color: var(--gold); font-weight: 900; }
+        
+        @keyframes hexPulse {
+            0%,100% { transform: scale(1); box-shadow: 0 0 16px rgba(212,168,83,0.1); }
+            50% { transform: scale(1.04); box-shadow: 0 0 30px rgba(212,168,83,0.2); }
         }
-
-        .launcher-card p {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-            margin-bottom: 30px;
-        }
-
-        .launcher-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
+        
+        .launcher-title { font-size: clamp(22px, 4vw, 30px); font-weight: 900; letter-spacing: 5px; color: #fff; text-transform: uppercase; }
+        .launcher-subtitle { font-size: 10px; letter-spacing: 4px; color: var(--gold); text-transform: uppercase; opacity: 0.8; }
+        
+        .launcher-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+        .launcher-divider::before, .launcher-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.08); }
+        .launcher-divider span { font-size: 9px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; white-space: nowrap; }
+        
+        .launcher-buttons { display: flex; flex-direction: column; gap: 10px; }
+        
         .btn-launch {
-            display: flex;
-            align-items: center;
-            background: var(--bg-input);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 16px;
-            cursor: pointer;
-            text-align: left;
-            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease;
-            width: 100%;
+            display: flex; align-items: center; gap: 14px;
+            background: rgba(15,23,42,0.8); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 18px; cursor: pointer;
+            text-align: left; transition: all 0.25s ease;
+            backdrop-filter: blur(8px); border-left: 3px solid transparent;
         }
+        .btn-launch:hover { transform: translateX(6px); background: rgba(30,40,60,0.9); }
+        .btn-launch:active { transform: scale(0.98); }
+        .btn-launch.pfd:hover { border-left-color: var(--green); border-color: var(--green); }
+        .btn-launch.pfd:hover .launch-icon { color: var(--green); }
+        .btn-launch.dti:hover { border-left-color: var(--purple); border-color: var(--purple); }
+        .btn-launch.dti:hover .launch-icon { color: var(--purple); }
+        .btn-launch.iso:hover { border-left-color: var(--cyan); border-color: var(--cyan); }
+        .btn-launch.iso:hover .launch-icon { color: var(--cyan); }
+        
+        .launch-icon { font-size: 32px; min-width: 44px; text-align: center; transition: color 0.25s; }
+        .launch-info { flex: 1; }
+        .launch-name { display: block; font-weight: 700; font-size: 14px; color: #fff; letter-spacing: 0.5px; }
+        .launch-desc { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .launch-arrow { font-size: 18px; color: var(--muted); transition: all 0.25s; }
+        .btn-launch:hover .launch-arrow { color: var(--gold); transform: translateX(4px); }
+        .launcher-footer { margin-top: 24px; font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+        .launcher-footer strong { color: #fff; }
 
-        .btn-launch:hover {
-            transform: scale(1.02);
-            background: #282e38;
+        /* ===== TOOLBAR SUPERIOR ===== */
+        #main-toolbar {
+            display: flex; align-items: center; gap: 4px;
+            padding: 4px 8px; background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            min-height: var(--toolbar-h); flex-shrink: 0;
+            flex-wrap: wrap; z-index: 500;
         }
-
-        .btn-launch.pfd:hover { border-color: #10b981; box-shadow: 0 0 12px rgba(16, 185, 129, 0.2); }
-        .btn-launch.dti:hover { border-color: #8b5cf6; box-shadow: 0 0 12px rgba(139, 92, 246, 0.2); }
-        .btn-launch.iso:hover { border-color: #00f2ff; box-shadow: 0 0 12px rgba(0, 242, 255, 0.2); }
-
-        .btn-launch .icon { font-size: 2rem; margin-right: 18px; }
-        .btn-launch .title { display: block; font-weight: 600; color: var(--text-primary); font-size: 1.1rem; }
-        .btn-launch .desc { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-top: 3px; }
-
-        /* Contenedor Principal Adaptativo */
-        #adaptive-panel {
-            display: grid;
-            grid-template-rows: auto 1fr;
-            height: 100vh;
-            width: 100vw;
+        #main-toolbar .toolbar-group { display: flex; align-items: center; gap: 2px; }
+        #main-toolbar .toolbar-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+        
+        .tb-btn {
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+            padding: 5px 8px; background: transparent; border: 1px solid transparent;
+            border-radius: 4px; color: var(--text); cursor: pointer;
+            font-size: 11px; font-weight: 600; white-space: nowrap;
+            transition: all 0.15s; min-width: 30px; min-height: 30px;
         }
+        .tb-btn:hover { background: rgba(255,255,255,0.05); border-color: var(--border); }
+        .tb-btn:active { transform: scale(0.95); }
+        .tb-btn .tb-icon { font-size: 16px; line-height: 1; }
+        .tb-btn .tb-label { font-size: 10px; }
+        
+        .tb-btn.pfd-active { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.1); }
+        .tb-btn.dti-active { border-color: var(--purple); color: var(--purple); background: rgba(139,92,246,0.1); }
+        .tb-btn.iso-active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,242,255,0.1); }
+        .tb-btn.view-active { border-color: var(--gold); color: var(--gold); background: rgba(212,168,83,0.1); }
+        .tb-btn.gold { border-color: rgba(212,168,83,0.3); }
+        .tb-btn.gold:hover { border-color: var(--gold); color: var(--gold); }
+        .tb-btn.danger:hover { background: rgba(239,68,68,0.15); border-color: var(--red); color: var(--red); }
 
-        /* Navbar Superior Unificada */
-        .suite-navbar {
-            background-color: var(--bg-card);
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 20px;
-            height: 55px;
+        /* ===== APP CONTAINER ===== */
+        #app-container { display: none; flex-direction: column; flex: 1; height: 100%; }
+        #app-container.active { display: flex; }
+        
+        #workspace { flex: 1; position: relative; overflow: hidden; background: #fff; }
+        #workspace canvas { display: block; width: 100%; height: 100%; }
+
+        /* ===== BOTTOMBAR ===== */
+        #bottom-bar {
+            display: flex; align-items: center; gap: 6px;
+            padding: 4px 8px; background: var(--panel);
+            border-top: 1px solid var(--border);
+            min-height: var(--bottombar-h); flex-shrink: 0; z-index: 500;
         }
+        #bottom-bar .status-text { font-size: 10px; color: var(--muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #bottom-bar .status-module { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 3px; }
+        #bottom-bar .status-module.pfd { color: var(--green); background: rgba(16,185,129,0.1); }
+        #bottom-bar .status-module.dti { color: var(--purple); background: rgba(139,92,246,0.1); }
+        #bottom-bar .status-module.iso { color: var(--cyan); background: rgba(0,242,255,0.1); }
 
-        .brand {
-            font-weight: 700;
-            font-size: 1.2rem;
-            letter-spacing: -0.3px;
+        /* ===== PANEL DE COMANDOS FLOTANTE ===== */
+        #cmd-panel {
+            position: fixed; bottom: calc(var(--bottombar-h) + 12px); left: 50%;
+            transform: translateX(-50%); width: min(560px, 94vw);
+            background: rgba(15,23,42,0.97); border: 1px solid var(--gold);
+            border-radius: 10px; z-index: 900; backdrop-filter: blur(12px);
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            display: flex; flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
-
-        .brand span { color: var(--accent-module); transition: color 0.2s; }
-
-        .module-switcher-tabs {
-            display: flex;
-            gap: 8px;
-            height: 100%;
-            align-items: center;
+        #cmd-panel.collapsed {
+            bottom: calc(var(--bottombar-h) + 12px); left: auto; right: 12px;
+            transform: none; width: auto; border-radius: 20px;
+            padding: 0; box-shadow: 0 2px 12px rgba(0,0,0,0.4);
         }
-
-        .tab-button {
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            padding: 8px 16px;
-            font-size: 0.9rem;
-            font-weight: 500;
-            cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.2s;
+        #cmd-panel.collapsed .cmd-body,
+        #cmd-panel.collapsed .cmd-suggestions,
+        #cmd-panel.collapsed .cmd-history-indicator { display: none; }
+        #cmd-panel.collapsed .cmd-header { padding: 6px 12px; border-bottom: none; }
+        #cmd-panel.collapsed .cmd-header strong { display: none; }
+        
+        .cmd-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.06);
+            color: var(--gold); font-size: 12px; flex-shrink: 0;
         }
-
-        .tab-button:hover {
-            color: var(--text-primary);
-            background-color: var(--bg-input);
+        .cmd-header-actions { display: flex; gap: 4px; }
+        .cmd-header-actions button {
+            background: none; border: none; color: #fff;
+            font-size: 14px; cursor: pointer; padding: 2px 6px;
+            border-radius: 3px; transition: background 0.15s;
         }
-
-        .tab-button.active {
-            color: #fff;
-            background-color: var(--accent-module);
+        .cmd-header-actions button:hover { background: rgba(255,255,255,0.1); }
+        
+        .cmd-body { padding: 8px 10px; flex-shrink: 0; }
+        .cmd-body textarea {
+            width: 100%; background: #0a0e17; color: #e0e6ed;
+            border: 1px solid #30363d; border-radius: 6px;
+            padding: 8px 10px; font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 12px; resize: vertical; min-height: 60px; max-height: 150px; line-height: 1.5;
         }
+        .cmd-body textarea:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 2px rgba(212,168,83,0.15); }
+        
+        .cmd-actions { display: flex; gap: 6px; margin-top: 6px; }
+        .cmd-actions button { padding: 5px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: #fff; cursor: pointer; font-size: 10px; font-weight: 600; transition: all 0.15s; }
+        .cmd-actions button.run { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 700; }
+        .cmd-actions button.run:hover { background: #c4963a; }
+        
+        .cmd-suggestions { max-height: 140px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.05); padding: 4px 0; font-size: 11px; }
+        .cmd-suggestions .suggestion { padding: 5px 10px; cursor: pointer; color: #58a6ff; font-family: monospace; transition: background 0.1s; }
+        .cmd-suggestions .suggestion:hover { background: rgba(88,166,255,0.1); }
+        .cmd-history-indicator { padding: 3px 10px; font-size: 9px; color: var(--muted); text-align: right; }
 
-        /* Espacio de Trabajo Modular */
-        .main-workspace {
-            display: flex;
-            position: relative;
-            height: calc(100vh - 55px);
-            width: 100%;
+        /* ===== PANEL DE PROPIEDADES ===== */
+        #props-panel {
+            position: absolute; top: 8px; right: 8px;
+            width: min(260px, 80vw); max-height: 50vh;
+            background: rgba(15,23,42,0.9); border: 1px solid rgba(212,168,83,0.25);
+            border-radius: 8px; padding: 10px; z-index: 400;
+            overflow-y: auto; backdrop-filter: blur(8px);
+            transition: transform 0.3s ease, opacity 0.3s ease; font-size: 11px;
         }
+        #props-panel.hidden { transform: translateX(calc(100% + 20px)); opacity: 0; pointer-events: none; }
+        #props-panel .props-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--gold); font-weight: 700; font-size: 11px; }
+        #props-panel .props-close { background: none; border: none; color: #fff; font-size: 16px; cursor: pointer; padding: 0 4px; }
+        .prop-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .prop-label { color: var(--muted); }
+        .prop-value { color: #fff; font-weight: 500; }
 
-        .canvas-container {
-            flex: 1;
-            position: relative;
-            background-color: #090d16;
-        }
-
-        .module-view {
-            width: 100%;
-            height: 100%;
-            display: none;
-        }
-
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
-
-        /* Notificaciones */
+        /* ===== NOTIFICACIÓN ===== */
         #notification {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 500;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10000;
-            display: none;
+            position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+            background: #238636; color: #fff; padding: 8px 16px; border-radius: 6px;
+            z-index: 2000; font-weight: 600; font-size: 12px;
+            pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        }
+        #notification.show { opacity: 1; }
+        #notification.error { background: #da3633; }
+
+        /* ===== INDICADOR DE CARGA ===== */
+        #loading-indicator {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(15,23,42,0.9); border: 1px solid var(--gold);
+            border-radius: 8px; padding: 16px 24px; z-index: 300;
+            display: none; text-align: center; color: var(--gold);
+            font-size: 13px; font-weight: 600;
+        }
+        #loading-indicator .spinner {
+            width: 30px; height: 30px; margin: 0 auto 10px;
+            border: 2px solid rgba(212,168,83,0.2); border-top-color: var(--gold);
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== FULLSCREEN ===== */
+        body.fullscreen-mode #main-toolbar,
+        body.fullscreen-mode #bottom-bar,
+        body.fullscreen-mode #cmd-panel,
+        body.fullscreen-mode #props-panel,
+        body.fullscreen-mode #notification { display: none !important; }
+        body.fullscreen-mode #workspace { position: fixed; inset: 0; z-index: 10; }
+        body.fullscreen-mode #fs-controls { display: flex !important; }
+        
+        #fs-controls { display: none; position: fixed; bottom: 20px; right: 20px; z-index: 9999; gap: 8px; }
+        #fs-controls button { padding: 10px 16px; border-radius: 20px; border: none; font-weight: 700; font-size: 12px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        #fs-controls .fs-exit { background: var(--red); color: #fff; }
+        #fs-controls .fs-capture { background: var(--gold); color: #000; }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            :root { --toolbar-h: 38px; --bottombar-h: 40px; }
+            #main-toolbar { gap: 1px; padding: 2px 4px; }
+            .tb-btn { padding: 4px 6px; font-size: 10px; min-width: 28px; min-height: 28px; }
+            .tb-btn .tb-icon { font-size: 14px; }
+            .tb-btn .tb-label { display: none; }
+            .toolbar-sep { margin: 0 2px; height: 18px; }
+            #cmd-panel { width: 96vw; bottom: calc(var(--bottombar-h) + 8px); border-radius: 8px; }
+            #cmd-panel.collapsed { right: 8px; bottom: calc(var(--bottombar-h) + 8px); }
+            #props-panel { top: 4px; right: 4px; width: 75vw; max-height: 40vh; font-size: 10px; }
+            .btn-launch { padding: 12px 14px; gap: 10px; }
+            .launch-icon { font-size: 26px; min-width: 36px; }
+            .launch-name { font-size: 12px; }
+        }
+        
+        @media (max-width: 400px) {
+            #main-toolbar { gap: 0; padding: 2px; }
+            .tb-btn { padding: 3px 4px; font-size: 9px; min-width: 24px; min-height: 24px; }
+            .tb-btn .tb-icon { font-size: 12px; }
+            .toolbar-sep { margin: 0 1px; height: 16px; }
+            #cmd-panel { width: 98vw; }
         }
     </style>
 </head>
 <body>
 
-    <div id="suite-launcher" class="launcher-overlay">
-        <div class="launcher-card">
-            <h1>EngineFlow</h1>
-            <p>Suite Inteligente de Ingeniería de Procesos y Diseño</p>
-            
+    <!-- ===== LAUNCHER ===== -->
+    <div id="suite-launcher">
+        <div class="launcher-container">
+            <div class="launcher-brand">
+                <div class="launcher-logo"><span>EF</span></div>
+                <h1 class="launcher-title">EngineFlow</h1>
+                <p class="launcher-subtitle">Suite de Ingeniería Profesional</p>
+            </div>
+            <div class="launcher-divider"><span>Seleccionar módulo</span></div>
             <div class="launcher-buttons">
-                <button class="btn-launch pfd" onclick="window.switchModule('pfd'); document.getElementById('suite-launcher').style.display='none';">
-                    <span class="icon">📊</span>
-                    <div>
-                        <span class="title">Diagrama de Flujo (PFD)</span>
-                        <span class="desc">Balances lógicos de masa, corrientes y procesos.</span>
-                    </div>
+                <button class="btn-launch pfd" data-module="pfd">
+                    <span class="launch-icon">📊</span>
+                    <span class="launch-info">
+                        <span class="launch-name">PFD — Diagrama de Flujo</span>
+                        <span class="launch-desc">Diseño conceptual de procesos, balances de masa y energía</span>
+                    </span>
+                    <span class="launch-arrow">→</span>
                 </button>
-                
-                <button class="btn-launch dti" onclick="window.switchModule('dti'); document.getElementById('suite-launcher').style.display='none';">
-                    <span class="icon">🔧</span>
-                    <div>
-                        <span class="title">Tuberías e Instrumentación (DTI)</span>
-                        <span class="desc">Lazos de control PID y simbología según Norma ISA.</span>
-                    </div>
+                <button class="btn-launch dti" data-module="dti">
+                    <span class="launch-icon">🔧</span>
+                    <span class="launch-info">
+                        <span class="launch-name">DTI — Tubería e Instrumentación</span>
+                        <span class="launch-desc">Diagramas P&ID, instrumentación y lazos de control</span>
+                    </span>
+                    <span class="launch-arrow">→</span>
                 </button>
-                
-                <button class="btn-launch iso" onclick="window.switchModule('iso'); document.getElementById('suite-launcher').style.display='none';">
-                    <span class="icon">📦</span>
-                    <div>
-                        <span class="title">Isométrico & Ruteo 3D (ISO)</span>
-                        <span class="desc">Ruteo espacial físico, cotas y cómputos métricos (MTO).</span>
-                    </div>
+                <button class="btn-launch iso" data-module="iso">
+                    <span class="launch-icon">🧊</span>
+                    <span class="launch-info">
+                        <span class="launch-name">ISO — Isométrico de Tuberías</span>
+                        <span class="launch-desc">Ruteo 3D, fabricación y generación de PCF/MTO</span>
+                    </span>
+                    <span class="launch-arrow">→</span>
                 </button>
+            </div>
+            <div class="launcher-footer">
+                Desarrollado por <strong>Ing. Osnay Romero</strong> · v5.0
             </div>
         </div>
     </div>
 
-    <div id="adaptive-panel" data-module="pfd">
+    <!-- ===== APP CONTAINER ===== -->
+    <div id="app-container">
         
-        <header class="suite-navbar">
-            <div class="brand">Engine<span>Flow</span></div>
+        <!-- TOOLBAR SUPERIOR -->
+        <div id="main-toolbar">
+            <!-- Grupo: Navegación -->
+            <div class="toolbar-group">
+                <button class="tb-btn danger" id="btn-home" title="Volver al inicio">
+                    <span class="tb-icon">←</span><span class="tb-label">Inicio</span>
+                </button>
+                <span class="toolbar-sep"></span>
+            </div>
             
-            <div class="module-switcher-tabs">
-                <button id="btn-mode-pfd" class="tab-button active">📊 PFD</button>
-                <button id="btn-mode-dti" class="tab-button">🔧 DTI</button>
-                <button id="btn-mode-iso" class="tab-button">📦 ISO</button>
+            <!-- Grupo: Módulos -->
+            <div class="toolbar-group" id="module-btns">
+                <button class="tb-btn pfd-active" data-module="pfd"><span class="tb-icon">📊</span><span class="tb-label">PFD</span></button>
+                <button class="tb-btn" data-module="dti"><span class="tb-icon">🔧</span><span class="tb-label">DTI</span></button>
+                <button class="tb-btn" data-module="iso"><span class="tb-icon">🧊</span><span class="tb-label">ISO</span></button>
+                <span class="toolbar-sep"></span>
             </div>
-
-            <div id="statusMsg" style="font-size: 0.85rem; color: var(--text-secondary);">EngineFlow Suite v5.0</div>
-        </header>
-
-        <main class="main-workspace">
             
-            <div class="canvas-container">
-                
-                <div id="wrapper-pfd" class="module-view">
-                    <canvas id="pfd-canvas"></canvas>
-                </div>
-
-                <div id="wrapper-dti" class="module-view">
-                    <canvas id="dti-canvas"></canvas>
-                </div>
-
-                <div id="wrapper-iso2d" class="module-view">
-                    <canvas id="isoCanvas"></canvas>
-                </div>
-
-                <div id="wrapper-3d" class="module-view">
-                    </div>
-                
+            <!-- Grupo: Vista ISO (visible solo en modo ISO) -->
+            <div class="toolbar-group" id="view-btns" style="display:none;">
+                <button class="tb-btn view-active" data-view="2d" title="Vista Isométrica 2.5D (Canvas · Proyección 30°)">
+                    <span class="tb-icon">📐</span><span class="tb-label">2.5D</span>
+                </button>
+                <button class="tb-btn" data-view="3d" title="Vista 3D (Three.js · WebGL)">
+                    <span class="tb-icon">🧊</span><span class="tb-label">3D</span>
+                </button>
+                <span class="toolbar-sep"></span>
             </div>
-
-            <div id="side-panel" class="hidden" style="width: 300px; background: var(--bg-card); border-left: 1px solid var(--border-color); padding: 20px; display: none;">
-                <h3>Propiedades</h3>
-                <div id="panel-content"></div>
+            
+            <!-- Grupo: Archivo -->
+            <div class="toolbar-group">
+                <button class="tb-btn" id="btn-save" title="Guardar proyecto (Ctrl+Shift+S)">
+                    <span class="tb-icon">💾</span><span class="tb-label">Guardar</span>
+                </button>
+                <button class="tb-btn" id="btn-open" title="Abrir proyecto">
+                    <span class="tb-icon">📂</span><span class="tb-label">Abrir</span>
+                </button>
+                <span class="toolbar-sep"></span>
             </div>
-
-        </main>
-    </div>
-
-    <div id="commandPanel" style="display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%); width: 500px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10005;">
-        <div id="commandContextLabel" style="font-size: 0.8rem; color: var(--accent-module); margin-bottom: 8px; font-weight: 600;">Modo: Procesos</div>
-        <textarea id="commandText" rows="3" style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 10px; border-radius: 6px; box-sizing: border-box; resize: none;"></textarea>
-        <div style="display: flex; justify-content: space-between; margin-top: 12px;">
-            <span id="historyIndicator" style="font-size: 0.8rem; color: var(--text-secondary);"></span>
-            <div>
-                <button id="closeCommand" style="background: transparent; border: none; color: var(--text-secondary); margin-right: 10px; cursor: pointer;">Cancelar</button>
-                <button id="runCommands" style="background: var(--accent-module); border: none; color: white; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: 600;">Ejecutar</button>
+            
+            <!-- Grupo: Exportar -->
+            <div class="toolbar-group">
+                <button class="tb-btn" id="btn-export-json" title="Exportar JSON">
+                    <span class="tb-icon">📤</span><span class="tb-label">JSON</span>
+                </button>
+                <button class="tb-btn" id="btn-export-db" title="Exportar Base de Datos Excel">
+                    <span class="tb-icon">🗄️</span><span class="tb-label">DB</span>
+                </button>
+                <button class="tb-btn" id="btn-export-pdf" title="Exportar PDF">
+                    <span class="tb-icon">📄</span><span class="tb-label">PDF</span>
+                </button>
+                <span class="toolbar-sep"></span>
             </div>
+            
+            <!-- Grupo: Herramientas -->
+            <div class="toolbar-group">
+                <button class="tb-btn" id="btn-undo" title="Deshacer (Ctrl+Shift+Z)">
+                    <span class="tb-icon">↩️</span>
+                </button>
+                <button class="tb-btn" id="btn-redo" title="Rehacer (Ctrl+Shift+Y)">
+                    <span class="tb-icon">↪️</span>
+                </button>
+                <button class="tb-btn" id="btn-validate" title="Validación cruzada PFD↔DTI↔ISO">
+                    <span class="tb-icon">🔍</span><span class="tb-label">Validar</span>
+                </button>
+                <button class="tb-btn" id="btn-center" title="Centrar vista">
+                    <span class="tb-icon">🔄</span>
+                </button>
+                <span class="toolbar-sep"></span>
+            </div>
+            
+            <!-- Grupo: Vista -->
+            <div class="toolbar-group">
+                <button class="tb-btn gold" id="btn-fullscreen" title="Pantalla completa (Ctrl+Shift+F)">
+                    <span class="tb-icon">⛶</span>
+                </button>
+                <button class="tb-btn" id="btn-toggle-cmd" title="Panel de comandos (Ctrl+Shift+C)">
+                    <span class="tb-icon">🤖</span><span class="tb-label">Cmd</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- WORKSPACE -->
+        <div id="workspace">
+            <canvas id="engine-canvas"></canvas>
+            
+            <!-- Indicador de carga -->
+            <div id="loading-indicator">
+                <div class="spinner"></div>
+                <span>Cargando módulo...</span>
+            </div>
+            
+            <!-- Panel de propiedades -->
+            <div id="props-panel" class="hidden">
+                <div class="props-header">
+                    <span>PROPIEDADES</span>
+                    <button class="props-close" onclick="document.getElementById('props-panel').classList.add('hidden')">×</button>
+                </div>
+                <div id="props-content">
+                    <p style="color:var(--muted);font-size:10px;">Seleccione un elemento</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- BOTTOMBAR -->
+        <div id="bottom-bar">
+            <span class="status-module pfd" id="status-module">PFD</span>
+            <span class="status-text" id="status-text">EngineFlow Pro v5.0</span>
         </div>
     </div>
 
-    <div id="notification"></div>
-    <div id="project-name-modal" style="display:none;"></div>
-    <div id="welcome-panel" class="welcome-hidden" style="display:none;"></div>
+    <!-- ===== PANEL DE COMANDOS FLOTANTE ===== -->
+    <div id="cmd-panel" class="collapsed">
+        <div class="cmd-header">
+            <strong>🤖 Comandos</strong>
+            <div class="cmd-header-actions">
+                <button id="cmd-expand" title="Expandir">⤢</button>
+                <button id="cmd-close" title="Cerrar">×</button>
+            </div>
+        </div>
+        <div class="cmd-body">
+            <textarea id="cmd-input" rows="2" placeholder="Escriba comando..."></textarea>
+            <div class="cmd-actions">
+                <button class="run" id="cmd-run">▶ Ejecutar</button>
+                <button id="cmd-clear">🗑️ Limpiar</button>
+            </div>
+        </div>
+        <div class="cmd-suggestions" id="cmd-suggestions"></div>
+        <div class="cmd-history-indicator" id="cmd-history"></div>
+    </div>
 
-    <script src="js/SmartFlowCore.js"></script>
-    <script src="js/main.js"></script>
+    <!-- ===== NOTIFICACIÓN ===== -->
+    <div id="notification"></div>
+
+    <!-- ===== FULLSCREEN CONTROLS ===== -->
+    <div id="fs-controls">
+        <button class="fs-capture" id="fs-capture">📸 Capturar</button>
+        <button class="fs-exit" id="fs-exit">✕ Salir</button>
+    </div>
+
+    <!-- ================================================================ -->
+    <!--  SCRIPTS BASE - Siempre cargados                                 -->
+    <!-- ================================================================ -->
+    
+    <!-- Fundación -->
+    <script src="js/core.js"></script>
+    <script src="js/catalog.js"></script>
+    <script src="js/router.js"></script>
+    
+    <!-- Orquestador Central de Comandos (SIEMPRE) -->
+    <script src="js/commands.js"></script>
+    
+    <!-- Comandos Adaptativos + UI -->
+    <script src="js/adaptiveCommands.js"></script>
+    <script src="js/adaptiveCommandsUI.js"></script>
+    
+    <!-- Utilidades -->
+    <script src="js/factory.js"></script>
+    <script src="js/deliverables.js"></script>
+
+    <!-- ================================================================ -->
+    <!--  LAUNCHER - Controlador SPA con carga dinámica                   -->
+    <!-- ================================================================ -->
+    <script src="js/launcher.js"></script>
+
 </body>
 </html>
