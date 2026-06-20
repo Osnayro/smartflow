@@ -1,4 +1,4 @@
-
+t
 /**
  * EngineFlow Launcher v5.0
  * SPA con carga dinámica de módulos + motores duales ISO
@@ -28,8 +28,9 @@ var EngineFlowLauncher = (function() {
                     SmartFlowPFDRenderer.resizeCanvas();
                     setTimeout(function() { SmartFlowPFDRenderer.render(); }, 100);
                 }
+                // CORREGIDO: registerModule acepta 1 argumento (objeto con tryExecute)
                 if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCommandsPFD !== 'undefined') {
-                    SmartFlowCommands.registerModule('pfd', SmartFlowCommandsPFD);
+                    SmartFlowCommands.registerModule(SmartFlowCommandsPFD);
                 }
                 initCommandOrchestrator();
             }
@@ -53,8 +54,9 @@ var EngineFlowLauncher = (function() {
                     SmartFlowDTIRenderer.resizeCanvas();
                     setTimeout(function() { SmartFlowDTIRenderer.render(); }, 100);
                 }
+                // CORREGIDO: registerModule acepta 1 argumento (objeto con tryExecute)
                 if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCommandsDTI !== 'undefined') {
-                    SmartFlowCommands.registerModule('dti', SmartFlowCommandsDTI);
+                    SmartFlowCommands.registerModule(SmartFlowCommandsDTI);
                 }
                 initCommandOrchestrator();
             }
@@ -116,8 +118,9 @@ var EngineFlowLauncher = (function() {
                     SmartFlowDBExport.init(SmartFlowCore,
                         typeof SmartFlowIO !== 'undefined' ? SmartFlowIO : null, notify);
                 }
+                // CORREGIDO: registerModule acepta 1 argumento (objeto con tryExecute)
                 if (typeof SmartFlowCommands !== 'undefined' && typeof SmartFlowCommands3D !== 'undefined') {
-                    SmartFlowCommands.registerModule('iso', SmartFlowCommands3D);
+                    SmartFlowCommands.registerModule(SmartFlowCommands3D);
                 }
                 initCommandOrchestrator();
             }
