@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>SmartFlow Pro v5.0 | AcQuaBlue</title>
-
+    
     <script type="importmap">
         {
             "imports": {
@@ -14,10 +14,10 @@
             }
         }
     </script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
+    
     <style>
         :root {
             --primary-bg: #0a0e17; --panel-bg: rgba(20,28,45,0.95); --accent-cyan: #00f2ff;
@@ -94,8 +94,8 @@
         .module-tab.dti-tab.active{color:var(--accent-purple);border-bottom-color:var(--accent-purple)}
         .module-tab.iso-tab.active{color:var(--accent-cyan);border-bottom-color:var(--accent-cyan)}
         .canvas-container{flex:1;background:#fff;position:relative;overflow:hidden}
-        #pfd-canvas,#dti-canvas,#isoCanvas{position:absolute;top:0;left:0;width:100%;height:100%;display:none}
-        #viewer-3d{position:absolute;top:0;left:0;width:100%;height:100%;display:none}
+        #pfd-canvas,#dti-canvas,#isoCanvas{width:100%;height:100%}
+        #viewer-3d{width:100%;height:100%}
         #side-panel{position:absolute;top:10px;right:10px;width:280px;max-width:85vw;max-height:60vh;background:rgba(15,23,42,0.85);backdrop-filter:blur(12px);border:1px solid rgba(0,242,255,0.3);border-radius:8px;padding:12px;z-index:100;overflow-y:auto;transition:transform .3s ease}
         #side-panel.hidden{transform:translateX(320px)}
         #panel-content{max-height:calc(60vh - 50px);overflow-y:auto}
@@ -123,7 +123,6 @@
 </head>
 <body>
 
-    <!-- Splash Screen -->
     <div id="splash-screen">
         <div class="splash-content">
             <div class="corporate-header">
@@ -144,7 +143,6 @@
         </div>
     </div>
 
-    <!-- Welcome Panel -->
     <div id="welcome-panel">
         <div class="welcome-container">
             <div class="home-logo-wrapper">
@@ -161,7 +159,6 @@
         </div>
     </div>
 
-    <!-- Modal nombre proyecto -->
     <div id="project-name-modal">
         <div class="modal-content">
             <h3>Nuevo Proyecto</h3>
@@ -173,7 +170,6 @@
         </div>
     </div>
 
-    <!-- Toolbar -->
     <div class="toolbar" role="toolbar">
         <div class="toolbar-logo">
             <img src="img/logo.PNG" alt="Logo" style="height:24px" onerror="this.style.display='none'">
@@ -222,19 +218,34 @@
         </div>
     </div>
 
-    <!-- Module Tabs -->
     <div class="module-tabs" id="moduleTabs">
         <button class="module-tab pfd-tab active" data-module="pfd">📊 PFD — Diagrama de Flujo</button>
         <button class="module-tab dti-tab" data-module="dti">🔧 DTI — Tubería e Instrumentación</button>
         <button class="module-tab iso-tab" data-module="iso">🧊 ISO — Isométrico 3D</button>
     </div>
 
-    <!-- Canvas Container -->
     <div class="canvas-container" id="canvas-container">
-        <canvas id="pfd-canvas" style="display:block"></canvas>
-        <canvas id="dti-canvas" style="display:none"></canvas>
-        <canvas id="isoCanvas" style="display:none"></canvas>
-        <div id="viewer-3d" style="display:none"></div>
+        <!-- ===== MÓDULO PFD ===== -->
+        <div id="wrapper-pfd" class="module-view" style="display:block; position:absolute; top:0; left:0; width:100%; height:100%;">
+            <canvas id="pfd-canvas" style="width:100%; height:100%;"></canvas>
+        </div>
+
+        <!-- ===== MÓDULO DTI ===== -->
+        <div id="wrapper-dti" class="module-view" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
+            <canvas id="dti-canvas" style="width:100%; height:100%;"></canvas>
+        </div>
+
+        <!-- ===== MÓDULO ISO 2D ===== -->
+        <div id="wrapper-iso2d" class="module-view" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
+            <canvas id="isoCanvas" style="width:100%; height:100%;"></canvas>
+        </div>
+
+        <!-- ===== MÓDULO ISO 3D ===== -->
+        <div id="wrapper-3d" class="module-view" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
+            <div id="viewer-3d" style="width:100%; height:100%;"></div>
+        </div>
+
+        <!-- ===== PANEL DE PROPIEDADES (común) ===== -->
         <div id="side-panel" class="property-panel hidden">
             <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <span style="color:var(--accent-cyan);font-weight:700">PROPIEDADES TÉCNICAS</span>
@@ -244,7 +255,6 @@
         </div>
     </div>
 
-    <!-- Command Panel -->
     <div id="commandPanel" class="command-panel">
         <div class="command-header">
             <strong>🤖 Comandos IA — SmartFlow Pro v5.0</strong>
@@ -261,7 +271,9 @@
     <div id="notification" class="notification"></div>
     <div class="status-bar" id="statusMsg">SISTEMA LISTO | SmartFlow Pro v5.0</div>
 
-    <!-- Tools Panel -->
+    <!-- ===== PANEL DE HERRAMIENTAS CONTEXTUAL POR MÓDULO ===== -->
+    <div id="module-tools-panel" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px;background:rgba(15,23,42,0.9);border-bottom:1px solid rgba(0,242,255,0.2);backdrop-filter:blur(6px);z-index:400;align-items:center;"></div>
+
     <div class="tools-panel" id="toolsPanel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <span style="font-size:10px;color:var(--accent-cyan)">HERRAMIENTAS</span>
@@ -283,79 +295,48 @@
         </div>
     </div>
 
-    <!-- Fullscreen Controls -->
     <div id="fullscreen-controls">
         <button id="btnFullscreenCenter" style="padding:12px 20px;border-radius:30px;background:var(--accent-cyan);color:#000;font-weight:700;border:none">🔄 Centrar</button>
         <button id="btnFullscreenExit" style="padding:12px 20px;border-radius:30px;background:#ef4444;color:#fff;font-weight:700;border:none">✕ Salir</button>
     </div>
 
     <!-- ================================================================ -->
-    <!--  SCRIPTS - SMARTFLOW PRO v5.0 (rutas exactas de tu carpeta js/)   -->
+    <!--  SCRIPTS - SMARTFLOW PRO v5.0                                     -->
     <!-- ================================================================ -->
-    
-    <!-- 1. Core (Motor de datos) -->
     <script src="js/core.js"></script>
-    
-    <!-- 2. Catálogo Industrial -->
     <script src="js/catalog.js"></script>
-    
-    <!-- 3. Router de Tuberías -->
     <script src="js/router.js"></script>
-    
-    <!-- 4. PFD Engine + Renderer -->
+
     <script src="js/modules/pfd_engine.js"></script>
     <script src="js/modules/pfd_renderer.js"></script>
-    
-    <!-- 5. DTI Engine + Renderer -->
     <script src="js/modules/dti_engine.js"></script>
     <script src="js/modules/dti_renderer.js"></script>
-    
-    <!-- 6. Validación Cruzada -->
     <script src="js/modules/integrity.js"></script>
-    
-    <!-- 7. Renderer Isométrico 2D -->
-    <script src="js/renderer.js"></script>
-    
-    <!-- 8. I/O (Import/Export) -->
+
     <script src="js/modules/smartflow_io.js"></script>
-    
-    <!-- 9. DB Export (Excel) -->
     <script src="js/modules/smartflow_db_export.js"></script>
-    
-    <!-- 10. Factory (Catálogo → Core) -->
-    <script src="js/factory.js"></script>
-    
-    <!-- 11. Deliverables (PDFs normativos PFD/DTI) ★ NUEVO -->
+
+    <script src="js/renderer.js"></script>
+
     <script src="js/deliverables.js"></script>
-    
-    <!-- 12. Despachador de Comandos -->
+    <script src="js/factory.js"></script>
+
     <script src="js/commands.js"></script>
-    
-    <!-- 13. Módulos de Comandos Independientes ★ NUEVOS -->
     <script src="js/commands-pfd.js"></script>
     <script src="js/commands-dti.js"></script>
     <script src="js/commands-3d.js"></script>
-    
-    <!-- 14. Comandos Adaptativos (tu sistema existente) -->
+
     <script src="js/adaptiveCommands.js"></script>
     <script src="js/adaptiveCommandsUI.js"></script>
-    
-    <!-- 15. Módulos Adaptativos -->
-    <script src="js/modules/adaptive_iso_update_flows.js"></script>
-    <script src="js/modules/adaptive_pfd_dti_flows.js"></script>
-    <script src="js/modules/adaptive_bridge.js"></script>
-    
-    <!-- 16. Three.js (Módulos ES6) -->
+
+    <script src="js/module-panels.js"></script>
+
     <script type="module" src="js/ThreeJsEngine.js"></script>
     <script type="module" src="js/render.js"></script>
     <script type="module" src="js/SmartFlowLabels3D.js"></script>
-    
-    <!-- 17. Inicialización Principal ★ ACTUALIZADO -->
+
     <script src="js/main.js"></script>
 
-    <!-- ================================================================ -->
-    <!--  EVENTOS UI GLOBALES                                              -->
-    <!-- ================================================================ -->
     <script>
         window.voiceEnabled = true;
         window.currentProjectName = 'Proyecto_SmartFlow';
@@ -397,18 +378,14 @@
             if (btnDTI) btnDTI.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('dti'); });
             if (btnISO) btnISO.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('iso'); });
 
-            // ★ NUEVOS: Exportar PDF PFD/DTI desde menú Archivo
+            // Botones de exportación PDF PFD/DTI
             var btnExportPFD = document.getElementById('btnExportPFD');
             var btnExportDTI = document.getElementById('btnExportDTI');
             if (btnExportPFD) btnExportPFD.addEventListener('click', function() {
-                if (typeof SmartFlowDeliverables !== 'undefined') {
-                    SmartFlowDeliverables.generatePFD();
-                }
+                if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generatePFD();
             });
             if (btnExportDTI) btnExportDTI.addEventListener('click', function() {
-                if (typeof SmartFlowDeliverables !== 'undefined') {
-                    SmartFlowDeliverables.generateDTI();
-                }
+                if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generateDTI();
             });
 
             window.addEventListener('resize', function() {
