@@ -3,7 +3,7 @@
 // NODUS PLANT - ORQUESTADOR PRINCIPAL v1.0
 // Archivo: js/engineflow-app.js
 // Suite de Ingeniería: PFD + DTI + ISO (2.5D + 3D)
-// CORRECCIÓN: Splash se oculta con JS directo (no depende de CSS)
+// CORRECCIÓN FINAL: Splash con position:fixed + display:none en callback
 // ============================================================
 
 (function() {
@@ -615,12 +615,25 @@
             setTool('select');
             window.setElevation(0);
             
-            // ===== OCULTAR SPLASH CON JS DIRECTO (no depende de CSS) =====
+            // ===== OCULTAR SPLASH CON JS DIRECTO (CORREGIDO - CON CALLBACK) =====
             if (splashScreen) {
+                // 1. Forzar posicionamiento fijo para sacarlo del flujo del layout
+                splashScreen.style.position = 'fixed';
+                splashScreen.style.zIndex = '99999';
+                
+                // 2. Ejecutar animación de salida
                 splashScreen.style.transition = 'transform 0.8s cubic-bezier(0.77, 0, 0.175, 1), opacity 0.5s ease';
                 splashScreen.style.transform = 'translateY(-100%)';
                 splashScreen.style.opacity = '0';
                 splashScreen.style.pointerEvents = 'none';
+                
+                // 3. Remover del flujo de renderizado al finalizar la transición
+                splashScreen.addEventListener('transitionend', function handler(e) {
+                    if (e.propertyName === 'transform') {
+                        splashScreen.style.display = 'none';
+                        splashScreen.removeEventListener('transitionend', handler);
+                    }
+                });
             }
             
             clearInterval(iv);
