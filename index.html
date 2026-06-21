@@ -1,11 +1,19 @@
 
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SmartFlow Pro v5.0 | AcQuaBlue</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="EngineFlow - Suite de Ingeniería Inteligente para Diagramas de Proceso, DTI e Isométricos">
+    <meta name="theme-color" content="#0a0f1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>EngineFlow | Suite de Ingeniería</title>
     
+    <!-- Favicon SVG inline -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><polygon points='16,2 30,10 30,22 16,30 2,22 2,10' fill='none' stroke='%233b82f6' stroke-width='2'/><polygon points='16,6 26,12 26,20 16,26 6,20 6,12' fill='none' stroke='%2360a5fa' stroke-width='1'/><circle cx='16' cy='16' r='3' fill='%233b82f6'/></svg>">
+    
+    <!-- Three.js r160 con Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -15,354 +23,357 @@
         }
     </script>
     
+    <!-- Librerías de exportación -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <style>
-        :root {
-            --primary-bg: #0a0e17; --panel-bg: rgba(20,28,45,0.95); --accent-cyan: #00f2ff;
-            --accent-blue: #1e4eb8; --accent-green: #10b981; --accent-orange: #f59e0b;
-            --accent-purple: #8b5cf6; --accent-red: #ef4444; --text-main: #e0e6ed;
-            --toolbar-bg: #0f172a; --button-bg: #1e293b; --button-border: #334155;
-        }
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{background:var(--primary-bg);color:var(--text-main);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
-        #splash-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle at center,#10172a 0%,#020617 100%);z-index:10000;display:flex;justify-content:center;align-items:center;transition:opacity .8s ease,visibility .8s}
-        .splash-content{text-align:center;width:350px}
-        .corporate-header{margin-bottom:25px}
-        .company-name{font-size:11px;letter-spacing:3px;color:#fff;opacity:.6;text-transform:uppercase;display:block}
-        .powered-by{font-size:8px;color:var(--accent-cyan);letter-spacing:1px;text-transform:uppercase}
-        .hex-container{width:120px;height:120px;margin:0 auto 30px;border:1px solid var(--accent-cyan);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;justify-content:center;align-items:center;background:rgba(0,242,255,0.05);animation:hex-pulse 2.5s infinite ease-in-out}
-        .hex-container img{width:70%;filter:drop-shadow(0 0 10px #00f2ff)}
-        @keyframes hex-pulse{0%,100%{transform:scale(1);box-shadow:0 0 15px rgba(0,242,255,0.1)}50%{transform:scale(1.05);box-shadow:0 0 30px rgba(0,242,255,0.3)}}
-        .splash-title{font-size:30px;letter-spacing:8px;color:#fff;font-weight:900;text-transform:uppercase;margin-bottom:5px}
-        .splash-subtitle{color:var(--accent-cyan);letter-spacing:4px;font-size:10px;margin-bottom:35px;opacity:.8;font-weight:700}
-        .loading-bar-container{width:200px;height:1px;background:rgba(255,255,255,0.1);margin:0 auto 15px;overflow:hidden}
-        .loading-bar-fill{width:0%;height:100%;background:var(--accent-cyan);animation:fill-bar 4.5s forwards cubic-bezier(.19,1,.22,1)}
-        .splash-status{font-family:monospace;font-size:9px;color:#64748b;text-transform:uppercase;margin-bottom:50px;height:15px}
-        .author-footer{border-top:1px solid rgba(255,255,255,0.1);padding-top:20px}
-        .leader-by{font-size:9px;color:#fff;opacity:.5;text-transform:uppercase}
-        .engineer-name{font-size:13px;font-weight:700;color:#fff;display:block;letter-spacing:1.5px;margin-top:4px}
-        @keyframes fill-bar{0%{width:0%}100%{width:100%}}
-        .splash-hidden{opacity:0;visibility:hidden}
-        #welcome-panel{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--primary-bg);z-index:9000;display:flex;justify-content:center;align-items:center;transition:opacity .6s ease,visibility .6s}
-        .welcome-container{width:600px;padding:40px;background:rgba(15,23,42,0.85);border:1px solid var(--accent-cyan);border-radius:16px;backdrop-filter:blur(12px);box-shadow:0 20px 40px rgba(0,0,0,0.6);text-align:center}
-        .home-logo-img{width:130px;margin:10px 0 25px;filter:drop-shadow(0 0 15px rgba(0,242,255,0.4))}
-        .header-names{display:flex;justify-content:space-between;margin-bottom:35px;text-align:left}
-        .corp-name{color:var(--accent-cyan);font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:2px}
-        .user-name{color:#fff;font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:2px;text-align:right}
-        .button-group{display:flex;flex-direction:column;gap:16px}
-        .welcome-btn{background:transparent;border:1px solid var(--accent-cyan);color:var(--accent-cyan);padding:16px 24px;font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:3px;border-radius:8px;cursor:pointer;transition:all .3s}
-        .welcome-btn:hover{background:var(--accent-cyan);color:#000}
-        .welcome-btn.secondary{border-color:#64748b;color:#94a3b8}
-        .welcome-btn.secondary:hover{background:#334155;border-color:#94a3b8;color:#fff}
-        .welcome-hidden{opacity:0;visibility:hidden;pointer-events:none}
-        #project-name-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9500;display:none;justify-content:center;align-items:center}
-        .modal-content{width:400px;padding:30px;background:var(--panel-bg);border:1px solid var(--accent-cyan);border-radius:16px;text-align:center}
-        .modal-content h3{color:var(--accent-cyan);margin-bottom:20px;font-size:18px}
-        .modal-content input{width:100%;padding:12px;background:#0f172a;border:1px solid #334155;color:#fff;border-radius:8px;margin-bottom:25px}
-        .modal-actions{display:flex;gap:15px;justify-content:center}
-        .modal-btn{padding:10px 24px;background:var(--accent-blue);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer}
-        .modal-btn.cancel{background:#334155}
-        .toolbar{background:var(--toolbar-bg);padding:6px 12px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--accent-blue);box-shadow:0 2px 10px rgba(0,0,0,0.4);z-index:500}
-        .toolbar-logo{display:flex;align-items:center;margin-right:10px}
-        .toolbar-logo img{height:24px;margin-right:6px}
-        .toolbar-title{color:var(--accent-cyan);font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:2px}
-        .toolbar-separator{width:1px;height:22px;background:var(--button-border);margin:0 4px}
-        button{background:var(--button-bg);border:1px solid var(--button-border);color:#fff;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;text-transform:uppercase;white-space:nowrap}
-        button:hover{background:var(--accent-blue);border-color:var(--accent-cyan)}
-        button.active{background:var(--accent-cyan);color:#000;border-color:var(--accent-cyan)}
-        .btn-pfd{border-color:var(--accent-green);color:var(--accent-green)}
-        .btn-pfd:hover,.btn-pfd.active{background:var(--accent-green);color:#000;border-color:var(--accent-green)}
-        .btn-dti{border-color:var(--accent-purple);color:var(--accent-purple)}
-        .btn-dti:hover,.btn-dti.active{background:var(--accent-purple);color:#fff;border-color:var(--accent-purple)}
-        .btn-iso{border-color:var(--accent-cyan);color:var(--accent-cyan)}
-        .btn-iso:hover,.btn-iso.active{background:var(--accent-cyan);color:#000;border-color:var(--accent-cyan)}
-        #btnExportPCF{border-color:var(--accent-green);color:var(--accent-green)}#btnExportPCF:hover{background:var(--accent-green);color:#000}
-        #btnImportPCF{border-color:var(--accent-orange);color:var(--accent-orange)}#btnImportPCF:hover{background:var(--accent-orange);color:#000}
-        #btnExportDB{border-color:#06b6d4;color:#06b6d4}#btnExportDB:hover{background:#06b6d4;color:#000}
-        #btnValidate{border-color:var(--accent-red);color:var(--accent-red)}#btnValidate:hover{background:var(--accent-red);color:#fff}
-        #btnSummary{border-color:#eab308;color:#eab308}#btnSummary:hover{background:#eab308;color:#000}
-        .dropdown{position:relative;display:inline-block}
-        .dropdown-content{display:none;position:absolute;background:var(--panel-bg);min-width:190px;box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);z-index:1;border:1px solid var(--accent-cyan);border-radius:4px;backdrop-filter:blur(8px);right:0}
-        .dropdown-content button{width:100%;text-align:left;border:none;border-radius:0}
-        .dropdown.open>.dropdown-content{display:block}
-        .module-tabs{display:flex;gap:2px;padding:0 12px;background:var(--toolbar-bg);border-bottom:2px solid var(--button-border)}
-        .module-tab{padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;background:transparent;border:none;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;text-transform:uppercase;letter-spacing:1px}
-        .module-tab:hover{color:#e2e8f0}
-        .module-tab.pfd-tab.active{color:var(--accent-green);border-bottom-color:var(--accent-green)}
-        .module-tab.dti-tab.active{color:var(--accent-purple);border-bottom-color:var(--accent-purple)}
-        .module-tab.iso-tab.active{color:var(--accent-cyan);border-bottom-color:var(--accent-cyan)}
-        .canvas-container{flex:1;background:#fff;position:relative;overflow:hidden}
-        #pfd-canvas,#dti-canvas,#isoCanvas{width:100%;height:100%}
-        #viewer-3d{width:100%;height:100%}
-        #side-panel{position:absolute;top:10px;right:10px;width:280px;max-width:85vw;max-height:60vh;background:rgba(15,23,42,0.85);backdrop-filter:blur(12px);border:1px solid rgba(0,242,255,0.3);border-radius:8px;padding:12px;z-index:100;overflow-y:auto;transition:transform .3s ease}
-        #side-panel.hidden{transform:translateX(320px)}
-        #panel-content{max-height:calc(60vh - 50px);overflow-y:auto}
-        #commandPanel{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);width:90%;max-width:560px;background:rgba(15,23,42,0.95);border-radius:12px;border:1px solid var(--accent-cyan);z-index:1000;display:none;backdrop-filter:blur(10px);padding:10px}
-        .command-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:var(--accent-cyan)}
-        textarea{width:100%;margin:0;background:#0f0f17;color:#eee;border:1px solid #3a3a4a;border-radius:8px;padding:10px;font-family:'Courier New',monospace;font-size:12px;resize:vertical}
-        .command-buttons{display:flex;gap:8px;margin-top:8px}
-        .history-indicator{font-size:10px;color:#64748b;margin-top:4px;text-align:right}
-        .notification{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#238636;padding:8px 16px;border-radius:8px;z-index:2000;display:none;font-weight:700;font-size:13px;pointer-events:none}
-        .status-bar{position:fixed;bottom:8px;left:12px;z-index:300;background:rgba(2,6,23,0.7);padding:4px 12px;font-size:10px;border-radius:4px;color:var(--accent-cyan);pointer-events:none;backdrop-filter:blur(4px);border:1px solid rgba(0,242,255,0.2)}
-        .tools-panel{position:fixed;left:10px;top:110px;background:rgba(15,23,42,0.9);border-radius:10px;padding:6px;z-index:400;border:1px solid rgba(0,242,255,0.3);backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:4px;transition:all .3s}
-        .tools-panel.collapsed #toolsButtons{display:none}
-        #toolsButtons{display:flex;flex-direction:column;gap:4px}
-        #toolsButtons button{font-size:10px;padding:4px 8px}
-        .elevation-inline{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px}
-        .elevation-inline span{font-size:10px;color:var(--accent-cyan)}
-        .elevation-inline button{font-size:10px;padding:2px 6px}
-        .elevation-inline input{width:60px;background:#0f172a;border:1px solid #334155;color:#fff;font-size:10px;padding:2px 4px;border-radius:4px}
-        #fullscreen-controls{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;gap:12px}
-        body.fullscreen-mode .toolbar,body.fullscreen-mode .module-tabs,body.fullscreen-mode #side-panel,body.fullscreen-mode #commandPanel,body.fullscreen-mode .status-bar,body.fullscreen-mode .tools-panel,body.fullscreen-mode #notification{display:none!important}
-        body.fullscreen-mode .canvas-container{position:fixed;top:0;left:0;width:100%;height:100%;z-index:10}
-        body.fullscreen-mode #fullscreen-controls{display:flex!important}
-        @media(max-width:768px){.toolbar button{font-size:9px;padding:4px 6px}.toolbar-title{font-size:13px}.module-tab{font-size:10px;padding:6px 10px}#side-panel{width:240px;right:5px}.tools-panel{top:100px;left:4px}}
-    </style>
+    <!-- Estilos EngineFlow -->
+    <link rel="stylesheet" href="css/engineflow-core.css">
 </head>
-<body>
+<body class="engineflow-app">
 
-    <div id="splash-screen">
-        <div class="splash-content">
-            <div class="corporate-header">
-                <span class="company-name">AcQuaBlue International Corp.</span>
-                <span class="powered-by">Smart Engineering Systems</span>
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 1. SPLASH SCREEN                                              -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div id="ef-splash" class="ef-splash">
+        <div class="ef-splash-content">
+            <div class="ef-splash-icon">
+                <svg viewBox="0 0 80 80" class="ef-splash-svg">
+                    <polygon points="40,6 70,22 70,58 40,74 10,58 10,22" 
+                             fill="none" stroke="#3b82f6" stroke-width="1.5" 
+                             class="ef-splash-hex"/>
+                    <polygon points="40,12 64,26 64,54 40,68 16,54 16,26" 
+                             fill="none" stroke="#60a5fa" stroke-width="0.8" opacity="0.5"/>
+                    <circle cx="40" cy="40" r="6" fill="#3b82f6" 
+                            class="ef-splash-dot"/>
+                </svg>
             </div>
-            <div class="hex-container">
-                <img src="img/logo.PNG" alt="Logo" onerror="this.style.display='none'">
+            <h1 class="ef-splash-title">EngineFlow</h1>
+            <p class="ef-splash-subtitle">SUITE DE INGENIERÍA</p>
+            <div class="ef-splash-loader">
+                <div class="ef-splash-loader-bar"></div>
             </div>
-            <h1 class="splash-title">SmartFlow</h1>
-            <p class="splash-subtitle">INGENIERÍA INTELIGENTE</p>
-            <div class="loading-bar-container"><div class="loading-bar-fill"></div></div>
-            <div class="splash-status" id="splash-status">Inicializando SmartFlow Pro v5.0...</div>
-            <div class="author-footer">
-                <span class="leader-by">Ingeniero Líder de Proyecto:</span>
-                <span class="engineer-name">Ing. Osnay Romero</span>
+            <p class="ef-splash-status" id="ef-splash-status">Inicializando módulos...</p>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 2. WELCOME / HOME (se muestra al iniciar)                     -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div id="ef-welcome" class="ef-welcome">
+        <div class="ef-welcome-card">
+            <div class="ef-welcome-icon">
+                <svg viewBox="0 0 60 60" width="60" height="60">
+                    <polygon points="30,4 54,16 54,44 30,56 6,44 6,16" 
+                             fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+                    <polygon points="30,10 48,20 48,40 30,50 12,40 12,20" 
+                             fill="none" stroke="#60a5fa" stroke-width="0.8" opacity="0.5"/>
+                </svg>
+            </div>
+            <h1 class="ef-welcome-title">EngineFlow</h1>
+            <p class="ef-welcome-subtitle">Suite de Ingeniería Inteligente</p>
+            <p class="ef-welcome-desc">Seleccione una opción para comenzar</p>
+            <div class="ef-welcome-actions">
+                <button id="ef-welcome-new" class="ef-btn ef-btn-primary ef-btn-large">
+                    <span class="ef-btn-icon">➕</span> Nuevo Proyecto
+                </button>
+                <button id="ef-welcome-open" class="ef-btn ef-btn-secondary ef-btn-large">
+                    <span class="ef-btn-icon">📂</span> Abrir Proyecto Existente
+                </button>
             </div>
         </div>
     </div>
 
-    <div id="welcome-panel">
-        <div class="welcome-container">
-            <div class="home-logo-wrapper">
-                <img src="img/logo.PNG" alt="Logo" class="home-logo-img" onerror="this.style.display='none'">
-            </div>
-            <div class="header-names">
-                <h1 class="corp-name">ACQUABLUE<br>INTERNATIONAL CORP.</h1>
-                <h2 class="user-name">ING.<br>OSNAY ROMERO</h2>
-            </div>
-            <div class="button-group">
-                <button class="welcome-btn" id="welcome-new-project">➕ NUEVO PROYECTO</button>
-                <button class="welcome-btn secondary" id="welcome-open-project">📂 ABRIR PROYECTO EXISTENTE</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="project-name-modal">
-        <div class="modal-content">
-            <h3>Nuevo Proyecto</h3>
-            <input type="text" id="project-name-input" placeholder="Nombre del proyecto" value="Proyecto_SmartFlow">
-            <div class="modal-actions">
-                <button class="modal-btn" id="modal-accept">Aceptar</button>
-                <button class="modal-btn cancel" id="modal-skip">Saltar</button>
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 3. MODAL NOMBRE DE PROYECTO                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div id="ef-modal-project" class="ef-modal-overlay" style="display:none">
+        <div class="ef-modal-card">
+            <h3 class="ef-modal-title">Nuevo Proyecto</h3>
+            <p class="ef-modal-desc">Asigne un nombre al proyecto de ingeniería</p>
+            <input type="text" id="ef-project-input" class="ef-input" 
+                   placeholder="Nombre del proyecto" value="Proyecto_EngineFlow" autocomplete="off">
+            <div class="ef-modal-actions">
+                <button id="ef-modal-accept" class="ef-btn ef-btn-primary">Crear Proyecto</button>
+                <button id="ef-modal-skip" class="ef-btn ef-btn-secondary">Usar nombre por defecto</button>
             </div>
         </div>
     </div>
 
-    <div class="toolbar" role="toolbar">
-        <div class="toolbar-logo">
-            <img src="img/logo.PNG" alt="Logo" style="height:24px" onerror="this.style.display='none'">
-            <span class="toolbar-title">SmartFlow Pro v5.0</span>
-        </div>
-        <div class="toolbar-separator"></div>
-        <div class="dropdown">
-            <button id="btnFileMenu">📂 Archivo</button>
-            <div class="dropdown-content">
-                <button id="btnOpen">📂 Abrir Proyecto</button>
-                <button id="btnSave">💾 Guardar Proyecto</button>
-                <button id="btnExportProject">📤 Exportar JSON</button>
-                <button id="btnImportProject">📥 Importar JSON</button>
-                <hr style="border-color:#334155;margin:4px 0">
-                <button id="btnExportDB">🗄️ Exportar DB Excel</button>
-                <button id="btnExportPCF">📥 Exportar PCF</button>
-                <button id="btnImportPCF">📤 Importar PCF</button>
-                <button id="btnMTO">📊 Exportar MTO</button>
-                <hr style="border-color:#334155;margin:4px 0">
-                <button id="btnExportPFD">📄 Exportar PFD (PDF)</button>
-                <button id="btnExportDTI">📄 Exportar DTI (PDF)</button>
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 4. SHELL PRINCIPAL (oculto hasta después del welcome)         -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div id="ef-shell" class="ef-shell" style="display:none">
+        
+        <!-- BARRA SUPERIOR -->
+        <header class="ef-header" role="banner">
+            <div class="ef-header-left">
+                <div class="ef-brand">
+                    <svg viewBox="0 0 24 24" class="ef-brand-icon" width="22" height="22">
+                        <polygon points="12,2 22,7 22,17 12,22 2,17 2,7" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+                    </svg>
+                    <span class="ef-brand-text">EngineFlow</span>
+                </div>
+                <span class="ef-header-separator">|</span>
+                <span class="ef-project-badge" id="ef-project-badge">
+                    <span class="ef-project-dot"></span>
+                    <span id="ef-project-name-display">Sin proyecto</span>
+                </span>
             </div>
-        </div>
-        <div class="toolbar-separator"></div>
-        <button id="btn-mode-pfd" class="btn-pfd active">📊 PFD</button>
-        <button id="btn-mode-dti" class="btn-dti">🔧 DTI</button>
-        <button id="btn-mode-iso" class="btn-iso">🧊 ISO</button>
-        <div class="toolbar-separator"></div>
-        <button id="btnValidate" title="Validación cruzada PFD↔DTI↔3D">🔍 Validar</button>
-        <button id="btnSummary" title="Resumen del proyecto">📋 Resumen</button>
-        <div class="toolbar-separator"></div>
-        <button id="btnReset">🔄 Centrar</button>
-        <button id="btnFullscreen">⛶ Full</button>
-        <button id="btnCommand">🤖 Cmd</button>
-        <button id="btnTogglePanels">👁️</button>
-        <div class="toolbar-separator"></div>
-        <div class="dropdown">
-            <button id="btnMoreMenu">⚙️ +</button>
-            <div class="dropdown-content">
-                <button id="btnUndo">↩️ Undo</button>
-                <button id="btnRedo">↪️ Redo</button>
-                <button id="btnVoice">🔊 Voz ON</button>
-                <button id="btnRecalc">🔄 Recalcular</button>
-                <button id="btnSpeakSummary">📢 Resumen Voz</button>
+
+            <div class="ef-header-center">
+                <nav class="ef-module-tabs" role="tablist" aria-label="Módulos de ingeniería">
+                    <button class="ef-module-tab active" data-module="pfd" role="tab" aria-selected="true">
+                        <span class="ef-tab-icon">📊</span> PFD
+                    </button>
+                    <button class="ef-module-tab" data-module="dti" role="tab" aria-selected="false">
+                        <span class="ef-tab-icon">🔧</span> DTI
+                    </button>
+                    <button class="ef-module-tab" data-module="iso" role="tab" aria-selected="false">
+                        <span class="ef-tab-icon">🧊</span> ISO
+                    </button>
+                </nav>
             </div>
-        </div>
-    </div>
 
-    <div class="module-tabs" id="moduleTabs">
-        <button class="module-tab pfd-tab active" data-module="pfd">📊 PFD — Diagrama de Flujo</button>
-        <button class="module-tab dti-tab" data-module="dti">🔧 DTI — Tubería e Instrumentación</button>
-        <button class="module-tab iso-tab" data-module="iso">🧊 ISO — Isométrico 3D</button>
-    </div>
-
-    <div class="canvas-container" id="canvas-container">
-        <!-- ===== MÓDULO PFD ===== -->
-        <div id="wrapper-pfd" class="module-view" style="display:block; position:absolute; top:0; left:0; width:100%; height:100%;">
-            <canvas id="pfd-canvas" style="width:100%; height:100%;"></canvas>
-        </div>
-
-        <!-- ===== MÓDULO DTI ===== -->
-        <div id="wrapper-dti" class="module-view" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
-            <canvas id="dti-canvas" style="width:100%; height:100%;"></canvas>
-        </div>
-
-        <!-- ===== MÓDULO ISO 2D ===== -->
-        <div id="wrapper-iso2d" class="module-view" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
-            <canvas id="isoCanvas" style="width:100%; height:100%;"></canvas>
-        </div>
-
-        <!-- ===== MÓDULO ISO 3D ===== -->
-        <div id="wrapper-3d" class="module-view" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
-            <div id="viewer-3d" style="width:100%; height:100%;"></div>
-        </div>
-
-        <!-- ===== PANEL DE PROPIEDADES (común) ===== -->
-        <div id="side-panel" class="property-panel hidden">
-            <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <span style="color:var(--accent-cyan);font-weight:700">PROPIEDADES TÉCNICAS</span>
-                <button id="btnClosePanel" style="background:none;border:none;color:#fff;font-size:18px;padding:0;width:24px">×</button>
+            <div class="ef-header-right">
+                <button id="ef-btn-validate" class="ef-icon-btn" title="Validación cruzada PFD↔DTI↔ISO" aria-label="Validar">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#10b981"/></svg>
+                </button>
+                <button id="ef-btn-summary" class="ef-icon-btn" title="Resumen del proyecto" aria-label="Resumen">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+                <button id="ef-btn-cmd" class="ef-icon-btn" title="Comandos (Ctrl+Shift+C)" aria-label="Comandos">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-3.5 7h-3v3h3v1.5h-3v3H12v-3H9V15H7.5v-3h3V9h-3V7.5H9v-3h1.5v3h3V7.5H15V9z" fill="currentColor"/></svg>
+                </button>
+                <button id="ef-btn-fullscreen" class="ef-icon-btn ef-highlight" title="Pantalla completa (Ctrl+Shift+F)" aria-label="Pantalla completa">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" fill="currentColor"/></svg>
+                </button>
+                <button id="ef-btn-save" class="ef-icon-btn" title="Guardar proyecto" aria-label="Guardar">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" fill="currentColor"/></svg>
+                </button>
+                <div class="ef-dropdown">
+                    <button id="ef-btn-menu" class="ef-icon-btn" title="Menú" aria-label="Menú" aria-haspopup="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
+                    </button>
+                    <div class="ef-dropdown-menu" role="menu">
+                        <button data-action="open" role="menuitem">📂 Abrir Proyecto</button>
+                        <button data-action="save" role="menuitem">💾 Guardar Proyecto</button>
+                        <button data-action="export-json" role="menuitem">📤 Exportar JSON</button>
+                        <button data-action="import-json" role="menuitem">📥 Importar JSON</button>
+                        <hr>
+                        <button data-action="export-db" role="menuitem">🗄️ Exportar DB Excel</button>
+                        <button data-action="export-pcf" role="menuitem">📥 Exportar PCF</button>
+                        <button data-action="import-pcf" role="menuitem">📤 Importar PCF</button>
+                        <button data-action="export-mto" role="menuitem">📊 Exportar MTO</button>
+                        <hr>
+                        <button data-action="export-pfd-pdf" role="menuitem">📄 Exportar PFD (PDF)</button>
+                        <button data-action="export-dti-pdf" role="menuitem">📄 Exportar DTI (PDF)</button>
+                        <hr>
+                        <button data-action="undo" role="menuitem">↩️ Deshacer</button>
+                        <button data-action="redo" role="menuitem">↪️ Rehacer</button>
+                        <button data-action="voice-toggle" role="menuitem" id="ef-menu-voice">🔊 Voz ON</button>
+                        <button data-action="recalc" role="menuitem">🔄 Recalcular</button>
+                    </div>
+                </div>
             </div>
-            <div id="panel-content"><p class="empty-msg">Seleccione un elemento para ver sus detalles</p></div>
-        </div>
-    </div>
+        </header>
 
-    <div id="commandPanel" class="command-panel">
-        <div class="command-header">
-            <strong>🤖 Comandos IA — SmartFlow Pro v5.0</strong>
-            <button id="closeCommand" style="background:none;border:none;color:#fff;font-size:20px;padding:0;width:30px">✖</button>
-        </div>
-        <textarea id="commandText" rows="4" placeholder="PFD: create stream S1 from TK-01 to B-01 fluid WATER flow 50&#10;DTI: create instrument PI-101 type PRESSURE_GAUGE on L-1 at 0.3&#10;3D:  connect TK-01 N1 to B-01 SUC diametro 6&#10;VAL: validate all | project summary | export db&#10;PDF: export pfd | export dti"></textarea>
-        <div class="history-indicator" id="historyIndicator"></div>
-        <div class="command-buttons">
-            <button id="runCommands">▶ Ejecutar</button>
-            <button id="clearCommand">🗑️ Limpiar</button>
-        </div>
-    </div>
+        <!-- PANEL DE HERRAMIENTAS CONTEXTUAL POR MÓDULO -->
+        <div id="ef-module-tools" class="ef-module-tools" role="toolbar" aria-label="Herramientas del módulo"></div>
 
-    <div id="notification" class="notification"></div>
-    <div class="status-bar" id="statusMsg">SISTEMA LISTO | SmartFlow Pro v5.0</div>
-
-    <!-- ===== PANEL DE HERRAMIENTAS CONTEXTUAL POR MÓDULO ===== -->
-    <div id="module-tools-panel" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px;background:rgba(15,23,42,0.9);border-bottom:1px solid rgba(0,242,255,0.2);backdrop-filter:blur(6px);z-index:400;align-items:center;"></div>
-
-    <div class="tools-panel" id="toolsPanel">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-size:10px;color:var(--accent-cyan)">HERRAMIENTAS</span>
-            <button id="toolToggleHide" style="padding:2px 6px;font-size:10px;background:none;border:1px solid #334155">−</button>
-        </div>
-        <div id="toolsButtons">
-            <button id="toolSelect" class="active">🔍 Seleccionar</button>
-            <button id="toolMoveEq">✋ Mover equipo</button>
-            <button id="toolEditPipe">✏️ Editar tubería</button>
-            <button id="toolAddPoint">➕ Añadir punto</button>
-            <div class="elevation-inline">
-                <span>📐 Elev:</span>
-                <button id="btnElev0" data-level="0">0</button>
-                <button id="btnElev2500" data-level="2500">2.5m</button>
-                <button id="btnElev5000" data-level="5000">5.0m</button>
-                <input type="number" id="customElev" value="0" step="100" style="width:60px">
-                <button id="btnSetElev">Set</button>
+        <!-- ÁREA PRINCIPAL DEL LIENZO -->
+        <main class="ef-viewport" id="ef-viewport">
+            
+            <!-- ===== WRAPPER PFD ===== -->
+            <div id="ef-wrapper-pfd" class="ef-module-wrapper active" aria-label="Diagrama de Flujo de Proceso">
+                <canvas id="pfd-canvas"></canvas>
             </div>
-        </div>
+
+            <!-- ===== WRAPPER DTI ===== -->
+            <div id="ef-wrapper-dti" class="ef-module-wrapper" aria-label="Diagrama de Tubería e Instrumentación">
+                <canvas id="dti-canvas"></canvas>
+            </div>
+
+            <!-- ===== WRAPPER ISO 2D ===== -->
+            <div id="ef-wrapper-iso2d" class="ef-module-wrapper" aria-label="Isométrico 2.5D">
+                <canvas id="isoCanvas"></canvas>
+            </div>
+
+            <!-- ===== WRAPPER ISO 3D ===== -->
+            <div id="ef-wrapper-iso3d" class="ef-module-wrapper" aria-label="Isométrico 3D">
+                <div id="viewer-3d"></div>
+            </div>
+
+            <!-- ===== PANEL DE PROPIEDADES (flotante derecho) ===== -->
+            <aside id="ef-props-panel" class="ef-props-panel collapsed" aria-label="Propiedades del elemento">
+                <div class="ef-props-header">
+                    <h3>PROPIEDADES</h3>
+                    <button id="ef-props-close" class="ef-icon-btn" aria-label="Cerrar panel">×</button>
+                </div>
+                <div class="ef-props-content" id="ef-panel-content">
+                    <p class="ef-props-placeholder">Seleccione un elemento para ver sus detalles</p>
+                </div>
+            </aside>
+
+            <!-- ===== PANEL DE COMANDOS (flotante inferior) ===== -->
+            <div id="ef-cmd-panel" class="ef-cmd-panel" style="display:none" role="dialog" aria-label="Panel de comandos">
+                <div class="ef-cmd-header">
+                    <strong>🤖 Comandos</strong>
+                    <span class="ef-cmd-module-badge" id="ef-cmd-module-badge">PFD</span>
+                    <button id="ef-cmd-close" class="ef-icon-btn" aria-label="Cerrar comandos">×</button>
+                </div>
+                <textarea id="ef-cmd-text" class="ef-cmd-textarea" rows="4" 
+                          placeholder="Ej PFD: create stream S1 from TK-01 to B-01 fluid WATER flow 50&#10;Ej DTI: create instrument PI-101 type PRESSURE_GAUGE on L-1&#10;Ej ISO: connect TK-01 N1 to B-01 SUC diametro 6"></textarea>
+                <div class="ef-cmd-history" id="ef-cmd-history"></div>
+                <div class="ef-cmd-actions">
+                    <button id="ef-cmd-run" class="ef-btn ef-btn-primary">▶ Ejecutar</button>
+                    <button id="ef-cmd-clear" class="ef-btn ef-btn-secondary">🗑️ Limpiar</button>
+                </div>
+            </div>
+
+            <!-- ===== HERRAMIENTAS ISO (solo visible en módulo ISO) ===== -->
+            <aside id="ef-iso-tools" class="ef-iso-tools" style="display:none" role="toolbar" aria-label="Herramientas isométricas">
+                <div class="ef-iso-tools-group">
+                    <button class="ef-iso-tool-btn active" data-tool="select" title="Seleccionar" aria-label="Seleccionar">🔍</button>
+                    <button class="ef-iso-tool-btn" data-tool="moveEq" title="Mover equipo" aria-label="Mover equipo">✋</button>
+                    <button class="ef-iso-tool-btn" data-tool="editPipe" title="Editar tubería" aria-label="Editar tubería">✏️</button>
+                    <button class="ef-iso-tool-btn" data-tool="addPoint" title="Añadir punto" aria-label="Añadir punto">➕</button>
+                </div>
+                <div class="ef-iso-tools-elevation">
+                    <span class="ef-iso-elev-label">📐 Elev:</span>
+                    <button data-elev="0" class="ef-iso-elev-btn">0</button>
+                    <button data-elev="2500" class="ef-iso-elev-btn">2.5m</button>
+                    <button data-elev="5000" class="ef-iso-elev-btn">5.0m</button>
+                    <input type="number" id="ef-custom-elev" class="ef-iso-elev-input" value="0" step="100" aria-label="Elevación personalizada">
+                    <button id="ef-btn-set-elev" class="ef-iso-elev-set">Set</button>
+                </div>
+            </aside>
+
+            <!-- ===== SWITCH 2D/3D (solo visible en módulo ISO) ===== -->
+            <div id="ef-view-switch" class="ef-view-switch" style="display:none" role="radiogroup" aria-label="Vista isométrica">
+                <button id="ef-btn-2d" class="ef-view-btn active" role="radio" aria-checked="true">2D</button>
+                <button id="ef-btn-3d" class="ef-view-btn" role="radio" aria-checked="false">3D</button>
+            </div>
+
+            <!-- ===== INDICADOR FULLSCREEN ===== -->
+            <div id="ef-fullscreen-indicator" class="ef-fullscreen-indicator hidden" aria-live="polite">
+                <span class="ef-fs-label">Modo Inmersivo</span>
+                <span class="ef-fs-hint">ESC para salir</span>
+            </div>
+
+            <!-- ===== CONTROLES FULLSCREEN ===== -->
+            <div id="ef-fullscreen-controls" class="ef-fullscreen-controls">
+                <button id="ef-fs-center" class="ef-fs-btn ef-fs-center">🔄 Centrar</button>
+                <button id="ef-fs-screenshot" class="ef-fs-btn ef-fs-capture">📸 Capturar</button>
+                <button id="ef-fs-exit" class="ef-fs-btn ef-fs-exit">✕ Salir</button>
+            </div>
+
+            <!-- ===== FLASH DE CAPTURA ===== -->
+            <div id="ef-screenshot-flash" class="ef-screenshot-flash" aria-hidden="true"></div>
+        </main>
+
+        <!-- BARRA DE ESTADO -->
+        <footer class="ef-status-bar" role="status">
+            <span class="ef-status-item" id="ef-status-module">PFD</span>
+            <span class="ef-status-sep">|</span>
+            <span class="ef-status-item" id="ef-status-coords">X: 0.00 Y: 0.00</span>
+            <span class="ef-status-sep">|</span>
+            <span class="ef-status-item" id="ef-status-zoom">100%</span>
+            <span class="ef-status-spacer"></span>
+            <span class="ef-status-item" id="ef-status-message">Listo</span>
+        </footer>
     </div>
 
-    <div id="fullscreen-controls">
-        <button id="btnFullscreenCenter" style="padding:12px 20px;border-radius:30px;background:var(--accent-cyan);color:#000;font-weight:700;border:none">🔄 Centrar</button>
-        <button id="btnFullscreenExit" style="padding:12px 20px;border-radius:30px;background:#ef4444;color:#fff;font-weight:700;border:none">✕ Salir</button>
-    </div>
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- NOTIFICACIÓN TOAST                                            -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div id="ef-notification" class="ef-notification" role="alert" aria-live="polite"></div>
 
-    <!-- ================================================================ -->
-    <!--  SCRIPTS - SMARTFLOW PRO v5.0                                     -->
-    <!-- ================================================================ -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- SCRIPTS                                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    
+    <!-- Core del sistema -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/router.js"></script>
 
+    <!-- Módulos PFD -->
     <script src="js/modules/pfd_engine.js"></script>
     <script src="js/modules/pfd_renderer.js"></script>
+    
+    <!-- Módulos DTI -->
     <script src="js/modules/dti_engine.js"></script>
     <script src="js/modules/dti_renderer.js"></script>
+    
+    <!-- Validación cruzada -->
     <script src="js/modules/integrity.js"></script>
 
+    <!-- I/O y exportación -->
     <script src="js/modules/smartflow_io.js"></script>
     <script src="js/modules/smartflow_db_export.js"></script>
 
+    <!-- Renderer isométrico 2D -->
     <script src="js/renderer.js"></script>
 
+    <!-- Entregables PDF -->
     <script src="js/deliverables.js"></script>
     <script src="js/factory.js"></script>
 
+    <!-- Comandos -->
     <script src="js/commands.js"></script>
     <script src="js/commands-pfd.js"></script>
     <script src="js/commands-dti.js"></script>
     <script src="js/commands-3d.js"></script>
 
+    <!-- Comandos adaptativos (asistidos) -->
     <script src="js/adaptiveCommands.js"></script>
     <script src="js/adaptiveCommandsUI.js"></script>
 
-    <script src="js/module-panels.js"></script>
+    <!-- Paneles contextuales -->
+    <script src="js/engineflow-panels.js"></script>
 
+    <!-- Three.js (módulos ES) -->
     <script type="module" src="js/ThreeJsEngine.js"></script>
     <script type="module" src="js/render.js"></script>
-    <script type="module" src="js/SmartFlowLabels3D.js"></script>
+    <script type="module" src="js/EngineFlowLabels3D.js"></script>
 
-    <script src="js/main.js"></script>
+    <!-- Orquestador principal EngineFlow -->
+    <script src="js/engineflow-app.js"></script>
 
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- CONFIGURACIÓN INICIAL                                          -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
     <script>
+        // Variables globales de EngineFlow
         window.voiceEnabled = true;
-        window.currentProjectName = 'Proyecto_SmartFlow';
+        window.currentProjectName = 'Proyecto_EngineFlow';
         window.currentModule = 'pfd';
         window.currentViewMode = '2d';
 
         document.addEventListener("DOMContentLoaded", function() {
             
-            var btnClosePanel = document.getElementById('btnClosePanel');
+            // Cerrar panel de propiedades
+            var btnClosePanel = document.getElementById('ef-props-close');
             if (btnClosePanel) {
                 btnClosePanel.addEventListener('click', function() { 
                     if (typeof togglePanel === 'function') togglePanel(false); 
                 });
             }
 
-            ['btnElev0', 'btnElev2500', 'btnElev5000'].forEach(function(id) {
+            // Botones de elevación
+            ['ef-btn-elev-0', 'btnElev0', 'btnElev2500', 'btnElev5000'].forEach(function(id) {
                 var btn = document.getElementById(id);
                 if (btn) {
                     btn.addEventListener('click', function() {
-                        var level = parseInt(this.getAttribute('data-level'), 10);
+                        var level = parseInt(this.getAttribute('data-level') || this.getAttribute('data-elev'), 10);
                         if (typeof setElevation === 'function') setElevation(level);
                     });
                 }
             });
 
-            document.querySelectorAll('.module-tab').forEach(function(tab) {
+            // Tabs de módulos
+            document.querySelectorAll('.ef-module-tab').forEach(function(tab) {
                 tab.addEventListener('click', function() {
                     var module = this.getAttribute('data-module');
                     if (typeof window.switchModule === 'function') {
@@ -370,24 +381,16 @@
                     }
                 });
             });
-            
-            var btnPFD = document.getElementById('btn-mode-pfd');
-            var btnDTI = document.getElementById('btn-mode-dti');
-            var btnISO = document.getElementById('btn-mode-iso');
-            if (btnPFD) btnPFD.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('pfd'); });
-            if (btnDTI) btnDTI.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('dti'); });
-            if (btnISO) btnISO.addEventListener('click', function() { if (typeof window.switchModule === 'function') window.switchModule('iso'); });
 
-            // Botones de exportación PDF PFD/DTI
-            var btnExportPFD = document.getElementById('btnExportPFD');
-            var btnExportDTI = document.getElementById('btnExportDTI');
-            if (btnExportPFD) btnExportPFD.addEventListener('click', function() {
-                if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generatePFD();
-            });
-            if (btnExportDTI) btnExportDTI.addEventListener('click', function() {
-                if (typeof SmartFlowDeliverables !== 'undefined') SmartFlowDeliverables.generateDTI();
+            // Click en botones de elevación ISO
+            document.querySelectorAll('.ef-iso-elev-btn[data-elev]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var level = parseInt(this.getAttribute('data-elev'), 10);
+                    if (typeof setElevation === 'function') setElevation(level);
+                });
             });
 
+            // Redimensionar al cambiar tamaño de ventana
             window.addEventListener('resize', function() {
                 var m = window.currentModule || 'pfd';
                 if (m === 'pfd' && typeof SmartFlowPFDRenderer !== 'undefined') {
@@ -396,25 +399,26 @@
                 } else if (m === 'dti' && typeof SmartFlowDTIRenderer !== 'undefined') {
                     SmartFlowDTIRenderer.resizeCanvas();
                     SmartFlowDTIRenderer.render();
-                } else if (m === 'iso' && typeof SmartFlowRenderer !== 'undefined') {
+                } else if (m === 'iso' && window.currentViewMode === '2d' && typeof SmartFlowRenderer !== 'undefined') {
                     SmartFlowRenderer.resizeCanvas();
                 }
             });
         });
 
+        // Funciones globales de apoyo
         function setElevation(level) {
             if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.setElevation) {
                 SmartFlowCore.setElevation(level);
             }
-            var elevInput = document.getElementById('customElev');
+            var elevInput = document.getElementById('ef-custom-elev');
             if (elevInput) elevInput.value = level;
         }
 
         function togglePanel(show) {
-            var panel = document.getElementById('side-panel');
+            var panel = document.getElementById('ef-props-panel');
             if (panel) {
-                if (show) panel.classList.remove('hidden');
-                else panel.classList.add('hidden');
+                if (show) panel.classList.remove('collapsed');
+                else panel.classList.add('collapsed');
             }
         }
     </script>
