@@ -1,5 +1,5 @@
 // ============================================================
-// ENGINE FLOW - ORQUESTADOR PRINCIPAL v1.0
+// NODUS PLANT - ORQUESTADOR PRINCIPAL v1.0
 // Archivo: js/engineflow-app.js
 // Suite de Ingeniería: PFD + DTI + ISO (2.5D + 3D)
 // ============================================================
@@ -243,7 +243,7 @@
     
     // -------------------- 5. INICIALIZACIÓN DE MÓDULOS --------------------
     function initModules() {
-        console.log('🚀 Inicializando EngineFlow Suite...');
+        console.log('🚀 Inicializando Nodus Plant Suite...');
         
         // 1. Core (siempre primero)
         SmartFlowCore.init(notify, scheduleRender, updatePropertyPanel);
@@ -313,8 +313,8 @@
             SmartFlowDeliverables.init(SmartFlowCore, typeof SmartFlowRenderer !== 'undefined' ? SmartFlowRenderer : null);
             SmartFlowDeliverables.setProjectConfig({
                 projectName: window.currentProjectName || 'PROYECTO',
-                projectNumber: 'EF-001',
-                client: 'EngineFlow',
+                projectNumber: 'NP-001',
+                client: 'Nodus Plant',
                 plantLocation: 'PLANTA',
                 revision: 'A',
                 date: new Date().toLocaleDateString('es-ES'),
@@ -340,8 +340,8 @@
         SmartFlowCore.setVoice(voiceEnabled);
         _modulesInitialized = true;
         
-        console.log('✅ EngineFlow Suite lista | PFD + DTI + ISO');
-        notify('EngineFlow lista | PFD + DTI + ISO', false);
+        console.log('✅ Nodus Plant Suite lista | PFD + DTI + ISO');
+        notify('Nodus Plant lista | PFD + DTI + ISO', false);
     }
     
     // ===== SWITCH DE MÓDULOS =====
@@ -500,7 +500,7 @@
             return;
         }
         const state = SmartFlowCore.exportProject();
-        localStorage.setItem('engineflow_project', state);
+        localStorage.setItem('nodusplant_project', state);
         notify("✅ Proyecto guardado", false);
     }
     
@@ -509,7 +509,7 @@
             SmartFlowIO.uploadAndImportJSON();
             return;
         }
-        const data = localStorage.getItem('engineflow_project');
+        const data = localStorage.getItem('nodusplant_project');
         if (data) {
             try {
                 const state = JSON.parse(data);
@@ -617,7 +617,7 @@
         const ws = XLSX.utils.aoa_to_sheet([["Tag", "Descripción", "Unidad", "Cantidad"], ...items]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "MTO");
-        XLSX.writeFile(wb, 'MTO_EngineFlow_' + Date.now() + '.xlsx');
+        XLSX.writeFile(wb, 'MTO_NodusPlant_' + Date.now() + '.xlsx');
         notify("✅ MTO exportado", false);
     }
     
@@ -642,7 +642,7 @@
             } else if (m === 'iso' && window.currentViewMode === '3d' && window.ThreeJsEngine) {
                 const dataURL = window.ThreeJsEngine.exportToDataURL();
                 if (dataURL) {
-                    downloadDataURL(dataURL, 'EngineFlow_3D_' + Date.now() + '.png');
+                    downloadDataURL(dataURL, 'NodusPlant_3D_' + Date.now() + '.png');
                     notify("📸 Captura 3D guardada", false);
                     return;
                 }
@@ -650,7 +650,7 @@
             
             if (sourceCanvas) {
                 const dataURL = sourceCanvas.toDataURL('image/png');
-                downloadDataURL(dataURL, 'EngineFlow_' + m + '_' + Date.now() + '.png');
+                downloadDataURL(dataURL, 'NodusPlant_' + m + '_' + Date.now() + '.png');
                 notify("📸 Captura guardada", false);
             }
         } catch (error) {
@@ -939,7 +939,7 @@
     
     // -------------------- 12. ARRANQUE DE LA APLICACIÓN --------------------
     function init() {
-        window.currentProjectName = window.currentProjectName || 'Proyecto_EngineFlow';
+        window.currentProjectName = window.currentProjectName || 'Proyecto_NodusPlant';
         window.voiceEnabled = true;
         window.currentModule = 'pfd';
         window.currentViewMode = '2d';
@@ -953,7 +953,7 @@
             "Cargando Integrity...",
             "Cargando Renderers...",
             "Cargando Deliverables...",
-            "¡EngineFlow listo!"
+            "¡Nodus Plant listo!"
         ];
         let msgIndex = 0;
         const interval = setInterval(function() {
@@ -976,6 +976,7 @@
             setTool('select');
             window.setElevation(0);
             
+            // CORREGIDO: 'hidden' en lugar de 'splash-hidden'
             if (splashScreen) splashScreen.classList.add('hidden');
             clearInterval(interval);
             
