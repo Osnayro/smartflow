@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="EngineFlow - Suite de Ingeniería Inteligente para Diagramas de Proceso, DTI e Isométricos">
+    <meta name="description" content="Nodus Plant - Suite de Ingeniería de Plantas. Lightweight Engineering, Heavyweight Performance.">
     <meta name="theme-color" content="#0a0f1a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>EngineFlow | Suite de Ingeniería</title>
+    <title>Nodus Plant | Suite de Ingeniería</title>
     
-    <!-- Favicon SVG inline -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><polygon points='16,2 30,10 30,22 16,30 2,22 2,10' fill='none' stroke='%233b82f6' stroke-width='2'/><polygon points='16,6 26,12 26,20 16,26 6,20 6,12' fill='none' stroke='%2360a5fa' stroke-width='1'/><circle cx='16' cy='16' r='3' fill='%233b82f6'/></svg>">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="img/logo.PNG">
     
     <!-- Three.js r160 con Import Map -->
     <script type="importmap">
@@ -27,61 +27,76 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <!-- Estilos EngineFlow -->
+    <!-- Estilos EngineFlow (paleta Nodus Plant) -->
     <link rel="stylesheet" href="css/engineflow-core.css">
 </head>
 <body class="engineflow-app">
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 1. SPLASH SCREEN                                              -->
+    <!-- 1. SPLASH SCREEN - NODUS PLANT                                -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-splash" class="ef-splash">
         <div class="ef-splash-content">
+            <!-- Isotipo animado: Hexágono con líneas de flujo -->
             <div class="ef-splash-icon">
-                <svg viewBox="0 0 80 80" class="ef-splash-svg">
-                    <polygon points="40,6 70,22 70,58 40,74 10,58 10,22" 
-                             fill="none" stroke="#3b82f6" stroke-width="1.5" 
-                             class="ef-splash-hex"/>
-                    <polygon points="40,12 64,26 64,54 40,68 16,54 16,26" 
-                             fill="none" stroke="#60a5fa" stroke-width="0.8" opacity="0.5"/>
-                    <circle cx="40" cy="40" r="6" fill="#3b82f6" 
-                            class="ef-splash-dot"/>
+                <svg viewBox="0 0 100 100" width="120" height="120">
+                    <!-- Hexágono exterior -->
+                    <path class="ef-splash-hex-outer" 
+                          d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28 Z" />
+                    <!-- Líneas de flujo interconectadas -->
+                    <path class="ef-splash-hex-flow" 
+                          d="M50 5 L50 35 M90 28 L65 45 M90 72 L65 55 M50 95 L50 65 M10 72 L35 55 L35 45 Z" />
+                    <!-- Nodo central -->
+                    <circle class="ef-splash-hex-node" cx="50" cy="50" r="8" />
                 </svg>
             </div>
-            <h1 class="ef-splash-title">EngineFlow</h1>
-            <p class="ef-splash-subtitle">SUITE DE INGENIERÍA</p>
+            
+            <!-- Marca -->
+            <h1 class="ef-splash-title">Nodus <span>Plant</span></h1>
+            <p class="ef-splash-tagline">Lightweight Engineering, Heavyweight Performance</p>
+            
+            <!-- Barra de carga -->
             <div class="ef-splash-loader">
                 <div class="ef-splash-loader-bar"></div>
             </div>
+            
+            <!-- Estado -->
             <p class="ef-splash-status" id="ef-splash-status">Inicializando módulos...</p>
         </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 2. WELCOME / HOME (se muestra al iniciar)                     -->
+    <!-- 2. WELCOME / HOME                                             -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-welcome" class="ef-welcome">
         <div class="ef-welcome-card">
-            <div class="ef-welcome-icon">
-                <svg viewBox="0 0 60 60" width="60" height="60">
-                    <polygon points="30,4 54,16 54,44 30,56 6,44 6,16" 
-                             fill="none" stroke="#3b82f6" stroke-width="1.5"/>
-                    <polygon points="30,10 48,20 48,40 30,50 12,40 12,20" 
-                             fill="none" stroke="#60a5fa" stroke-width="0.8" opacity="0.5"/>
-                </svg>
+            <!-- Logo corporativo -->
+            <div class="ef-welcome-logo-area">
+                <img src="img/logo.PNG" alt="Nodus Plant" class="ef-welcome-logo-img" onerror="this.style.display='none'">
             </div>
-            <h1 class="ef-welcome-title">EngineFlow</h1>
-            <p class="ef-welcome-subtitle">Suite de Ingeniería Inteligente</p>
-            <p class="ef-welcome-desc">Seleccione una opción para comenzar</p>
+            
+            <h1 class="ef-welcome-title">Bienvenido a la Suite</h1>
+            <p class="ef-welcome-desc">
+                Comience la gestión, seguimiento o ejecución de sus proyectos de ingeniería de plantas. 
+                Inicie un flujo desde el diagrama de proceso hasta el plano isométrico final.
+            </p>
+            
             <div class="ef-welcome-actions">
                 <button id="ef-welcome-new" class="ef-btn ef-btn-primary ef-btn-large">
-                    <span class="ef-btn-icon">➕</span> Nuevo Proyecto
+                    <span class="ef-btn-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </span>
+                    Nuevo Proyecto
                 </button>
                 <button id="ef-welcome-open" class="ef-btn ef-btn-secondary ef-btn-large">
-                    <span class="ef-btn-icon">📂</span> Abrir Proyecto Existente
+                    <span class="ef-btn-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                    </span>
+                    Abrir Proyecto Existente
                 </button>
             </div>
         </div>
+        <p class="ef-welcome-footer">Nodus Plant — Lightweight Engineering, Heavyweight Performance</p>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -92,7 +107,7 @@
             <h3 class="ef-modal-title">Nuevo Proyecto</h3>
             <p class="ef-modal-desc">Asigne un nombre al proyecto de ingeniería</p>
             <input type="text" id="ef-project-input" class="ef-input" 
-                   placeholder="Nombre del proyecto" value="Proyecto_EngineFlow" autocomplete="off">
+                   placeholder="Nombre del proyecto" value="Proyecto_NodusPlant" autocomplete="off">
             <div class="ef-modal-actions">
                 <button id="ef-modal-accept" class="ef-btn ef-btn-primary">Crear Proyecto</button>
                 <button id="ef-modal-skip" class="ef-btn ef-btn-secondary">Usar nombre por defecto</button>
@@ -101,7 +116,7 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 4. SHELL PRINCIPAL (oculto hasta después del welcome)         -->
+    <!-- 4. SHELL PRINCIPAL                                            -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-shell" class="ef-shell" style="display:none">
         
@@ -109,10 +124,8 @@
         <header class="ef-header" role="banner">
             <div class="ef-header-left">
                 <div class="ef-brand">
-                    <svg viewBox="0 0 24 24" class="ef-brand-icon" width="22" height="22">
-                        <polygon points="12,2 22,7 22,17 12,22 2,17 2,7" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
-                    </svg>
-                    <span class="ef-brand-text">EngineFlow</span>
+                    <img src="img/logo.PNG" alt="Nodus Plant" class="ef-brand-logo" onerror="this.style.display='none'">
+                    <span class="ef-brand-text">Nodus Plant</span>
                 </div>
                 <span class="ef-header-separator">|</span>
                 <span class="ef-project-badge" id="ef-project-badge">
@@ -137,7 +150,7 @@
 
             <div class="ef-header-right">
                 <button id="ef-btn-validate" class="ef-icon-btn" title="Validación cruzada PFD↔DTI↔ISO" aria-label="Validar">
-                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#10b981"/></svg>
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#00b4d8"/></svg>
                 </button>
                 <button id="ef-btn-summary" class="ef-icon-btn" title="Resumen del proyecto" aria-label="Resumen">
                     <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
@@ -280,7 +293,7 @@
             <span class="ef-status-sep">|</span>
             <span class="ef-status-item" id="ef-status-zoom">100%</span>
             <span class="ef-status-spacer"></span>
-            <span class="ef-status-item" id="ef-status-message">Listo</span>
+            <span class="ef-status-item" id="ef-status-message">Nodus Plant — Listo</span>
         </footer>
     </div>
 
@@ -290,7 +303,7 @@
     <div id="ef-notification" class="ef-notification" role="alert" aria-live="polite"></div>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- SCRIPTS                                                        -->
+    <!-- SCRIPTS (MISMOS ARCHIVOS, SIN RENOMBRAR)                      -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     
     <!-- Core del sistema -->
@@ -338,22 +351,20 @@
     <script type="module" src="js/render.js"></script>
     <script type="module" src="js/EngineFlowLabels3D.js"></script>
 
-    <!-- Orquestador principal EngineFlow -->
+    <!-- Orquestador principal -->
     <script src="js/engineflow-app.js"></script>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <!-- CONFIGURACIÓN INICIAL                                          -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <script>
-        // Variables globales de EngineFlow
         window.voiceEnabled = true;
-        window.currentProjectName = 'Proyecto_EngineFlow';
+        window.currentProjectName = 'Proyecto_NodusPlant';
         window.currentModule = 'pfd';
         window.currentViewMode = '2d';
 
         document.addEventListener("DOMContentLoaded", function() {
             
-            // Cerrar panel de propiedades
             var btnClosePanel = document.getElementById('ef-props-close');
             if (btnClosePanel) {
                 btnClosePanel.addEventListener('click', function() { 
@@ -361,18 +372,6 @@
                 });
             }
 
-            // Botones de elevación
-            ['ef-btn-elev-0', 'btnElev0', 'btnElev2500', 'btnElev5000'].forEach(function(id) {
-                var btn = document.getElementById(id);
-                if (btn) {
-                    btn.addEventListener('click', function() {
-                        var level = parseInt(this.getAttribute('data-level') || this.getAttribute('data-elev'), 10);
-                        if (typeof setElevation === 'function') setElevation(level);
-                    });
-                }
-            });
-
-            // Tabs de módulos
             document.querySelectorAll('.ef-module-tab').forEach(function(tab) {
                 tab.addEventListener('click', function() {
                     var module = this.getAttribute('data-module');
@@ -382,7 +381,6 @@
                 });
             });
 
-            // Click en botones de elevación ISO
             document.querySelectorAll('.ef-iso-elev-btn[data-elev]').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     var level = parseInt(this.getAttribute('data-elev'), 10);
@@ -390,7 +388,6 @@
                 });
             });
 
-            // Redimensionar al cambiar tamaño de ventana
             window.addEventListener('resize', function() {
                 var m = window.currentModule || 'pfd';
                 if (m === 'pfd' && typeof SmartFlowPFDRenderer !== 'undefined') {
@@ -405,7 +402,6 @@
             });
         });
 
-        // Funciones globales de apoyo
         function setElevation(level) {
             if (typeof SmartFlowCore !== 'undefined' && SmartFlowCore.setElevation) {
                 SmartFlowCore.setElevation(level);
