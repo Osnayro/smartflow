@@ -1,7 +1,8 @@
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/* ENGINE FLOW - CORE STYLES v1.0                                     */
+/* ENGINE FLOW - CORE STYLES v1.1                                     */
 /* Suite de Ingeniería - Diseño Moderno, Lienzo Protagonista          */
+/* Correcciones: FullScreen móvil, tipografía, viewport               */
 /* ═══════════════════════════════════════════════════════════════════ */
 
 :root {
@@ -865,7 +866,9 @@ canvas {
     color: #fff;
 }
 
-/* ── FULLSCREEN ── */
+/* ═══════════════════════════════════════════════════════════════════ */
+/* FULLSCREEN - INDICADOR                                             */
+/* ═══════════════════════════════════════════════════════════════════ */
 .ef-fullscreen-indicator {
     position: absolute;
     top: 0.75rem;
@@ -902,6 +905,11 @@ canvas {
     border: 1px solid var(--ef-border);
 }
 
+/* ═══════════════════════════════════════════════════════════════════ */
+/* FULLSCREEN - CONTROLES (CORREGIDO PARA MÓVILES)                    */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+/* Por defecto: barra inferior centrada (escritorio) */
 .ef-fullscreen-controls {
     display: none;
     position: absolute;
@@ -911,6 +919,33 @@ canvas {
     gap: 0.75rem;
     z-index: 300;
 }
+
+/* En tablets y móviles en HORIZONTAL: panel LATERAL DERECHO */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .ef-fullscreen-controls {
+        bottom: auto;
+        top: 50%;
+        right: 0.5rem;
+        left: auto;
+        transform: translateY(-50%);
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+/* En móviles VERTICAL: barra inferior más compacta */
+@media (max-width: 768px) and (orientation: portrait) {
+    .ef-fullscreen-controls {
+        bottom: 0.75rem;
+        gap: 0.5rem;
+    }
+    .ef-fs-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.7rem;
+    }
+}
+
+/* Botones individuales */
 .ef-fs-btn {
     padding: 0.6rem 1.25rem;
     border-radius: var(--ef-radius-full);
@@ -922,6 +957,7 @@ canvas {
     transition: all var(--ef-transition-fast);
     letter-spacing: 0.05em;
     backdrop-filter: blur(8px);
+    white-space: nowrap;
 }
 .ef-fs-center {
     background: var(--ef-accent);
@@ -947,6 +983,45 @@ canvas {
     background: #dc2626;
 }
 
+/* En landscape móvil: botones más compactos */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .ef-fs-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.7rem;
+        border-radius: var(--ef-radius-md);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* FULLSCREEN - AJUSTE DE VIEWPORT                                   */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+/* En móviles, el canvas debe ocupar exactamente la altura visible */
+body.ef-fullscreen .ef-viewport {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    height: 100dvh;
+    height: 100vh;
+}
+
+body.ef-fullscreen .ef-module-wrapper.active {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+}
+
+/* Margen superior para que el indicador no tape títulos */
+@media (max-width: 768px) {
+    body.ef-fullscreen .ef-fullscreen-indicator:not(.hidden) {
+        top: 0.5rem;
+    }
+    
+    body.ef-fullscreen .ef-module-wrapper.active {
+        padding-top: 2.5rem;
+    }
+}
+
 .ef-screenshot-flash {
     position: absolute;
     inset: 0;
@@ -961,7 +1036,7 @@ canvas {
     transition: opacity 0ms;
 }
 
-/* ── MODO FULLSCREEN ── */
+/* ── MODO FULLSCREEN: ocultar todo excepto canvas y controles ── */
 body.ef-fullscreen .ef-header,
 body.ef-fullscreen .ef-module-tools,
 body.ef-fullscreen .ef-props-panel,
@@ -973,24 +1048,8 @@ body.ef-fullscreen .ef-notification {
     display: none !important;
 }
 
-body.ef-fullscreen .ef-viewport {
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
-}
-
 body.ef-fullscreen .ef-fullscreen-controls {
     display: flex;
-}
-
-body.ef-fullscreen .ef-fullscreen-indicator:not(.hidden) {
-    /* visible */;
-}
-
-body.ef-fullscreen .ef-module-wrapper.active {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -1043,6 +1102,39 @@ body.ef-fullscreen .ef-module-wrapper.active {
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
+/* TIPOGRAFÍA RESPONSIVE PARA ETIQUETAS                              */
+/* ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .ef-module-wrapper.active canvas {
+        image-rendering: auto;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* RESPONSIVE - MÓVILES HORIZONTAL (ajuste de altura)                */
+/* ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) and (orientation: landscape) {
+    :root {
+        --ef-header-h: 2.25rem;
+        --ef-module-tools-h: 1.75rem;
+        --ef-status-h: 1.25rem;
+    }
+    
+    .ef-brand-text {
+        font-size: 0.8rem;
+    }
+    
+    .ef-module-tab {
+        padding: 0.2rem 0.45rem;
+        font-size: 0.6rem;
+    }
+    
+    .ef-tab-icon {
+        font-size: 0.7rem;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
 /* RESPONSIVE - TABLETS (769px - 1024px)                              */
 /* ═══════════════════════════════════════════════════════════════════ */
 @media (max-width: 1024px) {
@@ -1059,7 +1151,7 @@ body.ef-fullscreen .ef-module-wrapper.active {
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/* RESPONSIVE - MÓVILES (hasta 768px)                                 */
+/* RESPONSIVE - MÓVILES VERTICAL (hasta 768px)                        */
 /* ═══════════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
     :root {
@@ -1068,7 +1160,6 @@ body.ef-fullscreen .ef-module-wrapper.active {
         --ef-status-h: 1.25rem;
     }
     
-    /* Header más compacto */
     .ef-brand-text {
         display: none;
     }
@@ -1085,7 +1176,6 @@ body.ef-fullscreen .ef-module-wrapper.active {
         font-size: 0.6rem;
     }
     
-    /* Propiedades full-width desde abajo */
     .ef-props-panel {
         right: 0;
         left: 0;
@@ -1101,7 +1191,6 @@ body.ef-fullscreen .ef-module-wrapper.active {
         transform: translateY(100%);
     }
     
-    /* Herramientas ISO abajo */
     .ef-iso-tools {
         left: 50%;
         top: auto;
@@ -1125,7 +1214,6 @@ body.ef-fullscreen .ef-module-wrapper.active {
         gap: 0.2rem;
     }
     
-    /* Switch 2D/3D abajo derecha */
     .ef-view-switch {
         right: 0.5rem;
         top: auto;
@@ -1134,13 +1222,11 @@ body.ef-fullscreen .ef-module-wrapper.active {
         border-radius: var(--ef-radius-full);
     }
     
-    /* Panel de comandos más ancho */
     .ef-cmd-panel {
         width: 96%;
         bottom: 0.25rem;
     }
     
-    /* FullScreen mobile */
     body.ef-fullscreen .ef-iso-tools,
     body.ef-fullscreen .ef-view-switch {
         display: none !important;
