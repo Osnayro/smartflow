@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="description" content="Nodus Plant - Suite de Ingeniería de Plantas. Lightweight Engineering, Heavyweight Performance.">
-    <meta name="theme-color" content="#0a0f1a">
+    <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Nodus Plant | Suite de Ingeniería</title>
@@ -27,7 +27,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <!-- Estilos EngineFlow (paleta Nodus Plant) -->
+    <!-- Estilos Nodus Plant -->
     <link rel="stylesheet" href="css/engineflow-core.css">
 </head>
 <body class="engineflow-app">
@@ -37,30 +37,23 @@
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-splash" class="ef-splash">
         <div class="ef-splash-content">
-            <!-- Isotipo animado: Hexágono con líneas de flujo -->
             <div class="ef-splash-icon">
                 <svg viewBox="0 0 100 100" width="120" height="120">
-                    <!-- Hexágono exterior -->
                     <path class="ef-splash-hex-outer" 
                           d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28 Z" />
-                    <!-- Líneas de flujo interconectadas -->
                     <path class="ef-splash-hex-flow" 
                           d="M50 5 L50 35 M90 28 L65 45 M90 72 L65 55 M50 95 L50 65 M10 72 L35 55 L35 45 Z" />
-                    <!-- Nodo central -->
                     <circle class="ef-splash-hex-node" cx="50" cy="50" r="8" />
                 </svg>
             </div>
             
-            <!-- Marca -->
             <h1 class="ef-splash-title">Nodus <span>Plant</span></h1>
             <p class="ef-splash-tagline">Lightweight Engineering, Heavyweight Performance</p>
             
-            <!-- Barra de carga -->
             <div class="ef-splash-loader">
                 <div class="ef-splash-loader-bar"></div>
             </div>
             
-            <!-- Estado -->
             <p class="ef-splash-status" id="ef-splash-status">Inicializando módulos...</p>
         </div>
     </div>
@@ -70,7 +63,6 @@
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-welcome" class="ef-welcome">
         <div class="ef-welcome-card">
-            <!-- Logo corporativo -->
             <div class="ef-welcome-logo-area">
                 <img src="img/logo.PNG" alt="Nodus Plant" class="ef-welcome-logo-img" onerror="this.style.display='none'">
             </div>
@@ -150,7 +142,7 @@
 
             <div class="ef-header-right">
                 <button id="ef-btn-validate" class="ef-icon-btn" title="Validación cruzada PFD↔DTI↔ISO" aria-label="Validar">
-                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#00b4d8"/></svg>
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#38bdf8"/></svg>
                 </button>
                 <button id="ef-btn-summary" class="ef-icon-btn" title="Resumen del proyecto" aria-label="Resumen">
                     <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
@@ -229,7 +221,7 @@
             </aside>
 
             <!-- ===== PANEL DE COMANDOS (flotante inferior) ===== -->
-            <div id="ef-cmd-panel" class="ef-cmd-panel" style="display:none" role="dialog" aria-label="Panel de comandos">
+            <div id="ef-cmd-panel" class="ef-cmd-panel collapsed" role="dialog" aria-label="Panel de comandos">
                 <div class="ef-cmd-header">
                     <strong>🤖 Comandos</strong>
                     <span class="ef-cmd-module-badge" id="ef-cmd-module-badge">PFD</span>
@@ -237,6 +229,8 @@
                 </div>
                 <textarea id="ef-cmd-text" class="ef-cmd-textarea" rows="4" 
                           placeholder="Ej PFD: create stream S1 from TK-01 to B-01 fluid WATER flow 50&#10;Ej DTI: create instrument PI-101 type PRESSURE_GAUGE on L-1&#10;Ej ISO: connect TK-01 N1 to B-01 SUC diametro 6"></textarea>
+                <!-- Contenedor del asistente guiado (stepper adaptativo) -->
+                <div id="ef-guided-box"></div>
                 <div class="ef-cmd-history" id="ef-cmd-history"></div>
                 <div class="ef-cmd-actions">
                     <button id="ef-cmd-run" class="ef-btn ef-btn-primary">▶ Ejecutar</button>
@@ -303,7 +297,7 @@
     <div id="ef-notification" class="ef-notification" role="alert" aria-live="polite"></div>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- SCRIPTS (MISMOS ARCHIVOS, SIN RENOMBRAR)                      -->
+    <!-- SCRIPTS                                                        -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     
     <!-- Core del sistema -->
@@ -351,7 +345,7 @@
     <script type="module" src="js/render.js"></script>
     <script type="module" src="js/EngineFlowLabels3D.js"></script>
 
-    <!-- Orquestador principal -->
+    <!-- Orquestador principal Nodus Plant -->
     <script src="js/engineflow-app.js"></script>
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
