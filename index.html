@@ -5,13 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="description" content="Nodus Plant - Suite de Ingeniería de Plantas. Lightweight Engineering, Heavyweight Performance.">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#07111e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Nodus Plant | Suite de Ingeniería</title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="img/logo.PNG">
+    <link rel="icon" type="image/png" sizes="32x32" href="img/logo.PNG">
     
     <!-- Three.js r160 con Import Map -->
     <script type="importmap">
@@ -33,21 +33,11 @@
 <body class="engineflow-app">
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 1. SPLASH SCREEN - NODUS PLANT                                -->
+    <!-- 1. SPLASH SCREEN - NODUS PLANT (NUEVO LOGO PULSANTE)          -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-splash" class="ef-splash">
         <div class="ef-splash-content">
-            <div class="ef-splash-icon">
-                <svg viewBox="0 0 100 100" width="120" height="120">
-                    <path class="ef-splash-hex-outer" 
-                          d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28 Z" />
-                    <path class="ef-splash-hex-flow" 
-                          d="M50 5 L50 35 M90 28 L65 45 M90 72 L65 55 M50 95 L50 65 M10 72 L35 55 L35 45 Z" />
-                    <circle class="ef-splash-hex-node" cx="50" cy="50" r="8" />
-                </svg>
-            </div>
-            
-            <h1 class="ef-splash-title">Nodus <span>Plant</span></h1>
+            <img src="img/logo_splash.png" alt="Nodus Plant Logo" class="ef-splash-logo-new">
             <p class="ef-splash-tagline">Lightweight Engineering, Heavyweight Performance</p>
             
             <div class="ef-splash-loader">
@@ -64,7 +54,7 @@
     <div id="ef-welcome" class="ef-welcome">
         <div class="ef-welcome-card">
             <div class="ef-welcome-logo-area">
-                <img src="img/logo.PNG" alt="Nodus Plant" class="ef-welcome-logo-img" onerror="this.style.display='none'">
+                <img src="img/logo_splash.png" alt="Nodus Plant" class="ef-welcome-logo-img">
             </div>
             
             <h1 class="ef-welcome-title">Bienvenido a la Suite</h1>
@@ -116,8 +106,7 @@
         <header class="ef-header" role="banner">
             <div class="ef-header-left">
                 <div class="ef-brand">
-                    <img src="img/logo.PNG" alt="Nodus Plant" class="ef-brand-logo" onerror="this.style.display='none'">
-                    <span class="ef-brand-text">Nodus Plant</span>
+                    <img src="img/logo_ui.png" alt="Nodus Plant" class="ef-header-logo">
                 </div>
                 <span class="ef-header-separator">|</span>
                 <span class="ef-project-badge" id="ef-project-badge">
@@ -142,7 +131,7 @@
 
             <div class="ef-header-right">
                 <button id="ef-btn-validate" class="ef-icon-btn" title="Validación cruzada PFD↔DTI↔ISO" aria-label="Validar">
-                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#38bdf8"/></svg>
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#ff7b00"/></svg>
                 </button>
                 <button id="ef-btn-summary" class="ef-icon-btn" title="Resumen del proyecto" aria-label="Resumen">
                     <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
