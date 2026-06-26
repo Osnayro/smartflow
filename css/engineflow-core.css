@@ -1,9 +1,12 @@
 
+
+
 /* ═══════════════════════════════════════════════════════════════════ */
-/* NODUS PLANT - CORE STYLES v2.3                                     */
+/* NODUS PLANT - CORE STYLES v2.4                                     */
 /* Suite de Ingeniería de Plantas - Tema Oscuro Unificado             */
 /* Refactorización: Paneles GPU, HUD Comandos, Stepper Guiado        */
 /* Nuevo Logo: Splash pulsante, Header compacto, Marca de agua      */
+/* Paleta sincronizada con el cubo molecular del logo                */
 /* "Lightweight Engineering, Heavyweight Performance"                 */
 /* ═══════════════════════════════════════════════════════════════════ */
 
@@ -19,18 +22,18 @@
     --np-text-secondary: #94a3b8;
     --np-text-muted: #64748b;
     
-    /* Colores corporativos extraídos del logotipo */
-    --np-cyan: #00b4d8;
-    --np-cyan-glow: rgba(0, 180, 216, 0.15);
-    --np-cyan-hover: #0096c7;
+    /* Sincronización exacta con el núcleo Cian Brillante del cubo molecular */
+    --np-cyan: #00f2fe; 
+    --np-cyan-glow: rgba(0, 242, 254, 0.2);
+    --np-cyan-hover: #00b4d8;
     
     --np-success: #6bb343;
     --np-warning: #ff7b00;
     --np-error: #ef4444;
     
-    /* NUEVO: Toque de tecnología sutil (Púrpura Neón de los nodos) */
-    --np-tech-purple: #c56cf0;
-    --np-tech-glow: rgba(197, 108, 240, 0.4);
+    /* Púrpura Neón de los nodos periféricos del logotipo */
+    --np-tech-purple: #a855f7;
+    --np-tech-glow: rgba(168, 85, 247, 0.4);
     
     /* Actualizar el color de los módulos con la nueva paleta */
     --np-module-pfd: var(--np-success);
@@ -39,7 +42,7 @@
     
     --np-border: #1e293b;
     --np-border-light: #334155;
-    --np-border-cyan: rgba(0, 180, 216, 0.2);
+    --np-border-cyan: rgba(0, 242, 254, 0.2);
     
     /* ── Tipografía ── */
     --np-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -61,7 +64,7 @@
     --np-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
     --np-shadow-md: 0 8px 32px rgba(0, 0, 0, 0.4);
     --np-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
-    --np-shadow-cyan: 0 0 20px rgba(0, 180, 216, 0.1);
+    --np-shadow-cyan: 0 0 20px rgba(0, 242, 254, 0.15);
     --np-shadow-cmd: 0 -10px 40px rgba(0, 0, 0, 0.5);
     
     /* ── Transiciones ── */
@@ -161,7 +164,6 @@ canvas {
     width: 320px;
 }
 
-/* NUEVO: Logo pulsante en splash */
 .ef-splash-logo-new {
     width: 160px;
     height: auto;
@@ -170,8 +172,8 @@ canvas {
 }
 
 @keyframes pulseGlow {
-    0%, 100% { filter: drop-shadow(0 0 10px rgba(197, 108, 240, 0.3)); }
-    50% { filter: drop-shadow(0 0 25px rgba(197, 108, 240, 0.7)); }
+    0%, 100% { filter: drop-shadow(0 0 12px rgba(168, 85, 247, 0.35)); }
+    50% { filter: drop-shadow(0 0 28px rgba(168, 85, 247, 0.75)); }
 }
 
 .ef-splash-title {
@@ -236,7 +238,7 @@ canvas {
     position: fixed;
     inset: 0;
     background-color: var(--ef-bg-primary);
-    background-image: radial-gradient(rgba(0, 180, 216, 0.04) 1px, transparent 1px);
+    background-image: radial-gradient(rgba(0, 242, 254, 0.04) 1px, transparent 1px);
     background-size: 20px 20px;
     z-index: 9000;
     display: flex;
@@ -262,7 +264,7 @@ canvas {
 .ef-welcome-logo-img {
     height: 80px;
     width: auto;
-    filter: drop-shadow(0 0 15px rgba(197, 108, 240, 0.3));
+    filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.35));
 }
 
 .ef-welcome-title { color: var(--ef-text-primary); font-size: 1.5rem; font-weight: 700; margin-bottom: 0.75rem; }
@@ -303,16 +305,13 @@ canvas {
 
 .ef-btn-icon { font-size: 0.9rem; }
 
-/* Hacer que el botón de validación resalte en Naranja Eléctrico */
+/* Botón de validación en Naranja Eléctrico */
 #ef-btn-validate svg {
     fill: var(--np-warning) !important;
     filter: drop-shadow(0 0 4px rgba(255, 123, 0, 0.4));
     transition: transform var(--ef-transition-fast);
 }
-
-#ef-btn-validate:hover svg {
-    transform: scale(1.1);
-}
+#ef-btn-validate:hover svg { transform: scale(1.1); }
 
 /* ═══════════════════════════════════════════════════════════════════ */
 /* MODAL                                                              */
@@ -373,17 +372,21 @@ canvas {
 .ef-header-left, .ef-header-center, .ef-header-right { display: flex; align-items: center; gap: 0.5rem; }
 .ef-header-center { flex: 1; justify-content: center; }
 
-/* ── BRAND / LOGO COMPACTO ── */
+/* ── BRAND / LOGO COMPACTO CON FILTRO DE LUZ NEÓN ── */
 .ef-brand { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 .ef-header-logo {
     height: 24px;
     width: auto;
     display: inline-block;
     vertical-align: middle;
-    opacity: 0.9;
-    transition: opacity var(--ef-transition-fast);
+    opacity: 0.95;
+    filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.3));
+    transition: opacity var(--ef-transition-fast), transform var(--ef-transition-fast);
 }
-.ef-header-logo:hover { opacity: 1; }
+.ef-header-logo:hover { 
+    opacity: 1; 
+    transform: scale(1.03);
+}
 .ef-brand-text { font-weight: 700; font-size: 0.9rem; letter-spacing: -0.02em; color: var(--ef-text-primary); }
 .ef-header-separator { color: var(--ef-border-light); font-size: 0.8rem; }
 
@@ -417,6 +420,19 @@ canvas {
 .ef-module-tab[data-module="dti"].active { color: var(--ef-module-dti); }
 .ef-module-tab[data-module="iso"].active { color: var(--ef-module-iso); }
 .ef-tab-icon { font-size: 0.9rem; }
+
+/* Soporte para los iconos SVG vectoriales en tabs */
+.ef-tab-icon-svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    vertical-align: middle;
+    transition: transform var(--ef-transition-fast);
+    stroke: currentColor;
+}
+.ef-module-tab:hover .ef-tab-icon-svg {
+    transform: scale(1.1);
+}
 
 /* ── BOTONES ICONO ── */
 .ef-icon-btn {
@@ -463,7 +479,7 @@ canvas {
     display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem;
     padding: 0.3rem 0.75rem;
     background: rgba(15, 28, 46, 0.95);
-    border-bottom: 1px solid rgba(0, 180, 216, 0.1);
+    border-bottom: 1px solid rgba(0, 242, 254, 0.1);
     z-index: 400;
     min-height: var(--ef-module-tools-h);
 }
@@ -473,7 +489,6 @@ canvas {
 /* ═══════════════════════════════════════════════════════════════════ */
 .ef-viewport { position: relative; background: var(--ef-bg-primary); overflow: hidden; }
 
-/* Marca de agua elegante de fondo para los contenedores de los lienzos */
 .ef-module-wrapper {
     position: absolute;
     inset: 0;
@@ -486,13 +501,11 @@ canvas {
 }
 .ef-module-wrapper.active { display: block; }
 
-/* Forzar que el canvas sea transparente para que deje ver la marca de agua si está vacío */
 .ef-module-wrapper canvas {
     background: transparent !important;
 }
 .ef-module-wrapper > div { width: 100%; height: 100%; }
 
-/* Marca de agua adicional en esquina inferior derecha */
 .nm-canvas-watermark {
     position: absolute;
     bottom: 20px;
@@ -557,7 +570,6 @@ canvas {
     font-size: 0.8rem;
 }
 
-/* Filas de propiedades */
 .ef-property-row {
     margin-bottom: 10px;
     display: flex;
@@ -614,7 +626,7 @@ canvas {
     max-width: 92vw;
     background-color: rgba(7, 17, 30, 0.95);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 180, 216, 0.15);
+    border: 1px solid rgba(0, 242, 254, 0.15);
     border-bottom: none;
     border-radius: var(--ef-radius-lg) var(--ef-radius-lg) 0 0;
     box-shadow: var(--np-shadow-cmd);
@@ -637,12 +649,15 @@ canvas {
     font-size: 0.8rem;
     color: var(--ef-accent-cyan);
 }
+.ef-cmd-header img {
+    filter: drop-shadow(0 0 4px var(--np-tech-glow));
+}
 .ef-cmd-module-badge {
     font-size: 0.65rem;
     padding: 0.15rem 0.5rem;
-    background: rgba(0, 180, 216, 0.1);
+    background: rgba(0, 242, 254, 0.1);
     color: var(--ef-accent);
-    border: 1px solid rgba(0, 180, 216, 0.2);
+    border: 1px solid rgba(0, 242, 254, 0.2);
     border-radius: var(--ef-radius-sm);
     font-family: var(--ef-font-mono);
     text-transform: uppercase;
@@ -664,7 +679,7 @@ canvas {
 }
 .ef-cmd-textarea:focus {
     border-color: var(--ef-accent);
-    box-shadow: 0 0 0 3px rgba(0, 180, 216, 0.12);
+    box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.12);
 }
 .ef-cmd-textarea::placeholder {
     color: var(--ef-text-muted);
@@ -716,7 +731,7 @@ canvas {
 .ef-step-dot.active {
     background-color: var(--ef-accent);
     transform: scale(1.3);
-    box-shadow: 0 0 8px rgba(0, 180, 216, 0.5);
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
 }
 .ef-step-dot.completed {
     background-color: var(--ef-success);
@@ -754,7 +769,7 @@ canvas {
     white-space: nowrap;
 }
 .ef-suggestion-chip:hover {
-    background-color: rgba(0, 180, 216, 0.1);
+    background-color: rgba(0, 242, 254, 0.1);
     border-color: var(--ef-accent);
     color: var(--ef-accent);
 }
@@ -959,13 +974,14 @@ body.ef-fullscreen .ef-fullscreen-controls { display: flex; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */
-/* RESPONSIVE                                                         */
+/* RESPONSIVE & ADAPTACIÓN MÓVIL REFORZADA                            */
 /* ═══════════════════════════════════════════════════════════════════ */
 @media (max-width: 1024px) and (orientation: landscape) {
     :root { --ef-header-h: 2.25rem; --ef-module-tools-h: 1.75rem; --ef-status-h: 1.25rem; }
     .ef-header-logo { height: 18px; }
     .ef-module-tab { padding: 0.2rem 0.45rem; font-size: 0.6rem; }
     .ef-tab-icon { font-size: 0.7rem; }
+    .ef-tab-icon-svg { width: 14px; height: 14px; margin-right: 4px; }
 }
 
 @media (max-width: 1024px) {
@@ -978,7 +994,13 @@ body.ef-fullscreen .ef-fullscreen-controls { display: flex; }
     .ef-header-logo { height: 18px; }
     .ef-module-tab { padding: 0.25rem 0.5rem; font-size: 0.65rem; gap: 0.2rem; }
     .ef-tab-icon { font-size: 0.7rem; }
+    .ef-tab-icon-svg { width: 12px; height: 12px; margin-right: 3px; }
     .ef-project-badge { max-width: 120px; font-size: 0.6rem; }
+    
+    .ef-props-panel:not(.collapsed), .ef-cmd-panel:not(.collapsed) {
+        border-top: 1px solid var(--np-cyan) !important;
+        box-shadow: 0 -4px 20px var(--np-tech-glow) !important;
+    }
     
     #ef-props-panel {
         width: 100%; max-width: 100%; height: 50vh;
