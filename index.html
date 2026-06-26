@@ -10,10 +10,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Nodus Plant | Suite de Ingeniería</title>
     
-    <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="img/logo.PNG">
     
-    <!-- Three.js r160 con Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -23,17 +21,15 @@
         }
     </script>
     
-    <!-- Librerías de exportación -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <!-- Estilos Nodus Plant -->
     <link rel="stylesheet" href="css/engineflow-core.css">
 </head>
 <body class="engineflow-app">
 
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 1. SPLASH SCREEN - NODUS PLANT (NUEVO LOGO PULSANTE)          -->
+    <!-- 1. SPLASH SCREEN - NODUS PLANT                                -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-splash" class="ef-splash">
         <div class="ef-splash-content">
@@ -102,7 +98,6 @@
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-shell" class="ef-shell" style="display:none">
         
-        <!-- BARRA SUPERIOR -->
         <header class="ef-header" role="banner">
             <div class="ef-header-left">
                 <div class="ef-brand">
@@ -118,13 +113,13 @@
             <div class="ef-header-center">
                 <nav class="ef-module-tabs" role="tablist" aria-label="Módulos de ingeniería">
                     <button class="ef-module-tab active" data-module="pfd" role="tab" aria-selected="true">
-                        <span class="ef-tab-icon">📊</span> PFD
+                        <svg class="ef-tab-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>PFD
                     </button>
                     <button class="ef-module-tab" data-module="dti" role="tab" aria-selected="false">
-                        <span class="ef-tab-icon">🔧</span> DTI
+                        <svg class="ef-tab-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>DTI
                     </button>
                     <button class="ef-module-tab" data-module="iso" role="tab" aria-selected="false">
-                        <span class="ef-tab-icon">🧊</span> ISO
+                        <svg class="ef-tab-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>ISO
                     </button>
                 </nav>
             </div>
@@ -172,33 +167,26 @@
             </div>
         </header>
 
-        <!-- PANEL DE HERRAMIENTAS CONTEXTUAL POR MÓDULO -->
         <div id="ef-module-tools" class="ef-module-tools" role="toolbar" aria-label="Herramientas del módulo"></div>
 
-        <!-- ÁREA PRINCIPAL DEL LIENZO -->
         <main class="ef-viewport" id="ef-viewport">
             
-            <!-- ===== WRAPPER PFD ===== -->
             <div id="ef-wrapper-pfd" class="ef-module-wrapper active" aria-label="Diagrama de Flujo de Proceso">
                 <canvas id="pfd-canvas"></canvas>
             </div>
 
-            <!-- ===== WRAPPER DTI ===== -->
             <div id="ef-wrapper-dti" class="ef-module-wrapper" aria-label="Diagrama de Tubería e Instrumentación">
                 <canvas id="dti-canvas"></canvas>
             </div>
 
-            <!-- ===== WRAPPER ISO 2D ===== -->
             <div id="ef-wrapper-iso2d" class="ef-module-wrapper" aria-label="Isométrico 2.5D">
                 <canvas id="isoCanvas"></canvas>
             </div>
 
-            <!-- ===== WRAPPER ISO 3D ===== -->
             <div id="ef-wrapper-iso3d" class="ef-module-wrapper" aria-label="Isométrico 3D">
                 <div id="viewer-3d"></div>
             </div>
 
-            <!-- ===== PANEL DE PROPIEDADES (flotante derecho) ===== -->
             <aside id="ef-props-panel" class="ef-props-panel collapsed" aria-label="Propiedades del elemento">
                 <div class="ef-props-header">
                     <h3>PROPIEDADES</h3>
@@ -209,16 +197,15 @@
                 </div>
             </aside>
 
-            <!-- ===== PANEL DE COMANDOS (flotante inferior) ===== -->
             <div id="ef-cmd-panel" class="ef-cmd-panel collapsed" role="dialog" aria-label="Panel de comandos">
                 <div class="ef-cmd-header">
-                    <strong>🤖 Comandos</strong>
+                    <img src="img/logo.PNG" alt="Nodus Isotipo" style="height: 16px; width: auto;">
+                    <strong>Comandos Asistidos</strong>
                     <span class="ef-cmd-module-badge" id="ef-cmd-module-badge">PFD</span>
                     <button id="ef-cmd-close" class="ef-icon-btn" aria-label="Cerrar comandos">×</button>
                 </div>
                 <textarea id="ef-cmd-text" class="ef-cmd-textarea" rows="4" 
                           placeholder="Ej PFD: create stream S1 from TK-01 to B-01 fluid WATER flow 50&#10;Ej DTI: create instrument PI-101 type PRESSURE_GAUGE on L-1&#10;Ej ISO: connect TK-01 N1 to B-01 SUC diametro 6"></textarea>
-                <!-- Contenedor del asistente guiado (stepper adaptativo) -->
                 <div id="ef-guided-box"></div>
                 <div class="ef-cmd-history" id="ef-cmd-history"></div>
                 <div class="ef-cmd-actions">
@@ -227,7 +214,6 @@
                 </div>
             </div>
 
-            <!-- ===== HERRAMIENTAS ISO (solo visible en módulo ISO) ===== -->
             <aside id="ef-iso-tools" class="ef-iso-tools" style="display:none" role="toolbar" aria-label="Herramientas isométricas">
                 <div class="ef-iso-tools-group">
                     <button class="ef-iso-tool-btn active" data-tool="select" title="Seleccionar" aria-label="Seleccionar">🔍</button>
@@ -245,30 +231,25 @@
                 </div>
             </aside>
 
-            <!-- ===== SWITCH 2D/3D (solo visible en módulo ISO) ===== -->
             <div id="ef-view-switch" class="ef-view-switch" style="display:none" role="radiogroup" aria-label="Vista isométrica">
                 <button id="ef-btn-2d" class="ef-view-btn active" role="radio" aria-checked="true">2D</button>
                 <button id="ef-btn-3d" class="ef-view-btn" role="radio" aria-checked="false">3D</button>
             </div>
 
-            <!-- ===== INDICADOR FULLSCREEN ===== -->
             <div id="ef-fullscreen-indicator" class="ef-fullscreen-indicator hidden" aria-live="polite">
                 <span class="ef-fs-label">Modo Inmersivo</span>
                 <span class="ef-fs-hint">ESC para salir</span>
             </div>
 
-            <!-- ===== CONTROLES FULLSCREEN ===== -->
             <div id="ef-fullscreen-controls" class="ef-fullscreen-controls">
                 <button id="ef-fs-center" class="ef-fs-btn ef-fs-center">🔄 Centrar</button>
                 <button id="ef-fs-screenshot" class="ef-fs-btn ef-fs-capture">📸 Capturar</button>
                 <button id="ef-fs-exit" class="ef-fs-btn ef-fs-exit">✕ Salir</button>
             </div>
 
-            <!-- ===== FLASH DE CAPTURA ===== -->
             <div id="ef-screenshot-flash" class="ef-screenshot-flash" aria-hidden="true"></div>
         </main>
 
-        <!-- BARRA DE ESTADO -->
         <footer class="ef-status-bar" role="status">
             <span class="ef-status-item" id="ef-status-module">PFD</span>
             <span class="ef-status-sep">|</span>
@@ -280,66 +261,44 @@
         </footer>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- NOTIFICACIÓN TOAST                                            -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
     <div id="ef-notification" class="ef-notification" role="alert" aria-live="polite"></div>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- SCRIPTS                                                        -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    
-    <!-- Core del sistema -->
     <script src="js/core.js"></script>
     <script src="js/catalog.js"></script>
     <script src="js/router.js"></script>
 
-    <!-- Módulos PFD -->
     <script src="js/modules/pfd_engine.js"></script>
     <script src="js/modules/pfd_renderer.js"></script>
     
-    <!-- Módulos DTI -->
     <script src="js/modules/dti_engine.js"></script>
     <script src="js/modules/dti_renderer.js"></script>
     
-    <!-- Validación cruzada -->
     <script src="js/modules/integrity.js"></script>
 
-    <!-- I/O y exportación -->
     <script src="js/modules/smartflow_io.js"></script>
     <script src="js/modules/smartflow_db_export.js"></script>
 
-    <!-- Renderer isométrico 2D -->
     <script src="js/renderer.js"></script>
 
-    <!-- Entregables PDF -->
     <script src="js/deliverables.js"></script>
     <script src="js/factory.js"></script>
 
-    <!-- Comandos -->
     <script src="js/commands.js"></script>
     <script src="js/commands-pfd.js"></script>
     <script src="js/commands-dti.js"></script>
     <script src="js/commands-3d.js"></script>
 
-    <!-- Comandos adaptativos (asistidos) -->
     <script src="js/adaptiveCommands.js"></script>
     <script src="js/adaptiveCommandsUI.js"></script>
 
-    <!-- Paneles contextuales -->
     <script src="js/engineflow-panels.js"></script>
 
-    <!-- Three.js (módulos ES) -->
     <script type="module" src="js/ThreeJsEngine.js"></script>
     <script type="module" src="js/render.js"></script>
     <script type="module" src="js/EngineFlowLabels3D.js"></script>
 
-    <!-- Orquestador principal Nodus Plant -->
     <script src="js/engineflow-app.js"></script>
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- CONFIGURACIÓN INICIAL                                          -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
     <script>
         window.voiceEnabled = true;
         window.currentProjectName = 'Proyecto_NodusPlant';
